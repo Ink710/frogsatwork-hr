@@ -137,6 +137,21 @@ const PEOPLE = {
       { title: "Junior Software Engineer", type: EmploymentType.PART_TIME, salary: "64000.00", from: "2024-07-22", to: null },
     ],
   },
+  nadia: {
+    userId: "30000000-0000-0000-0000-000000000007",
+    empId: "40000000-0000-0000-0000-000000000007",
+    number: "E-0007",
+    firstName: "Nadia",
+    lastName: "Cole",
+    email: "nadia.cole@peoplebase.test",
+    role: Role.PAYROLL_ADMIN, // sees all comp org-wide, but every view is audited
+    dept: "people",
+    manager: "ana",
+    hireDate: "2021-08-01",
+    history: [
+      { title: "Payroll Administrator", type: EmploymentType.FULL_TIME, salary: "98000.00", from: "2021-08-01", to: null },
+    ],
+  },
 };
 
 async function main() {

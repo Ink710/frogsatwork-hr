@@ -53,7 +53,9 @@ enum AuditEventType {
   VIEW
   CREATE
   UPDATE
+  CORRECTION
   TERMINATE
+  REHIRE
   EXPORT
   PERMISSION_DENIED
   LOGIN_FAILED
@@ -121,6 +123,9 @@ model Employee {
   employmentStatus EmploymentStatus @default(ACTIVE)
   hireDate         DateTime
   terminationDate  DateTime?
+  terminationReason String? // free-text circumstances of dismissal
+  eligibleForRehire Boolean         @default(true) // set at termination; gates rehire
+  rehireDate       DateTime?
   locationId       String? // plain string for now; promote to a Location model later
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
@@ -169,6 +174,9 @@ model EmployeeHistory {
   changeReason       String?
   effectiveFrom      DateTime
   effectiveTo        DateTime? // null = current version
+  // When this row was ENTERED (distinct from effectiveFrom). Anchors the 7-day
+  // correction grace window: material fields can be corrected in place until this ages out.
+  createdAt          DateTime       @default(now())
 
   employeeId String
   employee   Employee @relation(fields: [employeeId], references: [id])

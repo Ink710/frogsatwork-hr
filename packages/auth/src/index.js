@@ -13,6 +13,10 @@ export {
   RECORD_SCOPE,
   getRecordScope,
   canViewCompensation,
+  canEditEmployee,
+  canEditCompensation,
+  canTerminate,
+  canRehire,
   isPayroll,
   isHrRole,
 } from "./roles.js";
@@ -23,3 +27,4 @@ export {
   getCompContext,
   resolveCompAccess,
 } from "./scope.js";
+export { withViewer } from "./rls.js";

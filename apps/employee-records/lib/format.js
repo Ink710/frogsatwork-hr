@@ -18,3 +18,14 @@ export function formatDate(date) {
     day: "numeric",
   }).format(new Date(date));
 }
+
+// A salary string/number + ISO currency -> "$112,000". Returns null for missing input
+// so callers never accidentally render a blank/zero for guarded compensation.
+export function formatMoney(amount, currency = "USD") {
+  if (amount == null) return null;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 0,
+  }).format(Number(amount));
+}

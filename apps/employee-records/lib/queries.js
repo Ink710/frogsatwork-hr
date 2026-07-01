@@ -1,34 +1,33 @@
 import { cache } from "react";
-import { prisma } from "@hris/database";
+import { getViewer, withViewer, resolveCompAccess, isPayroll } from "@hris/auth";
 
-// Data access for the employee list. Runs on the server only (imported by a Server
-// Component), so the Prisma client — and the DB credentials — never reach the browser.
-//
-// Note the deliberate omission: we do NOT select `salary`. Compensation is sensitive
-// and must be guarded in the API/query layer, not just hidden in the UI. Until the
-// RBAC milestone decides who may see it, we simply never fetch it here.
+// Data access for the employee list. Every read now runs inside withViewer(), so RLS
+// scopes the rows to the signed-in user automatically — no manual `where` filtering, and
+// no way to forget it. Compensation is still never selected here.
 export async function getEmployees() {
-  const rows = await prisma.employee.findMany({
-    orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-    select: {
-      id: true,
-      employeeNumber: true,
-      firstName: true,
-      lastName: true,
-      employmentStatus: true,
-      department: { select: { name: true } },
-      manager: { select: { firstName: true, lastName: true } },
-      // The CURRENT version of the versioned fields is the one open history row
-      // (effectiveTo = null). That's where the live job title lives.
-      history: {
-        where: { effectiveTo: null },
-        select: { jobTitle: true, employmentType: true },
-        take: 1,
-      },
-    },
-  });
+  const viewer = await getViewer();
+  if (!viewer) return [];
 
-  // Flatten into a plain shape the table can render without knowing about Prisma.
+  const rows = await withViewer(viewer, (tx) =>
+    tx.employee.findMany({
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      select: {
+        id: true,
+        employeeNumber: true,
+        firstName: true,
+        lastName: true,
+        employmentStatus: true,
+        department: { select: { name: true } },
+        manager: { select: { firstName: true, lastName: true } },
+        history: {
+          where: { effectiveTo: null },
+          select: { jobTitle: true, employmentType: true },
+          take: 1,
+        },
+      },
+    }),
+  );
+
   return rows.map((e) => ({
     id: e.id,
     employeeNumber: e.employeeNumber,
@@ -41,54 +40,89 @@ export async function getEmployees() {
   }));
 }
 
-// Single employee for the profile page, with the FULL effective-dated timeline.
-//
-// Wrapped in React's `cache()`: within one request, calling this twice (the page
-// body AND generateMetadata both need it) runs the DB query only once. The cache is
-// per-request, so it never leaks data between users.
-//
-// Same compensation guard as the list: `salary` and `currency` are never selected.
-// The timeline shows what changed and when — not how much someone earns — until RBAC.
+// Single employee for the profile page. Wrapped in cache() so the page body and
+// generateMetadata share one execution per request (and one payroll audit entry).
 export const getEmployeeProfile = cache(async (id) => {
-  const employee = await prisma.employee.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      employeeNumber: true,
-      firstName: true,
-      lastName: true,
-      email: true,
-      employmentStatus: true,
-      hireDate: true,
-      terminationDate: true,
-      department: { select: { name: true } },
-      manager: { select: { id: true, firstName: true, lastName: true } },
-      reports: {
-        select: { id: true, firstName: true, lastName: true },
-        orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-      },
-      emergencyContacts: {
-        select: { id: true, name: true, relationship: true, phone: true, isPrimary: true },
-        orderBy: { isPrimary: "desc" },
-      },
-      // Every version, newest first. The open row (effectiveTo = null) is "now".
-      history: {
-        select: {
-          id: true,
-          version: true,
-          jobTitle: true,
-          employmentType: true,
-          departmentSnapshot: true,
-          managerSnapshot: true,
-          changeReason: true,
-          changedFields: true,
-          effectiveFrom: true,
-          effectiveTo: true,
-        },
-        orderBy: { version: "desc" },
-      },
-    },
-  });
+  const viewer = await getViewer();
+  if (!viewer) return null;
 
-  return employee; // null when the id doesn't exist — caller turns that into a 404.
+  return withViewer(viewer, async (tx) => {
+    // Everything EXCEPT salary. If the employee isn't visible to this viewer, RLS makes
+    // this return null and we 404.
+    const employee = await tx.employee.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        employeeNumber: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        employmentStatus: true,
+        hireDate: true,
+        terminationDate: true,
+        departmentId: true, // needed for the HR peer comp check
+        department: { select: { name: true } },
+        manager: { select: { id: true, firstName: true, lastName: true } },
+        reports: {
+          select: { id: true, firstName: true, lastName: true },
+          orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+        },
+        emergencyContacts: {
+          select: { id: true, name: true, relationship: true, phone: true, isPrimary: true },
+          orderBy: { isPrimary: "desc" },
+        },
+        history: {
+          select: {
+            id: true,
+            version: true,
+            jobTitle: true,
+            employmentType: true,
+            departmentSnapshot: true,
+            managerSnapshot: true,
+            changeReason: true,
+            changedFields: true,
+            effectiveFrom: true,
+            effectiveTo: true,
+          },
+          orderBy: { version: "desc" },
+        },
+      },
+    });
+    if (!employee) return null;
+
+    // Column-level comp guard: decide, then fetch salary only if allowed.
+    const canViewComp = await resolveCompAccess(
+      viewer,
+      { id: employee.id, departmentId: employee.departmentId },
+      tx,
+    );
+
+    if (canViewComp) {
+      const comp = await tx.employeeHistory.findMany({
+        where: { employeeId: id },
+        select: { id: true, salary: true, currency: true },
+      });
+      const byId = new Map(comp.map((c) => [c.id, c]));
+      employee.history = employee.history.map((h) => ({
+        ...h,
+        salary: byId.get(h.id)?.salary?.toString() ?? null,
+        currency: byId.get(h.id)?.currency ?? null,
+      }));
+
+      // Payroll's broad comp access is logged. occurredAt is DB-defaulted; hris_app has
+      // INSERT-only on this table.
+      if (isPayroll(viewer.role)) {
+        await tx.employeeAuditLog.create({
+          data: {
+            employeeId: id,
+            eventType: "VIEW",
+            actorType: "USER",
+            actorId: viewer.userId,
+          },
+        });
+      }
+    }
+
+    return { ...employee, canViewComp };
+  });
 });

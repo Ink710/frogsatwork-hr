@@ -27,6 +27,24 @@ export function getRecordScope(viewer) {
   return RECORD_SCOPE.SELF; // EMPLOYEE
 }
 
+// ---- Write authorization (record scope is still enforced by RLS on top of these) ----
+
+// May record non-comp effective-dated changes + name/email corrections.
+export function canEditEmployee(viewer) {
+  return viewer.role === Role.HR_ADMIN || viewer.role === Role.HR_GENERALIST;
+}
+
+// May change (or correct) salary. Segregated from other edits per policy.
+export function canEditCompensation(viewer) {
+  return viewer.role === Role.HR_ADMIN || viewer.role === Role.PAYROLL_ADMIN;
+}
+
+// May terminate / rehire — the most sensitive lifecycle actions.
+export function canTerminate(viewer) {
+  return viewer.role === Role.HR_ADMIN;
+}
+export const canRehire = canTerminate;
+
 // Whether this viewer may see the COMPENSATION of `target`. Pure: all the data-dependent
 // bits (subtree/ancestor sets, depths, department) are precomputed into `ctx` by scope.js.
 //   ctx for MANAGER/EMPLOYEE: { subtreeIds: Set }

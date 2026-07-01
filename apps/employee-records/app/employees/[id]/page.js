@@ -129,9 +129,16 @@ export default async function EmployeeProfilePage({ params }) {
 
       {/* The signature feature: the effective-dated timeline. */}
       <section className="mt-10">
-        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-500">
-          History
-        </h2>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+            History
+          </h2>
+          {!e.canViewComp && (
+            <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-500 dark:bg-zinc-800">
+              Compensation hidden for your role
+            </span>
+          )}
+        </div>
         <HistoryTimeline history={e.history} />
       </section>
     </main>
