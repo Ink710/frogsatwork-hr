@@ -85,6 +85,9 @@ model User {
   name            String
   role            Role      @default(EMPLOYEE)
   isSystemUser    Boolean   @default(false)
+  // bcrypt hash for the Credentials login. Nullable: the SYSTEM user and any
+  // future SSO-only users won't have a local password.
+  passwordHash    String?
   // Nullable now so a real auth provider (Auth.js) can populate it later.
   emailVerifiedAt DateTime?
   createdAt       DateTime  @default(now())

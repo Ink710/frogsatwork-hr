@@ -14,11 +14,23 @@
 // time). Dynamic import guarantees env is populated first, despite ESM hoisting.
 import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";
+import bcrypt from "bcryptjs";
 
 loadEnv({ path: fileURLToPath(new URL("../../../.env", import.meta.url)) });
 
-const { prisma, SYSTEM_USER_ID, Role, EmploymentStatus, EmploymentType } =
+// The seed is an ADMIN task, so it connects as the OWNER (DIRECT_URL) rather than the
+// restricted app role. That lets it bypass the Row-Level Security we add later and write
+// the full dataset. The app itself always uses the restricted hris_app role.
+const { PrismaClient } = await import("./generated/client/index.js");
+const { PrismaPg } = await import("@prisma/adapter-pg");
+const { SYSTEM_USER_ID, Role, EmploymentStatus, EmploymentType } =
   await import("./index.js");
+
+const adapter = new PrismaPg({ connectionString: process.env.DIRECT_URL });
+const prisma = new PrismaClient({ adapter });
+
+// Dev-only password shared by every seeded human user. Obviously never do this in prod.
+const DEV_PASSWORD = "password123";
 
 // Stable ids so upserts are deterministic across runs.
 const ORG_ID = "10000000-0000-0000-0000-000000000001";
@@ -128,6 +140,10 @@ const PEOPLE = {
 };
 
 async function main() {
+  // One hash reused for all seeded logins (bcrypt salts internally, so identical
+  // passwords still produce distinct hashes were we to hash per-user).
+  const passwordHash = await bcrypt.hash(DEV_PASSWORD, 10);
+
   // 1. Organization (multi-tenancy anchor).
   const org = await prisma.organization.upsert({
     where: { id: ORG_ID },
@@ -171,8 +187,16 @@ async function main() {
   for (const p of Object.values(PEOPLE)) {
     await prisma.user.upsert({
       where: { id: p.userId },
-      update: {},
-      create: { id: p.userId, email: p.email, name: `${p.firstName} ${p.lastName}`, role: p.role, orgId: org.id },
+      // passwordHash in `update` too, so re-seeding an existing DB backfills logins.
+      update: { passwordHash },
+      create: {
+        id: p.userId,
+        email: p.email,
+        name: `${p.firstName} ${p.lastName}`,
+        role: p.role,
+        orgId: org.id,
+        passwordHash,
+      },
     });
 
     await prisma.employee.upsert({

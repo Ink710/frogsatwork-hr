@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { prisma } from "@hris/database";
 
 // Data access for the employee list. Runs on the server only (imported by a Server
@@ -39,3 +40,55 @@ export async function getEmployees() {
     status: e.employmentStatus,
   }));
 }
+
+// Single employee for the profile page, with the FULL effective-dated timeline.
+//
+// Wrapped in React's `cache()`: within one request, calling this twice (the page
+// body AND generateMetadata both need it) runs the DB query only once. The cache is
+// per-request, so it never leaks data between users.
+//
+// Same compensation guard as the list: `salary` and `currency` are never selected.
+// The timeline shows what changed and when — not how much someone earns — until RBAC.
+export const getEmployeeProfile = cache(async (id) => {
+  const employee = await prisma.employee.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      employeeNumber: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      employmentStatus: true,
+      hireDate: true,
+      terminationDate: true,
+      department: { select: { name: true } },
+      manager: { select: { id: true, firstName: true, lastName: true } },
+      reports: {
+        select: { id: true, firstName: true, lastName: true },
+        orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      },
+      emergencyContacts: {
+        select: { id: true, name: true, relationship: true, phone: true, isPrimary: true },
+        orderBy: { isPrimary: "desc" },
+      },
+      // Every version, newest first. The open row (effectiveTo = null) is "now".
+      history: {
+        select: {
+          id: true,
+          version: true,
+          jobTitle: true,
+          employmentType: true,
+          departmentSnapshot: true,
+          managerSnapshot: true,
+          changeReason: true,
+          changedFields: true,
+          effectiveFrom: true,
+          effectiveTo: true,
+        },
+        orderBy: { version: "desc" },
+      },
+    },
+  });
+
+  return employee; // null when the id doesn't exist — caller turns that into a 404.
+});

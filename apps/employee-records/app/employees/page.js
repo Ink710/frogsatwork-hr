@@ -1,16 +1,10 @@
+import Link from "next/link";
 import { getEmployees } from "@/lib/queries";
+import { humanize } from "@/lib/format";
 
 export const metadata = {
   title: "Employees · PeopleBase",
 };
-
-// Formats an enum like FULL_TIME -> "Full time".
-function humanize(value) {
-  return value
-    .toLowerCase()
-    .replace(/_/g, " ")
-    .replace(/^\w/, (c) => c.toUpperCase());
-}
 
 const STATUS_STYLES = {
   ACTIVE: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
@@ -61,7 +55,11 @@ export default async function EmployeesPage() {
               {employees.map((e) => (
                 <tr key={e.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-900/50">
                   <td className="px-4 py-3 font-mono text-xs text-zinc-500">{e.employeeNumber}</td>
-                  <td className="px-4 py-3 font-medium">{e.name}</td>
+                  <td className="px-4 py-3 font-medium">
+                    <Link href={`/employees/${e.id}`} className="hover:underline">
+                      {e.name}
+                    </Link>
+                  </td>
                   <td className="px-4 py-3 text-zinc-600 dark:text-zinc-300">{e.title}</td>
                   <td className="px-4 py-3 text-zinc-600 dark:text-zinc-300">{e.department}</td>
                   <td className="px-4 py-3 text-zinc-600 dark:text-zinc-300">{e.manager}</td>
