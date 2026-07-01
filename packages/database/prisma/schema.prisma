@@ -1,0 +1,254 @@
+// @hris/database — canonical schema for the HRIS suite.
+//
+// Prisma 7 note: connection URLs live in prisma.config.ts, NOT here.
+//   - Migrate/Studio use datasource.url in prisma.config.ts → the `postgres`
+//     OWNER role (DIRECT_URL), which can create tables and run privileged SQL.
+//   - The runtime client (src/client.js) connects via a `pg` driver adapter using
+//     the restricted `hris_app` role (DATABASE_URL).
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  EMPLOYEE
+  MANAGER
+  HR_GENERALIST
+  HR_ADMIN
+  PAYROLL_ADMIN
+  SYSTEM
+}
+
+enum EmploymentStatus {
+  ACTIVE
+  ON_LEAVE
+  SUSPENDED
+  TERMINATED
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  INTERN
+}
+
+enum DocumentType {
+  CONTRACT
+  IDENTIFICATION
+  CERTIFICATION
+  PERFORMANCE
+  OTHER
+}
+
+enum AuditEventType {
+  VIEW
+  CREATE
+  UPDATE
+  TERMINATE
+  EXPORT
+  PERMISSION_DENIED
+  LOGIN_FAILED
+}
+
+enum ActorType {
+  USER
+  SYSTEM
+  INTEGRATION
+}
+
+// ---------------------------------------------------------------------------
+// Identity — built first because history/audit FKs point at User.
+// ---------------------------------------------------------------------------
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  users       User[]
+  employees   Employee[]
+  departments Department[]
+}
+
+model User {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  name            String
+  role            Role      @default(EMPLOYEE)
+  isSystemUser    Boolean   @default(false)
+  // Nullable now so a real auth provider (Auth.js) can populate it later.
+  emailVerifiedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  orgId String
+  org   Organization @relation(fields: [orgId], references: [id])
+
+  // A login identity optionally maps to exactly one employee record.
+  employee Employee?
+
+  // Back-relations for the columns that record "who did this".
+  historyChanges  EmployeeHistory[]  @relation("HistoryChangedBy")
+  auditActions    EmployeeAuditLog[] @relation("AuditActor")
+  uploadedDocs    EmployeeDocument[] @relation("DocUploadedBy")
+  departmentsHead Department[]       @relation("DepartmentHead")
+
+  @@index([orgId])
+}
+
+// ---------------------------------------------------------------------------
+// Employee records
+// ---------------------------------------------------------------------------
+
+model Employee {
+  id               String           @id @default(uuid())
+  employeeNumber   String
+  firstName        String
+  lastName         String
+  email            String
+  employmentStatus EmploymentStatus @default(ACTIVE)
+  hireDate         DateTime
+  terminationDate  DateTime?
+  locationId       String? // plain string for now; promote to a Location model later
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  // One employee is one login identity.
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
+
+  orgId String
+  org   Organization @relation(fields: [orgId], references: [id])
+
+  // Self-referential manager link — this is what powers the org chart.
+  managerId String?
+  manager   Employee?  @relation("OrgHierarchy", fields: [managerId], references: [id])
+  reports   Employee[] @relation("OrgHierarchy")
+
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+
+  history           EmployeeHistory[]
+  documents         EmployeeDocument[]
+  auditLogs         EmployeeAuditLog[]
+  emergencyContacts EmergencyContact[]
+
+  // Employee numbers are unique within an organization, not globally.
+  @@unique([orgId, employeeNumber])
+  @@index([managerId])
+  @@index([departmentId])
+}
+
+// Temporal table (Slowly Changing Dimension, Type 2).
+// One row per version of the versioned fields. The CURRENT version has
+// effectiveTo = null. Invariant: exactly one open row per employee.
+model EmployeeHistory {
+  id                 String         @id @default(uuid())
+  version            Int
+  jobTitle           String
+  // Denormalized snapshots: the label AS IT WAS at effectiveFrom, so renaming or
+  // deleting a department/manager later cannot rewrite history.
+  departmentSnapshot String
+  managerSnapshot    String?
+  employmentType     EmploymentType
+  salary             Decimal        @db.Decimal(12, 2) // money is never a float
+  currency           String         @default("USD")
+  changedFields      Json // which fields changed in this version, e.g. ["salary","jobTitle"]
+  changeReason       String?
+  effectiveFrom      DateTime
+  effectiveTo        DateTime? // null = current version
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  changedById String
+  changedBy   User   @relation("HistoryChangedBy", fields: [changedById], references: [id])
+
+  @@unique([employeeId, version])
+  @@index([employeeId, effectiveFrom])
+}
+
+model Department {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  orgId String
+  org   Organization @relation(fields: [orgId], references: [id])
+
+  // Self-referential for sub-departments of arbitrary depth.
+  parentDepartmentId String?
+  parentDepartment   Department?  @relation("DepartmentTree", fields: [parentDepartmentId], references: [id])
+  subDepartments     Department[] @relation("DepartmentTree")
+
+  headUserId String?
+  head       User?   @relation("DepartmentHead", fields: [headUserId], references: [id])
+
+  employees Employee[]
+
+  @@index([orgId])
+  @@index([parentDepartmentId])
+}
+
+model EmployeeDocument {
+  id            String       @id @default(uuid())
+  documentType  DocumentType
+  fileName      String
+  // Object key (e.g. S3/R2), NOT a public URL. Download links are short-lived
+  // signed URLs generated server-side at request time.
+  fileUrl       String
+  fileSizeBytes Int
+  expiresAt     DateTime?
+  createdAt     DateTime     @default(now())
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  uploadedById String
+  uploadedBy   User   @relation("DocUploadedBy", fields: [uploadedById], references: [id])
+
+  @@index([employeeId])
+}
+
+// Append-only compliance log. UPDATE/DELETE are revoked from the app role at the
+// DB level (see the audit_append_only migration). occurredAt is DB-defaulted so
+// the application can never backdate an event.
+model EmployeeAuditLog {
+  id          String         @id @default(uuid())
+  eventType   AuditEventType
+  actorType   ActorType      @default(USER)
+  beforeState Json?
+  afterState  Json?
+  ipAddress   String?
+  occurredAt  DateTime       @default(now())
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  actorId String
+  actor   User   @relation("AuditActor", fields: [actorId], references: [id])
+
+  @@index([employeeId, occurredAt])
+}
+
+model EmergencyContact {
+  id           String  @id @default(uuid())
+  name         String
+  relationship String
+  phone        String
+  isPrimary    Boolean @default(false)
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+}

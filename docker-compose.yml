@@ -1,0 +1,32 @@
+# Local Postgres for development.
+#   docker compose up -d      → start in the background
+#   docker compose ps         → check health
+#   docker compose down       → stop (data survives in the named volume)
+#   docker compose down -v    → stop AND wipe the volume (fresh DB)
+#
+# The init script in ./docker/init runs ONCE, the first time the volume is
+# created. It creates the restricted `hris_app` login role that the app uses at
+# runtime. Migrations run as the `postgres` superuser (owner) instead.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hris-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: hris
+    ports:
+      # Host 5433 → container 5432 (host 5432 was already in use on this machine).
+      - "5433:5432"
+    volumes:
+      - hris-pgdata:/var/lib/postgresql/data
+      - ./docker/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d hris"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  hris-pgdata:
