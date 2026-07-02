@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { getViewer, canEditEmployee } from "@hris/auth";
 import { getEmployeeProfile } from "@/lib/queries";
 import { humanize, formatDate } from "@/lib/format";
 import { HistoryTimeline } from "@/components/HistoryTimeline";
@@ -36,6 +37,9 @@ export default async function EmployeeProfilePage({ params }) {
   // No matching employee → render the 404 boundary instead of crashing.
   if (!e) notFound();
 
+  const viewer = await getViewer();
+  const canEdit = viewer ? canEditEmployee(viewer) : false;
+
   // The current version is the open history row; fall back to newest if needed.
   const current = e.history.find((h) => h.effectiveTo === null) ?? e.history[0];
 
@@ -55,13 +59,23 @@ export default async function EmployeeProfilePage({ params }) {
             {current?.jobTitle ?? "—"}
           </p>
         </div>
-        <span
-          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
-            STATUS_STYLES[e.employmentStatus] ?? STATUS_STYLES.TERMINATED
-          }`}
-        >
-          {humanize(e.employmentStatus)}
-        </span>
+        <div className="flex items-center gap-3">
+          <span
+            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
+              STATUS_STYLES[e.employmentStatus] ?? STATUS_STYLES.TERMINATED
+            }`}
+          >
+            {humanize(e.employmentStatus)}
+          </span>
+          {canEdit && (
+            <Link
+              href={`/employees/${e.id}/edit`}
+              className="rounded-md border border-zinc-300 px-2.5 py-1 text-xs font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+            >
+              Record change
+            </Link>
+          )}
+        </div>
       </header>
 
       {/* Snapshot facts */}

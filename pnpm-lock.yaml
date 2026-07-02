@@ -219,6 +219,9 @@ importers:
       '@hris/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@hris/types':
+        specifier: workspace:*
+        version: link:../../packages/types
       next:
         specifier: 16.2.9
         version: 16.2.9(@babel/core@7.29.7)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)

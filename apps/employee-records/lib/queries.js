@@ -1,5 +1,13 @@
 import { cache } from "react";
-import { getViewer, withViewer, resolveCompAccess, isPayroll } from "@hris/auth";
+import {
+  getViewer,
+  withViewer,
+  resolveCompAccess,
+  isPayroll,
+  canEditEmployee,
+  canEditCompensation,
+  getSubtreeIds,
+} from "@hris/auth";
 
 // Data access for the employee list. Every read now runs inside withViewer(), so RLS
 // scopes the rows to the signed-in user automatically — no manual `where` filtering, and
@@ -126,3 +134,64 @@ export const getEmployeeProfile = cache(async (id) => {
     return { ...employee, canViewComp };
   });
 });
+
+// Prefill data for the "record a change" form. Returns null if the viewer may not edit
+// (also gates the route). Manager candidates exclude the employee's own subtree so a
+// reassignment can't create a reporting cycle.
+export async function getEmployeeForEdit(id) {
+  const viewer = await getViewer();
+  if (!viewer || !canEditEmployee(viewer)) return null;
+  const canEditComp = canEditCompensation(viewer);
+
+  return withViewer(viewer, async (tx) => {
+    const employee = await tx.employee.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        departmentId: true,
+        managerId: true,
+        employmentStatus: true,
+      },
+    });
+    if (!employee) return null;
+
+    const current = await tx.employeeHistory.findFirst({
+      where: { employeeId: id, effectiveTo: null },
+      orderBy: { version: "desc" },
+      select: {
+        jobTitle: true,
+        employmentType: true,
+        currency: true,
+        effectiveFrom: true,
+        ...(canEditComp ? { salary: true } : {}),
+      },
+    });
+
+    const [departments, subtree, all] = await Promise.all([
+      tx.department.findMany({
+        where: { orgId: viewer.orgId },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      }),
+      getSubtreeIds(id, tx),
+      tx.employee.findMany({
+        select: { id: true, firstName: true, lastName: true },
+        orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      }),
+    ]);
+
+    const managerOptions = all
+      .filter((e) => !subtree.has(e.id)) // excludes self + descendants → no cycles
+      .map((e) => ({ id: e.id, name: `${e.firstName} ${e.lastName}` }));
+
+    return {
+      employee,
+      current: current ? { ...current, salary: current.salary?.toString() ?? null } : null,
+      departments,
+      managerOptions,
+      canEditComp,
+    };
+  });
+}
