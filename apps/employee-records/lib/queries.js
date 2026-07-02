@@ -280,3 +280,49 @@ export async function getEmployeeForLifecycle(id) {
     return employee;
   });
 }
+
+// Build the org tree from the viewer's RLS-scoped employees. Because findMany is already
+// row-filtered, the tree automatically shows only nodes this viewer may see: HR sees the
+// whole company, a manager sees their subtree (they become the root), an employee sees
+// just themselves. Terminated staff are excluded (the chart is the CURRENT structure).
+export async function getOrgTree() {
+  const viewer = await getViewer();
+  if (!viewer) return [];
+
+  const rows = await withViewer(viewer, (tx) =>
+    tx.employee.findMany({
+      where: { employmentStatus: { not: "TERMINATED" } },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        managerId: true,
+        department: { select: { name: true } },
+        history: { where: { effectiveTo: null }, select: { jobTitle: true }, take: 1 },
+      },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+    }),
+  );
+
+  const byId = new Map();
+  for (const r of rows) {
+    byId.set(r.id, {
+      id: r.id,
+      name: `${r.firstName} ${r.lastName}`,
+      initials: `${r.firstName[0] ?? ""}${r.lastName[0] ?? ""}`.toUpperCase(),
+      title: r.history[0]?.jobTitle ?? "—",
+      department: r.department?.name ?? null,
+      children: [],
+    });
+  }
+
+  // A node is a ROOT when it has no manager, or its manager is outside the visible set
+  // (e.g. a manager viewing their own subtree — their boss isn't visible to them here).
+  const roots = [];
+  for (const r of rows) {
+    const node = byId.get(r.id);
+    if (r.managerId && byId.has(r.managerId)) byId.get(r.managerId).children.push(node);
+    else roots.push(node);
+  }
+  return roots;
+}

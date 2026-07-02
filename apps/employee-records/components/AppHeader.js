@@ -18,9 +18,15 @@ export async function AppHeader() {
   return (
     <header className="border-b border-zinc-200 dark:border-zinc-800">
       <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-3">
-        <Link href="/employees" className="text-sm font-semibold tracking-tight">
-          PeopleBase
-        </Link>
+        <div className="flex items-center gap-5">
+          <Link href="/employees" className="text-sm font-semibold tracking-tight">
+            PeopleBase
+          </Link>
+          <nav className="flex items-center gap-4 text-sm text-zinc-500">
+            <Link href="/employees" className="hover:text-zinc-900 dark:hover:text-zinc-100">Employees</Link>
+            <Link href="/org-chart" className="hover:text-zinc-900 dark:hover:text-zinc-100">Org chart</Link>
+          </nav>
+        </div>
         <div className="flex items-center gap-4 text-sm">
           <span className="text-zinc-500">
             {name} · <span className="text-zinc-400">{humanize(role)}</span>

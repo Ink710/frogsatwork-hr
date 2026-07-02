@@ -24,3 +24,75 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Recursive org chart — the classic pure-CSS tree connector technique.
+   Nested <ul>/<li>; ::before/::after draw the elbow lines between a parent and its
+   children. Works with any depth, no JS. */
+.orgtree,
+.orgtree ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.orgtree ul {
+  display: flex;
+  justify-content: center;
+  padding-top: 20px;
+  position: relative;
+}
+.orgtree li {
+  position: relative;
+  padding: 20px 10px 0;
+  text-align: center;
+}
+/* elbow lines from each node up toward its parent */
+.orgtree li::before,
+.orgtree li::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 50%;
+  width: 50%;
+  height: 20px;
+  border-top: 1px solid var(--org-line, #d4d4d8);
+}
+.orgtree li::after {
+  right: auto;
+  left: 50%;
+  border-left: 1px solid var(--org-line, #d4d4d8);
+}
+/* a lone child needs no horizontal split */
+.orgtree li:only-child::before,
+.orgtree li:only-child::after {
+  display: none;
+}
+.orgtree li:only-child {
+  padding-top: 20px;
+}
+/* trim the outer edges of the first/last siblings */
+.orgtree li:first-child::before,
+.orgtree li:last-child::after {
+  border: 0 none;
+}
+.orgtree li:last-child::before {
+  border-right: 1px solid var(--org-line, #d4d4d8);
+  border-radius: 0 6px 0 0;
+}
+.orgtree li:first-child::after {
+  border-radius: 6px 0 0 0;
+}
+/* the vertical stem descending from a parent into the children row */
+.orgtree ul ul::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 0;
+  height: 20px;
+  border-left: 1px solid var(--org-line, #d4d4d8);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --org-line: #3f3f46;
+  }
+}
