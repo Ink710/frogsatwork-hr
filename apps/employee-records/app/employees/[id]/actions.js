@@ -7,12 +7,16 @@ import {
   withViewer,
   canEditEmployee,
   canEditCompensation,
+  canTerminate,
+  canRehire,
   getSubtreeIds,
 } from "@hris/auth";
 import {
   employeeChangeSchema,
   nameEmailCorrectionSchema,
   materialCorrectionSchema,
+  terminationSchema,
+  rehireSchema,
   isWithinCorrectionWindow,
 } from "@hris/types";
 
@@ -312,6 +316,139 @@ export async function correctMaterial(employeeId, _prevState, formData) {
     });
   } catch (e) {
     return { error: e.message ?? "Could not save the correction." };
+  }
+
+  revalidatePath(`/employees/${employeeId}`);
+  redirect(`/employees/${employeeId}`);
+}
+
+// TERMINATE — soft delete. Set status + terminationDate + reason + rehire eligibility, and
+// close the open history version (a terminated employee has no active/open version).
+// The record is never removed. Only HR_ADMIN.
+export async function terminateEmployee(employeeId, _prevState, formData) {
+  const viewer = await getViewer();
+  if (!viewer || !canTerminate(viewer)) return { error: "You are not authorized to terminate." };
+
+  const parsed = terminationSchema.safeParse({
+    terminationDate: formData.get("terminationDate"),
+    terminationReason: formData.get("terminationReason"),
+    eligibleForRehire: formData.get("eligibleForRehire") === "on",
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  const input = parsed.data;
+
+  try {
+    await withViewer(viewer, async (tx) => {
+      const employee = await tx.employee.findUnique({
+        where: { id: employeeId },
+        select: { employmentStatus: true },
+      });
+      if (!employee) throw new Error("Employee not found.");
+      if (employee.employmentStatus === "TERMINATED") throw new Error("Employee is already terminated.");
+
+      const current = await tx.employeeHistory.findFirst({
+        where: { employeeId, effectiveTo: null },
+        orderBy: { version: "desc" },
+      });
+      if (current) {
+        await tx.employeeHistory.update({
+          where: { id: current.id },
+          data: { effectiveTo: input.terminationDate },
+        });
+      }
+      await tx.employee.update({
+        where: { id: employeeId },
+        data: {
+          employmentStatus: "TERMINATED",
+          terminationDate: input.terminationDate,
+          terminationReason: input.terminationReason,
+          eligibleForRehire: input.eligibleForRehire,
+        },
+      });
+      await tx.employeeAuditLog.create({
+        data: {
+          employeeId,
+          eventType: "TERMINATE",
+          actorType: "USER",
+          actorId: viewer.userId,
+          beforeState: { employmentStatus: employee.employmentStatus },
+          afterState: {
+            employmentStatus: "TERMINATED",
+            terminationReason: input.terminationReason,
+            eligibleForRehire: input.eligibleForRehire,
+          },
+        },
+      });
+    });
+  } catch (e) {
+    return { error: e.message ?? "Could not terminate." };
+  }
+
+  revalidatePath(`/employees/${employeeId}`);
+  redirect(`/employees/${employeeId}`);
+}
+
+// REHIRE — reactivate a terminated (and rehire-eligible) employee. Opens a fresh active
+// version carrying forward their last known state. Only HR_ADMIN.
+export async function rehireEmployee(employeeId, _prevState, formData) {
+  const viewer = await getViewer();
+  if (!viewer || !canRehire(viewer)) return { error: "You are not authorized to rehire." };
+
+  const parsed = rehireSchema.safeParse({ rehireDate: formData.get("rehireDate") });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  const input = parsed.data;
+
+  try {
+    await withViewer(viewer, async (tx) => {
+      const employee = await tx.employee.findUnique({
+        where: { id: employeeId },
+        select: { employmentStatus: true, eligibleForRehire: true },
+      });
+      if (!employee) throw new Error("Employee not found.");
+      if (employee.employmentStatus !== "TERMINATED") throw new Error("Only terminated employees can be rehired.");
+      if (!employee.eligibleForRehire) throw new Error("This employee is marked not eligible for rehire.");
+
+      const last = await tx.employeeHistory.findFirst({
+        where: { employeeId },
+        orderBy: { version: "desc" },
+      });
+      if (!last) throw new Error("No prior history to base the rehire on.");
+
+      // A new OPEN version restores the invariant (one open row again).
+      await tx.employeeHistory.create({
+        data: {
+          employeeId,
+          version: last.version + 1,
+          jobTitle: last.jobTitle,
+          employmentType: last.employmentType,
+          salary: last.salary,
+          currency: last.currency,
+          departmentSnapshot: last.departmentSnapshot,
+          managerSnapshot: last.managerSnapshot,
+          changedFields: ["rehire"],
+          changeReason: "Rehire",
+          effectiveFrom: input.rehireDate,
+          effectiveTo: null,
+          changedById: viewer.userId,
+        },
+      });
+      await tx.employee.update({
+        where: { id: employeeId },
+        data: { employmentStatus: "ACTIVE", rehireDate: input.rehireDate },
+      });
+      await tx.employeeAuditLog.create({
+        data: {
+          employeeId,
+          eventType: "REHIRE",
+          actorType: "USER",
+          actorId: viewer.userId,
+          beforeState: { employmentStatus: "TERMINATED" },
+          afterState: { employmentStatus: "ACTIVE" },
+        },
+      });
+    });
+  } catch (e) {
+    return { error: e.message ?? "Could not rehire." };
   }
 
   revalidatePath(`/employees/${employeeId}`);

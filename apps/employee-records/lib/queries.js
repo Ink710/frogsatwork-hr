@@ -7,6 +7,7 @@ import {
   canEditEmployee,
   canEditCompensation,
   getSubtreeIds,
+  canTerminate,
 } from "@hris/auth";
 import { isWithinCorrectionWindow, CORRECTION_WINDOW_DAYS } from "@hris/types";
 
@@ -69,6 +70,9 @@ export const getEmployeeProfile = cache(async (id) => {
         employmentStatus: true,
         hireDate: true,
         terminationDate: true,
+        terminationReason: true,
+        eligibleForRehire: true,
+        rehireDate: true,
         departmentId: true, // needed for the HR peer comp check
         department: { select: { name: true } },
         manager: { select: { id: true, firstName: true, lastName: true } },
@@ -255,5 +259,24 @@ export async function getEmployeeForCorrection(id) {
       managerOptions,
       canEditComp,
     };
+  });
+}
+
+// Light query for the terminate/rehire pages. Gated to lifecycle managers (HR_ADMIN).
+export async function getEmployeeForLifecycle(id) {
+  const viewer = await getViewer();
+  if (!viewer || !canTerminate(viewer)) return null;
+  return withViewer(viewer, async (tx) => {
+    const employee = await tx.employee.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        employmentStatus: true,
+        eligibleForRehire: true,
+      },
+    });
+    return employee;
   });
 }

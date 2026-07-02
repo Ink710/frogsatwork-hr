@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getViewer, canEditEmployee } from "@hris/auth";
+import { getViewer, canEditEmployee, canTerminate } from "@hris/auth";
 import { getEmployeeProfile } from "@/lib/queries";
 import { humanize, formatDate } from "@/lib/format";
 import { HistoryTimeline } from "@/components/HistoryTimeline";
@@ -39,6 +39,8 @@ export default async function EmployeeProfilePage({ params }) {
 
   const viewer = await getViewer();
   const canEdit = viewer ? canEditEmployee(viewer) : false;
+  const canLifecycle = viewer ? canTerminate(viewer) : false;
+  const isTerminated = e.employmentStatus === "TERMINATED";
 
   // The current version is the open history row; fall back to newest if needed.
   const current = e.history.find((h) => h.effectiveTo === null) ?? e.history[0];
@@ -67,7 +69,7 @@ export default async function EmployeeProfilePage({ params }) {
           >
             {humanize(e.employmentStatus)}
           </span>
-          {canEdit && (
+          {canEdit && !isTerminated && (
             <>
               <Link
                 href={`/employees/${e.id}/edit`}
@@ -83,8 +85,35 @@ export default async function EmployeeProfilePage({ params }) {
               </Link>
             </>
           )}
+          {canLifecycle && !isTerminated && (
+            <Link
+              href={`/employees/${e.id}/terminate`}
+              className="rounded-md border border-red-300 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50 dark:border-red-900/60 dark:text-red-400 dark:hover:bg-red-950/30"
+            >
+              Terminate
+            </Link>
+          )}
+          {canLifecycle && isTerminated && e.eligibleForRehire && (
+            <Link
+              href={`/employees/${e.id}/rehire`}
+              className="rounded-md border border-green-300 px-2.5 py-1 text-xs font-medium text-green-700 hover:bg-green-50 dark:border-green-900/60 dark:text-green-400 dark:hover:bg-green-950/30"
+            >
+              Rehire
+            </Link>
+          )}
         </div>
       </header>
+
+      {isTerminated && (
+        <div className="mt-4 rounded-md border border-zinc-200 bg-zinc-50 p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900/50">
+          <span className="font-medium">Terminated</span>
+          {e.terminationDate && <> on {formatDate(e.terminationDate)}</>}
+          {e.terminationReason && <> — {e.terminationReason}</>}
+          <span className="ml-2 text-zinc-500">
+            ({e.eligibleForRehire ? "eligible for rehire" : "not eligible for rehire"})
+          </span>
+        </div>
+      )}
 
       {/* Snapshot facts */}
       <dl className="mt-6 grid grid-cols-2 gap-4 rounded-lg border border-zinc-200 p-5 dark:border-zinc-800 sm:grid-cols-3">
