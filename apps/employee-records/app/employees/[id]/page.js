@@ -68,12 +68,20 @@ export default async function EmployeeProfilePage({ params }) {
             {humanize(e.employmentStatus)}
           </span>
           {canEdit && (
-            <Link
-              href={`/employees/${e.id}/edit`}
-              className="rounded-md border border-zinc-300 px-2.5 py-1 text-xs font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
-            >
-              Record change
-            </Link>
+            <>
+              <Link
+                href={`/employees/${e.id}/edit`}
+                className="rounded-md border border-zinc-300 px-2.5 py-1 text-xs font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+              >
+                Record change
+              </Link>
+              <Link
+                href={`/employees/${e.id}/correct`}
+                className="rounded-md border border-zinc-300 px-2.5 py-1 text-xs font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+              >
+                Correct data
+              </Link>
+            </>
           )}
         </div>
       </header>

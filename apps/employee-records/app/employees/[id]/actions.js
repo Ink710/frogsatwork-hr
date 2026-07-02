@@ -9,7 +9,12 @@ import {
   canEditCompensation,
   getSubtreeIds,
 } from "@hris/auth";
-import { employeeChangeSchema } from "@hris/types";
+import {
+  employeeChangeSchema,
+  nameEmailCorrectionSchema,
+  materialCorrectionSchema,
+  isWithinCorrectionWindow,
+} from "@hris/types";
 
 // Record an effective-dated change: close the current open history version and open a new
 // one, atomically. `employeeId` is bound by the form; the (prevState, formData) shape is
@@ -145,6 +150,168 @@ export async function recordChange(employeeId, _prevState, formData) {
     });
   } catch (e) {
     return { error: e.message ?? "Could not record the change." };
+  }
+
+  revalidatePath(`/employees/${employeeId}`);
+  redirect(`/employees/${employeeId}`);
+}
+
+// CORRECTION — identity (name/email). Not a temporal event: updates the current value,
+// no new version. Always allowed for HR, no date restriction. Audited as CORRECTION.
+export async function correctIdentity(employeeId, _prevState, formData) {
+  const viewer = await getViewer();
+  if (!viewer || !canEditEmployee(viewer)) return { error: "You are not authorized to edit." };
+
+  const parsed = nameEmailCorrectionSchema.safeParse({
+    firstName: formData.get("firstName"),
+    lastName: formData.get("lastName"),
+    email: formData.get("email"),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  const input = parsed.data;
+
+  try {
+    await withViewer(viewer, async (tx) => {
+      const before = await tx.employee.findUnique({
+        where: { id: employeeId },
+        select: { firstName: true, lastName: true, email: true },
+      });
+      if (!before) throw new Error("Employee not found.");
+
+      const changed = {};
+      for (const k of ["firstName", "lastName", "email"]) {
+        if (before[k] !== input[k]) changed[k] = { from: before[k], to: input[k] };
+      }
+      if (Object.keys(changed).length === 0) throw new Error("Nothing to correct.");
+
+      await tx.employee.update({ where: { id: employeeId }, data: input });
+      await tx.employeeAuditLog.create({
+        data: {
+          employeeId,
+          eventType: "CORRECTION",
+          actorType: "USER",
+          actorId: viewer.userId,
+          beforeState: Object.fromEntries(Object.entries(changed).map(([k, v]) => [k, v.from])),
+          afterState: Object.fromEntries(Object.entries(changed).map(([k, v]) => [k, v.to])),
+        },
+      });
+    });
+  } catch (e) {
+    return { error: e.message ?? "Could not save the correction." };
+  }
+
+  revalidatePath(`/employees/${employeeId}`);
+  redirect(`/employees/${employeeId}`);
+}
+
+// CORRECTION — material fields, amended IN PLACE on the current version (no new version),
+// allowed only within the grace window (anchored on the version's createdAt). Fixes a
+// mis-entry; it is NOT a real change. Salary corrections still require comp rights.
+export async function correctMaterial(employeeId, _prevState, formData) {
+  const viewer = await getViewer();
+  if (!viewer || !canEditEmployee(viewer)) return { error: "You are not authorized to edit." };
+
+  const parsed = materialCorrectionSchema.safeParse({
+    jobTitle: formData.get("jobTitle") || undefined,
+    employmentType: formData.get("employmentType") || undefined,
+    departmentId: formData.get("departmentId") || undefined,
+    managerId: formData.get("managerId") ?? undefined, // "" means "None"
+    salary: formData.get("salary") || undefined,
+    changeReason: formData.get("changeReason") || undefined,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  const input = parsed.data;
+  const managerProvided = formData.has("managerId");
+  const managerId = formData.get("managerId") || null;
+
+  try {
+    await withViewer(viewer, async (tx) => {
+      const [current, employee] = await Promise.all([
+        tx.employeeHistory.findFirst({
+          where: { employeeId, effectiveTo: null },
+          orderBy: { version: "desc" },
+        }),
+        tx.employee.findUnique({
+          where: { id: employeeId },
+          select: { departmentId: true, managerId: true },
+        }),
+      ]);
+      if (!current || !employee) throw new Error("Employee record not found.");
+
+      // The gate that makes this "fixing a typo" and not "rewriting history".
+      if (!isWithinCorrectionWindow(current.createdAt)) {
+        throw new Error("Correction window has closed for this record — record a forward-dated change instead.");
+      }
+
+      const salaryStr = current.salary.toString();
+      const wantsSalary = input.salary != null && input.salary !== salaryStr;
+      if (wantsSalary && !canEditCompensation(viewer)) {
+        throw new Error("You are not authorized to correct compensation.");
+      }
+      if (managerProvided && managerId) {
+        if (managerId === employeeId) throw new Error("An employee can't manage themselves.");
+        const subtree = await getSubtreeIds(employeeId, tx);
+        if (subtree.has(managerId)) throw new Error("That manager reports to this employee — cycle.");
+      }
+
+      const versionData = {};
+      const empData = {};
+      const before = {};
+      const after = {};
+      const mark = (field, oldV, newV, sink) => {
+        if (String(oldV ?? "") !== String(newV ?? "")) {
+          sink[field] = newV;
+          before[field] = oldV ?? null;
+          after[field] = newV ?? null;
+        }
+      };
+
+      if (input.jobTitle != null) mark("jobTitle", current.jobTitle, input.jobTitle, versionData);
+      if (input.employmentType != null)
+        mark("employmentType", current.employmentType, input.employmentType, versionData);
+      if (wantsSalary) mark("salary", salaryStr, input.salary, versionData);
+
+      if (input.departmentId != null && input.departmentId !== employee.departmentId) {
+        const dept = await tx.department.findUnique({
+          where: { id: input.departmentId },
+          select: { name: true },
+        });
+        mark("departmentId", employee.departmentId, input.departmentId, empData);
+        versionData.departmentSnapshot = dept?.name ?? current.departmentSnapshot;
+      }
+      if (managerProvided && managerId !== employee.managerId) {
+        let snap = null;
+        if (managerId) {
+          const mgr = await tx.employee.findUnique({
+            where: { id: managerId },
+            select: { firstName: true, lastName: true },
+          });
+          snap = mgr ? `${mgr.firstName} ${mgr.lastName}` : null;
+        }
+        mark("managerId", employee.managerId, managerId, empData);
+        versionData.managerSnapshot = snap;
+      }
+
+      if (Object.keys(before).length === 0) throw new Error("Nothing to correct.");
+
+      // Amend the current version IN PLACE — no version bump, effectiveFrom untouched.
+      await tx.employeeHistory.update({ where: { id: current.id }, data: versionData });
+      if (Object.keys(empData).length > 0) {
+        await tx.employee.update({ where: { id: employeeId }, data: empData });
+      }
+      await tx.employeeAuditLog.create({
+        data: {
+          employeeId,
+          eventType: "CORRECTION",
+          actorType: "USER",
+          actorId: viewer.userId,
+          beforeState: before,
+          afterState: after,
+        },
+      });
+    });
+  } catch (e) {
+    return { error: e.message ?? "Could not save the correction." };
   }
 
   revalidatePath(`/employees/${employeeId}`);

@@ -8,6 +8,7 @@ import {
   canEditCompensation,
   getSubtreeIds,
 } from "@hris/auth";
+import { isWithinCorrectionWindow, CORRECTION_WINDOW_DAYS } from "@hris/types";
 
 // Data access for the employee list. Every read now runs inside withViewer(), so RLS
 // scopes the rows to the signed-in user automatically — no manual `where` filtering, and
@@ -189,6 +190,67 @@ export async function getEmployeeForEdit(id) {
     return {
       employee,
       current: current ? { ...current, salary: current.salary?.toString() ?? null } : null,
+      departments,
+      managerOptions,
+      canEditComp,
+    };
+  });
+}
+
+// Prefill + window status for the "Correct data" page.
+export async function getEmployeeForCorrection(id) {
+  const viewer = await getViewer();
+  if (!viewer || !canEditEmployee(viewer)) return null;
+  const canEditComp = canEditCompensation(viewer);
+
+  return withViewer(viewer, async (tx) => {
+    const employee = await tx.employee.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        departmentId: true,
+        managerId: true,
+      },
+    });
+    if (!employee) return null;
+
+    const current = await tx.employeeHistory.findFirst({
+      where: { employeeId: id, effectiveTo: null },
+      orderBy: { version: "desc" },
+      select: {
+        jobTitle: true,
+        employmentType: true,
+        currency: true,
+        createdAt: true,
+        ...(canEditComp ? { salary: true } : {}),
+      },
+    });
+
+    const [departments, subtree, all] = await Promise.all([
+      tx.department.findMany({
+        where: { orgId: viewer.orgId },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      }),
+      getSubtreeIds(id, tx),
+      tx.employee.findMany({
+        select: { id: true, firstName: true, lastName: true },
+        orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      }),
+    ]);
+    const managerOptions = all
+      .filter((e) => !subtree.has(e.id))
+      .map((e) => ({ id: e.id, name: `${e.firstName} ${e.lastName}` }));
+
+    return {
+      employee,
+      current: current ? { ...current, salary: current.salary?.toString() ?? null } : null,
+      // The window is about ENTRY recency (createdAt), not the effective date.
+      withinWindow: current ? isWithinCorrectionWindow(current.createdAt) : false,
+      windowDays: CORRECTION_WINDOW_DAYS,
       departments,
       managerOptions,
       canEditComp,
