@@ -407,9 +407,14 @@ export async function getDepartments() {
 
     const departments = await tx.department.findMany({
       where: { orgId: viewer.orgId },
-      select: { id: true, name: true, budget: true, headUserId: true, head: { select: { name: true } } },
+      select: { id: true, name: true, headUserId: true, head: { select: { name: true } } },
       orderBy: { name: "asc" },
     });
+
+    // Budgets come from the RLS'd table: this returns ONLY the rows this viewer may see —
+    // the DB is the enforcer. canViewBudget below is just the UI hint (Restricted vs "—").
+    const budgetRows = await tx.departmentBudget.findMany({ select: { departmentId: true, budget: true } });
+    const budgetByDept = new Map(budgetRows.map((b) => [b.departmentId, b.budget.toString()]));
 
     const result = [];
     for (const d of departments) {
@@ -422,7 +427,7 @@ export async function getDepartments() {
         name: d.name,
         headName: d.head?.name ?? null,
         employeeCount,
-        budget: showBudget ? d.budget?.toString() ?? null : null,
+        budget: budgetByDept.get(d.id) ?? null, // RLS-authoritative
         budgetHidden: !showBudget,
       });
     }
@@ -439,7 +444,7 @@ export async function getDepartmentDetail(id) {
   return withViewer(viewer, async (tx) => {
     const department = await tx.department.findUnique({
       where: { id },
-      select: { id: true, name: true, budget: true, headUserId: true, head: { select: { name: true } } },
+      select: { id: true, name: true, headUserId: true, head: { select: { name: true } } },
     });
     if (!department) return null;
 
@@ -447,6 +452,8 @@ export async function getDepartmentDetail(id) {
       ? await tx.employee.findUnique({ where: { id: viewer.employeeId }, select: { departmentId: true } })
       : null;
     const showBudget = canViewBudget(viewer, { id: department.id, headUserId: department.headUserId }, me?.departmentId ?? null);
+    // RLS returns the budget row only if allowed — the DB wall; showBudget is the UI hint.
+    const budgetRow = await tx.departmentBudget.findUnique({ where: { departmentId: id }, select: { budget: true } });
 
     const emps = await tx.employee.findMany({
       where: { departmentId: id, employmentStatus: { not: "TERMINATED" } },
@@ -493,7 +500,7 @@ export async function getDepartmentDetail(id) {
       department: {
         id: department.id,
         name: department.name,
-        budget: showBudget ? department.budget?.toString() ?? null : null,
+        budget: budgetRow?.budget?.toString() ?? null, // RLS-authoritative
         budgetHidden: !showBudget,
       },
       head,

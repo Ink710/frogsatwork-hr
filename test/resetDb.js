@@ -12,6 +12,7 @@ const TABLES = [
   "EmergencyContact",
   "EmployeeDocument",
   "Employee",
+  "DepartmentBudget",
   "Department",
   '"User"',
   "Organization",

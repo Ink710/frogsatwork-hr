@@ -65,7 +65,7 @@ export function EditChangeForm({ employeeId, employee, current, departments, man
       <div>
         <label className={label} htmlFor="effectiveFrom">Effective date</label>
         <input id="effectiveFrom" name="effectiveFrom" type="date" defaultValue={today} min={today} required className={field} />
-        <p className="mt-1 text-xs text-zinc-400">Material changes can't be backdated.</p>
+        <p className="mt-1 text-xs text-zinc-400">Material changes can’t be backdated.</p>
       </div>
 
       <div>

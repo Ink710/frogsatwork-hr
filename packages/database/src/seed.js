@@ -180,22 +180,36 @@ async function main() {
     },
   });
 
-  // 3. Departments (Engineering + People report up to Executive). Budgets in create AND
-  //    update so re-seeding backfills them. headUserId is wired later (step 5b), once the
-  //    users those FKs point at exist.
+  // 3. Departments (Engineering + People report up to Executive). headUserId is wired
+  //    later (step 5b), once the users those FKs point at exist. Budgets live in their own
+  //    RLS-protected table (step 3b).
   await prisma.department.upsert({
     where: { id: DEPT.exec },
-    update: { budget: "1200000.00" },
-    create: { id: DEPT.exec, name: "Executive", orgId: org.id, budget: "1200000.00" },
+    update: {},
+    create: { id: DEPT.exec, name: "Executive", orgId: org.id },
   });
-  for (const [id, name, budget, parent] of [
-    [DEPT.eng, "Engineering", "2500000.00", DEPT.exec],
-    [DEPT.people, "People & Culture", "800000.00", DEPT.exec],
+  for (const [id, name, parent] of [
+    [DEPT.eng, "Engineering", DEPT.exec],
+    [DEPT.people, "People & Culture", DEPT.exec],
   ]) {
     await prisma.department.upsert({
       where: { id },
+      update: {},
+      create: { id, name, orgId: org.id, parentDepartmentId: parent },
+    });
+  }
+
+  // 3b. Department budgets (separate RLS-gated table). Seed runs as owner, which bypasses
+  //     RLS, so it can write freely.
+  for (const [departmentId, budget] of [
+    [DEPT.exec, "1200000.00"],
+    [DEPT.eng, "2500000.00"],
+    [DEPT.people, "800000.00"],
+  ]) {
+    await prisma.departmentBudget.upsert({
+      where: { departmentId },
       update: { budget },
-      create: { id, name, orgId: org.id, parentDepartmentId: parent, budget },
+      create: { departmentId, budget },
     });
   }
 

@@ -11,9 +11,17 @@ const dbPackageDir = fileURLToPath(new URL("../packages/database", import.meta.u
 const MAINTENANCE_URL = "postgresql://postgres:postgres@localhost:5433/postgres";
 
 export async function setup() {
-  // 1. Create hris_test if it doesn't exist (from the maintenance DB).
+  // 1. From the maintenance DB: ensure the restricted app role exists (docker-compose
+  //    creates it locally, but a bare CI runner won't have it), then create hris_test.
   const admin = new pg.Client({ connectionString: MAINTENANCE_URL });
   await admin.connect();
+  await admin.query(`
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'hris_app') THEN
+        CREATE ROLE hris_app WITH LOGIN PASSWORD 'hris_app_pw';
+      END IF;
+    END $$;
+  `);
   const { rowCount } = await admin.query("SELECT 1 FROM pg_database WHERE datname = 'hris_test'");
   if (!rowCount) await admin.query("CREATE DATABASE hris_test");
   await admin.end();

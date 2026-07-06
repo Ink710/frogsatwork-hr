@@ -191,7 +191,6 @@ model EmployeeHistory {
 model Department {
   id        String   @id @default(uuid())
   name      String
-  budget    Decimal? @db.Decimal(14, 2) // annual budget; access-gated (see canViewBudget)
   createdAt DateTime @default(now())
 
   orgId String
@@ -206,9 +205,22 @@ model Department {
   head       User?   @relation("DepartmentHead", fields: [headUserId], references: [id])
 
   employees Employee[]
+  // Budget lives in its own RLS-protected table so it can't be read without passing the
+  // access policy — see DepartmentBudget.
+  budgetRow DepartmentBudget?
 
   @@index([orgId])
   @@index([parentDepartmentId])
+}
+
+// The department budget, isolated into its own table so Row-Level Security can gate it.
+// RLS on this table (policy: app_can_see_budget) is the DB-level wall; the app-layer
+// canViewBudget() is now only a UI hint. Also a natural home for budget history later.
+model DepartmentBudget {
+  departmentId String     @id
+  department   Department  @relation(fields: [departmentId], references: [id])
+  budget       Decimal    @db.Decimal(14, 2)
+  updatedAt    DateTime   @updatedAt
 }
 
 model EmployeeDocument {
