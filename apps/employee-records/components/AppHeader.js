@@ -23,7 +23,11 @@ export async function AppHeader() {
             PeopleBase
           </Link>
           <nav className="flex items-center gap-4 text-sm text-zinc-500">
+            <Link href="/dashboard" className="hover:text-zinc-900 dark:hover:text-zinc-100">Dashboard</Link>
             <Link href="/employees" className="hover:text-zinc-900 dark:hover:text-zinc-100">Employees</Link>
+            {role !== "EMPLOYEE" && (
+              <Link href="/departments" className="hover:text-zinc-900 dark:hover:text-zinc-100">Departments</Link>
+            )}
             <Link href="/org-chart" className="hover:text-zinc-900 dark:hover:text-zinc-100">Org chart</Link>
           </nav>
         </div>

@@ -180,20 +180,22 @@ async function main() {
     },
   });
 
-  // 3. Departments (Engineering + People report up to Executive).
+  // 3. Departments (Engineering + People report up to Executive). Budgets in create AND
+  //    update so re-seeding backfills them. headUserId is wired later (step 5b), once the
+  //    users those FKs point at exist.
   await prisma.department.upsert({
     where: { id: DEPT.exec },
-    update: {},
-    create: { id: DEPT.exec, name: "Executive", orgId: org.id },
+    update: { budget: "1200000.00" },
+    create: { id: DEPT.exec, name: "Executive", orgId: org.id, budget: "1200000.00" },
   });
-  for (const [id, name] of [
-    [DEPT.eng, "Engineering"],
-    [DEPT.people, "People & Culture"],
+  for (const [id, name, budget, parent] of [
+    [DEPT.eng, "Engineering", "2500000.00", DEPT.exec],
+    [DEPT.people, "People & Culture", "800000.00", DEPT.exec],
   ]) {
     await prisma.department.upsert({
       where: { id },
-      update: {},
-      create: { id, name, orgId: org.id, parentDepartmentId: DEPT.exec },
+      update: { budget },
+      create: { id, name, orgId: org.id, parentDepartmentId: parent, budget },
     });
   }
 
@@ -239,6 +241,15 @@ async function main() {
       where: { id: p.empId },
       data: { managerId: PEOPLE[p.manager].empId },
     });
+  }
+
+  // 5b. Department heads (users now exist): Executive→Ana, Engineering→Marcus, People→Bianca.
+  for (const [deptId, headUserId] of [
+    [DEPT.exec, PEOPLE.ana.userId],
+    [DEPT.eng, PEOPLE.marcus.userId],
+    [DEPT.people, PEOPLE.bianca.userId],
+  ]) {
+    await prisma.department.update({ where: { id: deptId }, data: { headUserId } });
   }
 
   // 6. Employee history (the temporal / SCD-2 rows). Snapshots capture the label as

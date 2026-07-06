@@ -8,8 +8,10 @@ import {
   canEditCompensation,
   getSubtreeIds,
   canTerminate,
+  canViewBudget,
 } from "@hris/auth";
 import { isWithinCorrectionWindow, CORRECTION_WINDOW_DAYS } from "@hris/types";
+import { buildTree } from "./tree.js";
 
 // Data access for the employee list. Every read now runs inside withViewer(), so RLS
 // scopes the rows to the signed-in user automatically — no manual `where` filtering, and
@@ -304,25 +306,201 @@ export async function getOrgTree() {
     }),
   );
 
-  const byId = new Map();
-  for (const r of rows) {
-    byId.set(r.id, {
+  // Roots = nodes whose manager isn't in the visible set (see buildTree).
+  return buildTree(
+    rows.map((r) => ({
       id: r.id,
+      managerId: r.managerId,
       name: `${r.firstName} ${r.lastName}`,
       initials: `${r.firstName[0] ?? ""}${r.lastName[0] ?? ""}`.toUpperCase(),
       title: r.history[0]?.jobTitle ?? "—",
       department: r.department?.name ?? null,
-      children: [],
-    });
+    })),
+  );
+}
+
+// Aggregations for the HR dashboard. Every count is computed from the viewer's RLS-scoped
+// employees, so the dashboard auto-scopes: HR sees the whole org, a manager sees their
+// team's numbers. Compensation aggregates are intentionally omitted (sensitive).
+export async function getDashboardStats() {
+  const viewer = await getViewer();
+  if (!viewer) return null;
+
+  const rows = await withViewer(viewer, (tx) =>
+    tx.employee.findMany({
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        employmentStatus: true,
+        hireDate: true,
+        terminationDate: true,
+        managerId: true,
+        department: { select: { name: true } },
+        history: { where: { effectiveTo: null }, select: { employmentType: true }, take: 1 },
+      },
+    }),
+  );
+
+  const thisYear = new Date().getFullYear();
+  const nameById = new Map(rows.map((r) => [r.id, `${r.firstName} ${r.lastName}`]));
+
+  const byStatus = {};
+  const byType = {};
+  const byDept = {};
+  const reports = {}; // managerId -> active direct-report count
+  let newHires = 0;
+  let terminations = 0;
+
+  for (const r of rows) {
+    byStatus[r.employmentStatus] = (byStatus[r.employmentStatus] ?? 0) + 1;
+    if (r.hireDate && new Date(r.hireDate).getFullYear() === thisYear) newHires += 1;
+    if (r.terminationDate && new Date(r.terminationDate).getFullYear() === thisYear) terminations += 1;
+
+    if (r.employmentStatus !== "TERMINATED") {
+      const t = r.history[0]?.employmentType ?? "UNKNOWN";
+      byType[t] = (byType[t] ?? 0) + 1;
+      const d = r.department?.name ?? "—";
+      byDept[d] = (byDept[d] ?? 0) + 1;
+      if (r.managerId && nameById.has(r.managerId)) {
+        reports[r.managerId] = (reports[r.managerId] ?? 0) + 1;
+      }
+    }
   }
 
-  // A node is a ROOT when it has no manager, or its manager is outside the visible set
-  // (e.g. a manager viewing their own subtree — their boss isn't visible to them here).
-  const roots = [];
-  for (const r of rows) {
-    const node = byId.get(r.id);
-    if (r.managerId && byId.has(r.managerId)) byId.get(r.managerId).children.push(node);
-    else roots.push(node);
-  }
-  return roots;
+  const toSortedPairs = (obj) =>
+    Object.entries(obj)
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count);
+
+  const spanOfControl = Object.entries(reports)
+    .map(([id, count]) => ({ label: nameById.get(id), count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
+  const activeHeadcount = rows.filter((r) => r.employmentStatus !== "TERMINATED").length;
+
+  return {
+    activeHeadcount,
+    departmentCount: Object.keys(byDept).length,
+    newHires,
+    terminations,
+    byDepartment: toSortedPairs(byDept),
+    byType: toSortedPairs(byType),
+    byStatus: toSortedPairs(byStatus),
+    spanOfControl,
+  };
+}
+
+// Department directory. Gated to non-EMPLOYEE roles. Departments have no RLS so all are
+// listed; the per-department headcount is RLS-scoped (what the viewer can see); budget is
+// shown only where canViewBudget allows.
+export async function getDepartments() {
+  const viewer = await getViewer();
+  if (!viewer || viewer.role === "EMPLOYEE") return null;
+
+  return withViewer(viewer, async (tx) => {
+    const me = viewer.employeeId
+      ? await tx.employee.findUnique({ where: { id: viewer.employeeId }, select: { departmentId: true } })
+      : null;
+    const viewerDeptId = me?.departmentId ?? null;
+
+    const departments = await tx.department.findMany({
+      where: { orgId: viewer.orgId },
+      select: { id: true, name: true, budget: true, headUserId: true, head: { select: { name: true } } },
+      orderBy: { name: "asc" },
+    });
+
+    const result = [];
+    for (const d of departments) {
+      const employeeCount = await tx.employee.count({
+        where: { departmentId: d.id, employmentStatus: { not: "TERMINATED" } },
+      });
+      const showBudget = canViewBudget(viewer, { id: d.id, headUserId: d.headUserId }, viewerDeptId);
+      result.push({
+        id: d.id,
+        name: d.name,
+        headName: d.head?.name ?? null,
+        employeeCount,
+        budget: showBudget ? d.budget?.toString() ?? null : null,
+        budgetHidden: !showBudget,
+      });
+    }
+    return result;
+  });
+}
+
+// One department: gated budget, RLS-scoped employees + stats, head profile link, and a
+// mini org tree restricted to this department's visible members.
+export async function getDepartmentDetail(id) {
+  const viewer = await getViewer();
+  if (!viewer || viewer.role === "EMPLOYEE") return null;
+
+  return withViewer(viewer, async (tx) => {
+    const department = await tx.department.findUnique({
+      where: { id },
+      select: { id: true, name: true, budget: true, headUserId: true, head: { select: { name: true } } },
+    });
+    if (!department) return null;
+
+    const me = viewer.employeeId
+      ? await tx.employee.findUnique({ where: { id: viewer.employeeId }, select: { departmentId: true } })
+      : null;
+    const showBudget = canViewBudget(viewer, { id: department.id, headUserId: department.headUserId }, me?.departmentId ?? null);
+
+    const emps = await tx.employee.findMany({
+      where: { departmentId: id, employmentStatus: { not: "TERMINATED" } },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        managerId: true,
+        history: { where: { effectiveTo: null }, select: { jobTitle: true, employmentType: true }, take: 1 },
+      },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+    });
+
+    // Head's linkable employee (only if visible under RLS).
+    let head = null;
+    if (department.head) {
+      const headEmp = await tx.employee.findFirst({ where: { userId: department.headUserId }, select: { id: true } });
+      head = { name: department.head.name, employeeId: headEmp?.id ?? null };
+    }
+
+    // Composition by employment type.
+    const byType = {};
+    for (const e of emps) {
+      const t = e.history[0]?.employmentType ?? "UNKNOWN";
+      byType[t] = (byType[t] ?? 0) + 1;
+    }
+    const byTypePairs = Object.entries(byType)
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count);
+
+    // Mini org tree, restricted to this department's visible set (same builder as getOrgTree).
+    const tree = buildTree(
+      emps.map((e) => ({
+        id: e.id,
+        managerId: e.managerId,
+        name: `${e.firstName} ${e.lastName}`,
+        initials: `${e.firstName[0] ?? ""}${e.lastName[0] ?? ""}`.toUpperCase(),
+        title: e.history[0]?.jobTitle ?? "—",
+        department: null,
+      })),
+    );
+
+    return {
+      department: {
+        id: department.id,
+        name: department.name,
+        budget: showBudget ? department.budget?.toString() ?? null : null,
+        budgetHidden: !showBudget,
+      },
+      head,
+      headcount: emps.length,
+      byType: byTypePairs,
+      employees: emps.map((e) => ({ id: e.id, name: `${e.firstName} ${e.lastName}`, title: e.history[0]?.jobTitle ?? "—" })),
+      tree,
+    };
+  });
 }

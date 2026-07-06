@@ -45,6 +45,26 @@ export function canTerminate(viewer) {
 }
 export const canRehire = canTerminate;
 
+// Whether the viewer may see a department's budget. `department` = { id, headUserId };
+// `viewerDeptId` is the viewer's own department id.
+//   HR_ADMIN / PAYROLL_ADMIN → all departments
+//   HR_GENERALIST            → all EXCEPT their own (conflict-of-interest exclusion)
+//   MANAGER                  → only their own department (member of, or head of)
+//   EMPLOYEE                 → none
+export function canViewBudget(viewer, department, viewerDeptId) {
+  switch (viewer.role) {
+    case Role.HR_ADMIN:
+    case Role.PAYROLL_ADMIN:
+      return true;
+    case Role.HR_GENERALIST:
+      return department.id !== viewerDeptId;
+    case Role.MANAGER:
+      return department.id === viewerDeptId || department.headUserId === viewer.userId;
+    default:
+      return false;
+  }
+}
+
 // Whether this viewer may see the COMPENSATION of `target`. Pure: all the data-dependent
 // bits (subtree/ancestor sets, depths, department) are precomputed into `ctx` by scope.js.
 //   ctx for MANAGER/EMPLOYEE: { subtreeIds: Set }
