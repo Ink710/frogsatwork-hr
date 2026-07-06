@@ -28,5 +28,16 @@ services:
       timeout: 5s
       retries: 5
 
+  # Local catch-all mailbox for development. Nodemailer sends invite emails to its SMTP
+  # port (1025); read them in the web UI at http://localhost:8025. Nothing leaves the
+  # machine. Production swaps SMTP_HOST/PORT for a real provider — no app code changes.
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: hris-mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025" # SMTP
+      - "8025:8025" # web UI
+
 volumes:
   hris-pgdata:

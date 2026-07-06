@@ -24,6 +24,7 @@ import {
 } from "@hris/types";
 import { storage } from "@/lib/storage";
 import { getEmployeeAuditLog } from "@/lib/queries";
+import { sendInvite } from "@/lib/invite";
 
 // Record an effective-dated change: close the current open history version and open a new
 // one, atomically. `employeeId` is bound by the form; the (prevState, formData) shape is
@@ -581,7 +582,8 @@ export async function createEmployee(_prevState, formData) {
         managerSnapshot = mgr ? `${mgr.firstName} ${mgr.lastName}` : null;
       }
 
-      // 1. Login identity (no password yet → login enabled once a password/invite flow exists).
+      // 1. Login identity (no password yet). They can't log in until they set a password via
+      // the invite email sent right after this transaction commits (see sendInvite below).
       const user = await tx.user.create({
         data: {
           email: input.email,
@@ -636,15 +638,38 @@ export async function createEmployee(_prevState, formData) {
           },
         },
       });
-      return employeeId;
+      return { employeeId, userId: user.id };
     });
   } catch (e) {
     const msg = /unique/i.test(e.message ?? "") ? "That email is already in use." : e.message ?? "Could not create employee.";
     return { error: msg };
   }
 
+  // Email the invite AFTER the transaction commits — sending mail is a non-transactional
+  // side effect, and a mail failure must not roll back (or block) the created record. If it
+  // fails, the employee still exists and HR can resend from the profile.
+  try {
+    await sendInvite(newId.userId);
+  } catch {
+    // swallow — creation succeeded; resend covers the mail failure.
+  }
+
   revalidatePath("/employees");
-  redirect(`/employees/${newId}`);
+  redirect(`/employees/${newId.employeeId}`);
+}
+
+// Resend (or first-send) a new hire's invite email. HR-gated. Regenerating the token
+// invalidates any earlier link. Returns { ok } / { skipped } / { error } for the button.
+export async function resendInvite(userId) {
+  const viewer = await getViewer();
+  if (!viewer || !canEditEmployee(viewer)) return { error: "You are not authorized." };
+  try {
+    const result = await sendInvite(userId);
+    if (result.skipped) return { error: "This account is already active." };
+    return { ok: true };
+  } catch {
+    return { error: "Could not send the invite email." };
+  }
 }
 
 // Read-only action powering the audit page's "Load more". All authorization lives in the

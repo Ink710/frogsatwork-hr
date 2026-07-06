@@ -7,6 +7,7 @@ import { humanize, formatDate } from "@/lib/format";
 import { HistoryTimeline } from "@/components/HistoryTimeline";
 import { UploadDocForm } from "@/components/UploadDocForm";
 import { DeleteDocButton } from "@/components/DeleteDocButton";
+import { ResendInviteButton } from "@/components/ResendInviteButton";
 
 function formatBytes(n) {
   if (n < 1024) return `${n} B`;
@@ -119,6 +120,24 @@ export default async function EmployeeProfilePage({ params }) {
           )}
         </div>
       </header>
+
+      {/* Account activation: HR sees an invite prompt until the new hire sets a password. */}
+      {canEdit && !isTerminated && e.user && !e.user.emailVerifiedAt && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm dark:border-amber-900/50 dark:bg-amber-950/20">
+          <div>
+            <span className="font-medium text-amber-800 dark:text-amber-300">Invite pending</span>
+            <span className="ml-2 text-amber-700 dark:text-amber-400">
+              {e.user.invitedAt
+                ? "This employee hasn't set a password yet."
+                : "No invite has been sent yet."}
+            </span>
+          </div>
+          <ResendInviteButton
+            userId={e.userId}
+            label={e.user.invitedAt ? "Resend invite" : "Send invite"}
+          />
+        </div>
+      )}
 
       {isTerminated && (
         <div className="mt-4 rounded-md border border-zinc-200 bg-zinc-50 p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900/50">

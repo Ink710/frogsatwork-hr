@@ -227,8 +227,9 @@ async function main() {
   for (const p of Object.values(PEOPLE)) {
     await prisma.user.upsert({
       where: { id: p.userId },
-      // passwordHash in `update` too, so re-seeding an existing DB backfills logins.
-      update: { passwordHash },
+      // passwordHash + emailVerifiedAt in `update` too, so re-seeding an existing DB backfills
+      // logins and marks these seeded accounts as already activated (not "invite pending").
+      update: { passwordHash, emailVerifiedAt: new Date() },
       create: {
         id: p.userId,
         email: p.email,
@@ -236,6 +237,7 @@ async function main() {
         role: p.role,
         orgId: org.id,
         passwordHash,
+        emailVerifiedAt: new Date(),
       },
     });
 

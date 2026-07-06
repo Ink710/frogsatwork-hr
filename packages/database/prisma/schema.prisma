@@ -90,8 +90,15 @@ model User {
   // bcrypt hash for the Credentials login. Nullable: the SYSTEM user and any
   // future SSO-only users won't have a local password.
   passwordHash    String?
-  // Nullable now so a real auth provider (Auth.js) can populate it later.
+  // Nullable now so a real auth provider (Auth.js) can populate it later. Doubles as the
+  // "account activated" marker: null until the new hire sets their password via an invite.
   emailVerifiedAt DateTime?
+  // New-hire invite: a one-time link lets an employee set their first password. We store the
+  // SHA-256 HASH of the random token (never the token itself), so a DB leak yields no usable
+  // link. Cleared once the password is set. inviteTokenExpires bounds the link's lifetime.
+  inviteTokenHash    String?   @unique
+  inviteTokenExpires DateTime?
+  invitedAt          DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 

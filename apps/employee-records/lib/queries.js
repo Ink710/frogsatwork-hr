@@ -77,6 +77,9 @@ export const getEmployeeProfile = cache(async (id) => {
         eligibleForRehire: true,
         rehireDate: true,
         departmentId: true, // needed for the HR peer comp check
+        userId: true,
+        // Activation state: emailVerifiedAt is null until the new hire redeems their invite.
+        user: { select: { emailVerifiedAt: true, invitedAt: true } },
         department: { select: { name: true } },
         manager: { select: { id: true, firstName: true, lastName: true } },
         reports: {

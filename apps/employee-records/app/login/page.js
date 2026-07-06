@@ -6,6 +6,7 @@ export const metadata = { title: "Sign in · PeopleBase" };
 export default async function LoginPage({ searchParams }) {
   const params = await searchParams; // async in Next 16
   const hasError = Boolean(params?.error);
+  const justActivated = Boolean(params?.activated);
 
   // Server Action: runs on the server, calls Auth.js signIn. On success, signIn throws
   // a NEXT_REDIRECT (to /employees) which must propagate; on bad credentials it throws
@@ -32,6 +33,11 @@ export default async function LoginPage({ searchParams }) {
       <h1 className="mt-1 text-2xl font-semibold tracking-tight">Sign in</h1>
 
       <form action={login} className="mt-6 space-y-4">
+        {justActivated && !hasError && (
+          <p className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-700 dark:bg-green-950/30 dark:text-green-400">
+            Password set. You can sign in now.
+          </p>
+        )}
         {hasError && (
           <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-400">
             Invalid email or password.

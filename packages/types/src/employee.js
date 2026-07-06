@@ -93,6 +93,18 @@ export const documentUploadSchema = z.object({
     .optional(),
 });
 
+// ---- New-hire set-password (invite redemption) ----
+// .refine reports the mismatch on the `confirm` field so the form can show it inline.
+export const setPasswordSchema = z
+  .object({
+    password: z.string().min(8, "Use at least 8 characters"),
+    confirm: z.string(),
+  })
+  .refine((d) => d.password === d.confirm, {
+    message: "Passwords don't match",
+    path: ["confirm"],
+  });
+
 // ---- Correction grace window ----
 export const CORRECTION_WINDOW_DAYS = 7;
 
