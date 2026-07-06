@@ -34,6 +34,7 @@ import {
   correctMaterial,
   terminateEmployee,
   rehireEmployee,
+  createEmployee,
 } from "../app/employees/[id]/actions.js";
 
 const ORG = "10000000-0000-0000-0000-000000000001";
@@ -195,5 +196,59 @@ describe("terminate + rehire", () => {
     fd.set("rehireDate", today());
     const r = await invoke(rehireEmployee(ID.priya, {}, fd));
     expect(r.error).toMatch(/eligible/i);
+  });
+});
+
+describe("createEmployee", () => {
+  function createForm(overrides = {}) {
+    const fd = new FormData();
+    fd.set("firstName", "Ada");
+    fd.set("lastName", "Lovelace");
+    fd.set("email", `ada+${Math.floor(Math.random() * 1e6)}@peoplebase.test`);
+    fd.set("hireDate", today());
+    fd.set("departmentId", DEPT_ENG);
+    fd.set("jobTitle", "Software Engineer");
+    fd.set("employmentType", "FULL_TIME");
+    fd.set("role", "EMPLOYEE");
+    for (const [k, v] of Object.entries(overrides)) fd.set(k, v);
+    return fd;
+  }
+  // Find a just-created employee by email (through an HR viewer, which sees everyone).
+  const findByEmail = (email) =>
+    withViewer(V.ana, (tx) =>
+      tx.employee.findFirst({
+        where: { email },
+        select: { id: true, employeeNumber: true, history: { select: { version: true, salary: true, effectiveTo: true } } },
+      }),
+    );
+
+  it("HR_ADMIN creates an employee with salary → record + v1 + user", async () => {
+    getViewer.mockResolvedValue(V.ana);
+    const fd = createForm({ salary: "125000" });
+    const email = fd.get("email");
+    expect((await invoke(createEmployee({}, fd))).ok).toBe(true);
+
+    const emp = await findByEmail(email);
+    expect(emp).toBeTruthy();
+    expect(emp.employeeNumber).toMatch(/^E-\d{4}$/);
+    expect(emp.history).toHaveLength(1);
+    expect(emp.history[0].version).toBe(1);
+    expect(emp.history[0].effectiveTo).toBeNull(); // exactly one open version
+    expect(emp.history[0].salary.toString()).toBe("125000");
+  });
+
+  it("HR_GENERALIST creates → salary defaults to 0 (no comp rights)", async () => {
+    getViewer.mockResolvedValue(V.bianca);
+    const fd = createForm({ salary: "999999" }); // ignored — generalist can't set pay
+    const email = fd.get("email");
+    expect((await invoke(createEmployee({}, fd))).ok).toBe(true);
+    const emp = await findByEmail(email);
+    expect(emp.history[0].salary.toString()).toBe("0");
+  });
+
+  it("a MANAGER cannot create employees", async () => {
+    getViewer.mockResolvedValue(V.marcus);
+    const r = await invoke(createEmployee({}, createForm()));
+    expect(r.error).toMatch(/authorized/i);
   });
 });

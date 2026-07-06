@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getViewer, canEditEmployee } from "@hris/auth";
 import { getEmployees } from "@/lib/queries";
 import { humanize } from "@/lib/format";
 
@@ -18,6 +19,8 @@ const STATUS_STYLES = {
 // the awaited data is already here by the time this renders.
 export default async function EmployeesPage() {
   const employees = await getEmployees();
+  const viewer = await getViewer();
+  const canCreate = viewer ? canEditEmployee(viewer) : false;
 
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-10">
@@ -28,6 +31,14 @@ export default async function EmployeesPage() {
             {employees.length} {employees.length === 1 ? "person" : "people"}
           </p>
         </div>
+        {canCreate && (
+          <Link
+            href="/employees/new"
+            className="rounded-md bg-foreground px-3 py-1.5 text-sm font-medium text-background hover:opacity-90"
+          >
+            New employee
+          </Link>
+        )}
       </header>
 
       {employees.length === 0 ? (

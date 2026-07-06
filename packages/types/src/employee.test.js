@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   employeeChangeSchema,
+  employeeCreateSchema,
   materialCorrectionSchema,
   terminationSchema,
   isWithinCorrectionWindow,
@@ -30,6 +31,31 @@ describe("employeeChangeSchema", () => {
     expect(
       employeeChangeSchema.safeParse({ ...base, employmentType: "SLAVERY", effectiveFrom: today() }).success,
     ).toBe(false);
+  });
+});
+
+describe("employeeCreateSchema", () => {
+  const base = {
+    firstName: "Ada",
+    lastName: "Lovelace",
+    email: "ada@peoplebase.test",
+    hireDate: today(),
+    departmentId: "d1",
+    jobTitle: "Engineer",
+    employmentType: "FULL_TIME",
+  };
+  it("accepts valid input and defaults role to EMPLOYEE", () => {
+    const r = employeeCreateSchema.safeParse(base);
+    expect(r.success).toBe(true);
+    expect(r.data.role).toBe("EMPLOYEE");
+    expect(r.data.hireDate).toBeInstanceOf(Date);
+  });
+  it("rejects a bad email", () => {
+    expect(employeeCreateSchema.safeParse({ ...base, email: "not-an-email" }).success).toBe(false);
+  });
+  it("rejects a missing employment type", () => {
+    const { employmentType, ...rest } = base;
+    expect(employeeCreateSchema.safeParse(rest).success).toBe(false);
   });
 });
 

@@ -31,6 +31,26 @@ export const employeeChangeSchema = z.object({
   changeReason: z.string().max(500).optional(),
 });
 
+// ---- New-hire creation (mints the initial history version) ----
+export const ASSIGNABLE_ROLES = ["EMPLOYEE", "MANAGER", "HR_GENERALIST", "HR_ADMIN", "PAYROLL_ADMIN"];
+
+export const employeeCreateSchema = z.object({
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  email: z.string().email(),
+  // Any date — this establishes the record (a hire can be backdated for existing staff).
+  hireDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a valid date")
+    .transform((s) => new Date(`${s}T00:00:00`)),
+  departmentId: z.string().min(1),
+  managerId: z.string().min(1).nullable().optional(),
+  jobTitle: z.string().min(1),
+  employmentType: z.enum(EMPLOYMENT_TYPES),
+  role: z.enum(ASSIGNABLE_ROLES).default("EMPLOYEE"),
+  salary: salaryString.optional(), // only honored for comp-editors
+});
+
 // ---- Corrections (no new version) ----
 export const nameEmailCorrectionSchema = z.object({
   firstName: z.string().min(1),

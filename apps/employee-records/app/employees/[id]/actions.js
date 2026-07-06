@@ -19,6 +19,7 @@ import {
   terminationSchema,
   rehireSchema,
   documentUploadSchema,
+  employeeCreateSchema,
   isWithinCorrectionWindow,
 } from "@hris/types";
 import { storage } from "@/lib/storage";
@@ -525,4 +526,122 @@ export async function deleteDocument(docId, _prevState) {
   await storage.remove(removed.fileUrl);
   revalidatePath(`/employees/${removed.employeeId}`);
   return { ok: true };
+}
+
+// CREATE — the canonical new-hire flow (HR admin + generalist). Mints a User identity, the
+// Employee, its initial history version, and a CREATE audit row, all in one transaction.
+// This is the single authoritative creation path (the ATS "hire" flow will call it too).
+export async function createEmployee(_prevState, formData) {
+  const viewer = await getViewer();
+  if (!viewer || !canEditEmployee(viewer)) return { error: "You are not authorized to create employees." };
+
+  const parsed = employeeCreateSchema.safeParse({
+    firstName: formData.get("firstName"),
+    lastName: formData.get("lastName"),
+    email: formData.get("email"),
+    hireDate: formData.get("hireDate"),
+    departmentId: formData.get("departmentId"),
+    managerId: formData.get("managerId") || null,
+    jobTitle: formData.get("jobTitle"),
+    employmentType: formData.get("employmentType"),
+    role: formData.get("role") || "EMPLOYEE",
+    salary: formData.get("salary") || undefined,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  const input = parsed.data;
+  // Salary only honored for comp-editors; otherwise the record starts at 0.00 (set later).
+  const salary = canEditCompensation(viewer) && input.salary ? input.salary : "0.00";
+
+  let newId;
+  try {
+    newId = await withViewer(viewer, async (tx) => {
+      // Next employee number in the org (unique constraint backstops races).
+      const existing = await tx.employee.findMany({
+        where: { orgId: viewer.orgId },
+        select: { employeeNumber: true },
+      });
+      const max = existing.reduce((m, e) => {
+        const n = parseInt(String(e.employeeNumber).replace(/\D/g, ""), 10);
+        return Number.isFinite(n) && n > m ? n : m;
+      }, 0);
+      const employeeNumber = `E-${String(max + 1).padStart(4, "0")}`;
+
+      const dept = await tx.department.findUnique({
+        where: { id: input.departmentId },
+        select: { name: true },
+      });
+      if (!dept) throw new Error("Department not found.");
+      let managerSnapshot = null;
+      if (input.managerId) {
+        const mgr = await tx.employee.findUnique({
+          where: { id: input.managerId },
+          select: { firstName: true, lastName: true },
+        });
+        managerSnapshot = mgr ? `${mgr.firstName} ${mgr.lastName}` : null;
+      }
+
+      // 1. Login identity (no password yet → login enabled once a password/invite flow exists).
+      const user = await tx.user.create({
+        data: {
+          email: input.email,
+          name: `${input.firstName} ${input.lastName}`,
+          role: input.role,
+          orgId: viewer.orgId,
+        },
+      });
+      // 2. Employee. We generate the id and use a raw INSERT (no RETURNING) on purpose:
+      // Prisma's create() does INSERT … RETURNING, and the RETURNING makes Postgres apply
+      // the SELECT policy to the brand-new row, which app_can_see_employee() can't see
+      // mid-insert. A plain INSERT is admitted by the employee_insert WITH CHECK policy; the
+      // history/audit creates below then work because the row now exists.
+      const employeeId = randomUUID();
+      await tx.$executeRaw`
+        INSERT INTO "Employee"
+          (id, "employeeNumber", "firstName", "lastName", email, "employmentStatus",
+           "hireDate", "userId", "orgId", "departmentId", "managerId", "createdAt", "updatedAt")
+        VALUES
+          (${employeeId}, ${employeeNumber}, ${input.firstName}, ${input.lastName}, ${input.email},
+           ${"ACTIVE"}::"EmploymentStatus", ${input.hireDate}, ${user.id}, ${viewer.orgId},
+           ${input.departmentId}, ${input.managerId ?? null}, now(), now())`;
+      // 3. Initial version.
+      await tx.employeeHistory.create({
+        data: {
+          employeeId,
+          version: 1,
+          jobTitle: input.jobTitle,
+          employmentType: input.employmentType,
+          salary,
+          currency: "USD",
+          departmentSnapshot: dept.name,
+          managerSnapshot,
+          changedFields: ["initial"],
+          changeReason: "New hire",
+          effectiveFrom: input.hireDate,
+          effectiveTo: null,
+          changedById: viewer.userId,
+        },
+      });
+      // 4. Audit.
+      await tx.employeeAuditLog.create({
+        data: {
+          employeeId,
+          eventType: "CREATE",
+          actorType: "USER",
+          actorId: viewer.userId,
+          afterState: {
+            employeeNumber,
+            name: `${input.firstName} ${input.lastName}`,
+            jobTitle: input.jobTitle,
+          },
+        },
+      });
+      return employeeId;
+    });
+  } catch (e) {
+    const msg = /unique/i.test(e.message ?? "") ? "That email is already in use." : e.message ?? "Could not create employee.";
+    return { error: msg };
+  }
+
+  revalidatePath("/employees");
+  redirect(`/employees/${newId}`);
 }

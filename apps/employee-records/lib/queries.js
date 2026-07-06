@@ -511,3 +511,28 @@ export async function getDepartmentDetail(id) {
     };
   });
 }
+
+// Options for the "new employee" form. Gated to HR (also gates the /employees/new route).
+export async function getNewEmployeeFormData() {
+  const viewer = await getViewer();
+  if (!viewer || !canEditEmployee(viewer)) return null;
+
+  return withViewer(viewer, async (tx) => {
+    const [departments, all] = await Promise.all([
+      tx.department.findMany({
+        where: { orgId: viewer.orgId },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      }),
+      tx.employee.findMany({
+        select: { id: true, firstName: true, lastName: true },
+        orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      }),
+    ]);
+    return {
+      departments,
+      managerOptions: all.map((e) => ({ id: e.id, name: `${e.firstName} ${e.lastName}` })),
+      canEditComp: canEditCompensation(viewer),
+    };
+  });
+}
