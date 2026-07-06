@@ -166,6 +166,15 @@ async function main() {
     create: { id: ORG_ID, name: "PeopleBase Inc." },
   });
 
+  // 1b. Default storage folder (repo-root/.storage). `update: {}` so re-seeding never
+  //     overwrites a folder the user picked in Settings.
+  const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
+  await prisma.appSetting.upsert({
+    where: { key: "storageDir" },
+    update: {},
+    create: { key: "storageDir", value: `${repoRoot}.storage` },
+  });
+
   // 2. System user — pinned id, attributes automated writes. Not an employee.
   await prisma.user.upsert({
     where: { id: SYSTEM_USER_ID },

@@ -2,8 +2,17 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getViewer, canEditEmployee, canTerminate } from "@hris/auth";
 import { getEmployeeProfile } from "@/lib/queries";
+import { getEmployeeDocuments } from "@/lib/documents";
 import { humanize, formatDate } from "@/lib/format";
 import { HistoryTimeline } from "@/components/HistoryTimeline";
+import { UploadDocForm } from "@/components/UploadDocForm";
+import { DeleteDocButton } from "@/components/DeleteDocButton";
+
+function formatBytes(n) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
 
 const STATUS_STYLES = {
   ACTIVE: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
@@ -41,6 +50,7 @@ export default async function EmployeeProfilePage({ params }) {
   const canEdit = viewer ? canEditEmployee(viewer) : false;
   const canLifecycle = viewer ? canTerminate(viewer) : false;
   const isTerminated = e.employmentStatus === "TERMINATED";
+  const documents = await getEmployeeDocuments(e.id);
 
   // The current version is the open history row; fall back to newest if needed.
   const current = e.history.find((h) => h.effectiveTo === null) ?? e.history[0];
@@ -177,6 +187,34 @@ export default async function EmployeeProfilePage({ params }) {
           </ul>
         </section>
       )}
+
+      {/* Documents — RLS-scoped list; upload/delete for HR only. */}
+      <section className="mt-8">
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">
+          Documents ({documents.length})
+        </h2>
+        {documents.length === 0 ? (
+          <p className="text-sm text-zinc-400">No documents.</p>
+        ) : (
+          <ul className="divide-y divide-zinc-100 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+            {documents.map((d) => (
+              <li key={d.id} className="flex items-center justify-between px-4 py-2.5 text-sm">
+                <div className="min-w-0">
+                  <a href={d.downloadUrl} className="font-medium text-blue-600 hover:underline dark:text-blue-400">
+                    {d.fileName}
+                  </a>
+                  <span className="ml-2 text-xs text-zinc-400">
+                    {humanize(d.documentType)} · {formatBytes(d.fileSizeBytes)} · {formatDate(d.createdAt)} · {d.uploadedByName}
+                    {d.expiresAt ? ` · expires ${formatDate(d.expiresAt)}` : ""}
+                  </span>
+                </div>
+                {canEdit && <DeleteDocButton docId={d.id} />}
+              </li>
+            ))}
+          </ul>
+        )}
+        {canEdit && <UploadDocForm employeeId={e.id} />}
+      </section>
 
       {/* The signature feature: the effective-dated timeline. */}
       <section className="mt-10">

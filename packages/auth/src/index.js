@@ -18,6 +18,7 @@ export {
   canTerminate,
   canRehire,
   canViewBudget,
+  canManageSettings,
   isPayroll,
   isHrRole,
 } from "./roles.js";

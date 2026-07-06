@@ -11,14 +11,17 @@ import {
   canRehire,
   getSubtreeIds,
 } from "@hris/auth";
+import { randomUUID } from "node:crypto";
 import {
   employeeChangeSchema,
   nameEmailCorrectionSchema,
   materialCorrectionSchema,
   terminationSchema,
   rehireSchema,
+  documentUploadSchema,
   isWithinCorrectionWindow,
 } from "@hris/types";
+import { storage } from "@/lib/storage";
 
 // Record an effective-dated change: close the current open history version and open a new
 // one, atomically. `employeeId` is bound by the form; the (prevState, formData) shape is
@@ -453,4 +456,73 @@ export async function rehireEmployee(employeeId, _prevState, formData) {
 
   revalidatePath(`/employees/${employeeId}`);
   redirect(`/employees/${employeeId}`);
+}
+
+// DOCUMENTS — upload (HR only). Store the file in private storage under a server-generated
+// object key, then record the metadata. The DB never holds a public path.
+export async function uploadDocument(employeeId, _prevState, formData) {
+  const viewer = await getViewer();
+  if (!viewer || !canEditEmployee(viewer)) return { error: "You are not authorized to upload." };
+
+  const parsed = documentUploadSchema.safeParse({
+    documentType: formData.get("documentType"),
+    expiresAt: formData.get("expiresAt") || undefined,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+
+  const file = formData.get("file");
+  if (!file || typeof file === "string" || file.size === 0) return { error: "Choose a file." };
+  if (file.size > 10 * 1024 * 1024) return { error: "File too large (max 10MB)." };
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const safeName = file.name.replace(/[^\w.\-]+/g, "_");
+  const key = `employees/${employeeId}/${randomUUID()}-${safeName}`;
+  await storage.put(key, buffer);
+
+  try {
+    await withViewer(viewer, (tx) =>
+      tx.employeeDocument.create({
+        data: {
+          employeeId,
+          documentType: parsed.data.documentType,
+          fileName: file.name,
+          fileUrl: key, // object key, not a public URL
+          fileSizeBytes: file.size,
+          uploadedById: viewer.userId,
+          expiresAt: parsed.data.expiresAt ?? null,
+        },
+      }),
+    );
+  } catch (e) {
+    await storage.remove(key); // don't leave an orphaned file if the insert fails
+    return { error: e.message ?? "Upload failed." };
+  }
+
+  revalidatePath(`/employees/${employeeId}`);
+  return { ok: true };
+}
+
+// DOCUMENTS — delete (HR only). Remove the row (RLS-scoped) and the underlying file.
+export async function deleteDocument(docId, _prevState) {
+  const viewer = await getViewer();
+  if (!viewer || !canEditEmployee(viewer)) return { error: "You are not authorized." };
+
+  let removed;
+  try {
+    removed = await withViewer(viewer, async (tx) => {
+      const doc = await tx.employeeDocument.findUnique({
+        where: { id: docId },
+        select: { id: true, employeeId: true, fileUrl: true },
+      });
+      if (!doc) throw new Error("Document not found.");
+      await tx.employeeDocument.delete({ where: { id: docId } });
+      return doc;
+    });
+  } catch (e) {
+    return { error: e.message ?? "Delete failed." };
+  }
+
+  await storage.remove(removed.fileUrl);
+  revalidatePath(`/employees/${removed.employeeId}`);
+  return { ok: true };
 }

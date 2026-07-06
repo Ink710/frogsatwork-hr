@@ -9,6 +9,9 @@ out/
 dist/
 build/
 
+# local document storage (uploaded files)
+.storage/
+
 # turborepo
 .turbo/
 

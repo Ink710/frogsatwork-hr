@@ -45,6 +45,11 @@ export function canTerminate(viewer) {
 }
 export const canRehire = canTerminate;
 
+// May change global app settings (e.g. the storage folder). HR_ADMIN only.
+export function canManageSettings(viewer) {
+  return viewer.role === Role.HR_ADMIN;
+}
+
 // Whether the viewer may see a department's budget. `department` = { id, headUserId };
 // `viewerDeptId` is the viewer's own department id.
 //   HR_ADMIN / PAYROLL_ADMIN → all departments

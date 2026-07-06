@@ -60,6 +60,19 @@ export const rehireSchema = z.object({
   rehireDate: futureOrToday,
 });
 
+// ---- Documents ----
+export const DOCUMENT_TYPES = ["CONTRACT", "IDENTIFICATION", "CERTIFICATION", "PERFORMANCE", "OTHER"];
+
+export const documentUploadSchema = z.object({
+  documentType: z.enum(DOCUMENT_TYPES),
+  // Optional expiry (e.g. a certification). The file itself is validated in the action.
+  expiresAt: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .transform((s) => new Date(`${s}T00:00:00`))
+    .optional(),
+});
+
 // ---- Correction grace window ----
 export const CORRECTION_WINDOW_DAYS = 7;
 

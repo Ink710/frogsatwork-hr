@@ -1,22 +1,26 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
-// Two projects. `unit` is pure/fast with no DB. `integration` (added in a later phase)
-// hits a dedicated test Postgres via a global setup. Select with --project <name>.
+// The employee-records app uses the Next "@/*" import alias (apps/employee-records/*).
+// Each Vitest project needs its own resolve config — the root one doesn't propagate.
+const appAlias = {
+  "@": fileURLToPath(new URL("./apps/employee-records", import.meta.url)),
+};
+
 export default defineConfig({
   test: {
     projects: [
       {
+        resolve: { alias: appAlias },
         test: {
           name: "unit",
-          include: [
-            "packages/**/src/**/*.test.js",
-            "apps/**/lib/**/*.test.js",
-          ],
+          include: ["packages/**/src/**/*.test.js", "apps/**/lib/**/*.test.js"],
           exclude: ["**/node_modules/**", "**/.next/**", "**/*.itest.js"],
           environment: "node",
         },
       },
       {
+        resolve: { alias: appAlias },
         test: {
           name: "integration",
           include: ["apps/**/*.itest.js", "packages/**/*.itest.js"],
@@ -24,7 +28,6 @@ export default defineConfig({
           environment: "node",
           globalSetup: ["./test/globalSetup.js"],
           setupFiles: ["./test/loadTestEnv.js"],
-          // DB tests share one Postgres; run them serially to avoid cross-test interference.
           fileParallelism: false,
         },
       },

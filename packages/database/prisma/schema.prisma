@@ -276,3 +276,11 @@ model EmergencyContact {
 
   @@index([employeeId])
 }
+
+// Global key-value app config (e.g. storageDir). Not sensitive → no RLS; writes are
+// gated in app code (HR_ADMIN via canManageSettings).
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
