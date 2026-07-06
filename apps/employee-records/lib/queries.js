@@ -12,6 +12,7 @@ import {
 } from "@hris/auth";
 import { isWithinCorrectionWindow, CORRECTION_WINDOW_DAYS } from "@hris/types";
 import { buildTree } from "./tree.js";
+import { REDACTED } from "./format.js";
 
 // Data access for the employee list. Every read now runs inside withViewer(), so RLS
 // scopes the rows to the signed-in user automatically — no manual `where` filtering, and
@@ -511,6 +512,94 @@ export async function getDepartmentDetail(id) {
     };
   });
 }
+
+// --- Audit log (read side) ---------------------------------------------------------------
+
+const AUDIT_PAGE_SIZE = 25;
+
+// RLS hides ROWS, not JSON contents: an audit diff can carry a salary the viewer isn't
+// entitled to (e.g. HR_GENERALIST reading a superior's UPDATE). Same guard as the profile,
+// applied to the before/after payloads.
+const COMP_KEYS = new Set(["salary", "currency"]);
+function redactComp(state) {
+  if (!state || typeof state !== "object") return state;
+  return Object.fromEntries(
+    Object.entries(state).map(([k, v]) => [k, COMP_KEYS.has(k) ? REDACTED : v]),
+  );
+}
+
+// One page of an employee's audit trail, newest first. Cursor-paginated: we fetch one row
+// beyond the page size purely to learn whether a next page exists, then drop it. The
+// cursor is the last row's id — stable because the log is append-only (new rows land at
+// the top; a cursor row can never move or disappear, unlike OFFSET pages).
+// Wrapped in cache() so the page body and generateMetadata share one execution.
+// Returns null when RLS hides the employee (→ 404), like the profile.
+export const getEmployeeAuditLog = cache(async (employeeId, cursor = null) => {
+  const viewer = await getViewer();
+  if (!viewer) return null;
+
+  return withViewer(viewer, async (tx) => {
+    // Lean fetch on purpose — NOT getEmployeeProfile, which writes a VIEW audit row for
+    // payroll viewers. Reading the log must never add to the log.
+    const employee = await tx.employee.findUnique({
+      where: { id: employeeId },
+      select: {
+        id: true,
+        employeeNumber: true,
+        firstName: true,
+        lastName: true,
+        departmentId: true, // for the comp-access check below
+      },
+    });
+    if (!employee) return null;
+
+    const rows = await tx.employeeAuditLog.findMany({
+      where: { employeeId },
+      // id desc breaks ties for events sharing an occurredAt (batch inserts) so the
+      // order — and therefore the cursor — is fully deterministic.
+      orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+      take: AUDIT_PAGE_SIZE + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}), // skip the cursor row itself
+      select: {
+        id: true,
+        eventType: true,
+        actorType: true,
+        occurredAt: true,
+        beforeState: true,
+        afterState: true,
+        actor: { select: { name: true } },
+      },
+    });
+
+    const hasMore = rows.length > AUDIT_PAGE_SIZE;
+    const page = hasMore ? rows.slice(0, AUDIT_PAGE_SIZE) : rows;
+
+    const canViewComp = await resolveCompAccess(
+      viewer,
+      { id: employee.id, departmentId: employee.departmentId },
+      tx,
+    );
+
+    return {
+      employee: {
+        id: employee.id,
+        name: `${employee.firstName} ${employee.lastName}`,
+        employeeNumber: employee.employeeNumber,
+      },
+      events: page.map((r) => ({
+        id: r.id,
+        eventType: r.eventType,
+        actorType: r.actorType,
+        actorName: r.actor?.name ?? "—",
+        occurredAt: r.occurredAt,
+        beforeState: canViewComp ? r.beforeState : redactComp(r.beforeState),
+        afterState: canViewComp ? r.afterState : redactComp(r.afterState),
+      })),
+      nextCursor: hasMore ? page[page.length - 1].id : null,
+      canViewComp,
+    };
+  });
+});
 
 // Options for the "new employee" form. Gated to HR (also gates the /employees/new route).
 export async function getNewEmployeeFormData() {

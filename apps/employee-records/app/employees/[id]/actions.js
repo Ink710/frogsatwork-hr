@@ -23,6 +23,7 @@ import {
   isWithinCorrectionWindow,
 } from "@hris/types";
 import { storage } from "@/lib/storage";
+import { getEmployeeAuditLog } from "@/lib/queries";
 
 // Record an effective-dated change: close the current open history version and open a new
 // one, atomically. `employeeId` is bound by the form; the (prevState, formData) shape is
@@ -644,4 +645,13 @@ export async function createEmployee(_prevState, formData) {
 
   revalidatePath("/employees");
   redirect(`/employees/${newId}`);
+}
+
+// Read-only action powering the audit page's "Load more". All authorization lives in the
+// query (RLS scopes the rows, comp redaction scrubs the payloads) — the client only holds
+// an opaque cursor, and nothing it sends is trusted.
+export async function loadMoreAuditLog(employeeId, cursor) {
+  const result = await getEmployeeAuditLog(employeeId, cursor);
+  if (!result) return { error: "Not available." };
+  return { events: result.events, nextCursor: result.nextCursor };
 }
