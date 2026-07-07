@@ -105,6 +105,18 @@ export const getEmployeeProfile = cache(async (id) => {
           },
           orderBy: { version: "desc" },
         },
+        statusChanges: {
+          select: {
+            id: true,
+            type: true,
+            reason: true,
+            startDate: true,
+            expectedEnd: true,
+            endDate: true,
+            createdBy: { select: { name: true } },
+          },
+          orderBy: { startDate: "desc" },
+        },
       },
     });
     if (!employee) return null;
@@ -142,7 +154,27 @@ export const getEmployeeProfile = cache(async (id) => {
       }
     }
 
-    return { ...employee, canViewComp };
+    // Leave/suspension visibility. RLS already scoped the ROWS to this viewer; here we filter
+    // FIELDS/records by whether the viewer IS the subject (like the comp guard, app-side):
+    //   - non-subject (HR / managing chain): full detail — current banner + all history.
+    //   - subject viewing self: sees the current status as a NOTICE (status + dates), but a
+    //     SUSPENSION's reason/who is hidden; and past suspensions don't appear in their history
+    //     (past leaves do).
+    const { statusChanges, ...employeeRest } = employee;
+    const isSubject = viewer.employeeId === employee.id;
+    const notice = (rec) => ({ ...rec, reason: null, createdBy: null }); // strip sensitive fields
+
+    const openRec = statusChanges.find((r) => r.endDate === null) ?? null;
+    const currentStatusChange = openRec
+      ? isSubject && openRec.type === "SUSPENSION"
+        ? notice(openRec)
+        : openRec
+      : null;
+
+    let statusHistory = statusChanges.filter((r) => r.endDate !== null);
+    if (isSubject) statusHistory = statusHistory.filter((r) => r.type === "LEAVE");
+
+    return { ...employeeRest, canViewComp, currentStatusChange, statusHistory };
   });
 });
 
@@ -284,6 +316,45 @@ export async function getEmployeeForLifecycle(id) {
       },
     });
     return employee;
+  });
+}
+
+// Prefill for the "place on leave / suspend" page. Gated to HR_ADMIN. The action re-checks
+// that the employee is ACTIVE; we return the status so the form can refuse up front too.
+export async function getEmployeeForStatusChange(id) {
+  const viewer = await getViewer();
+  if (!viewer || !canTerminate(viewer)) return null;
+  return withViewer(viewer, (tx) =>
+    tx.employee.findUnique({
+      where: { id },
+      select: { id: true, firstName: true, lastName: true, employmentStatus: true },
+    }),
+  );
+}
+
+// Prefill for the "return to active" page. Gated to HR_ADMIN. Includes the open status
+// record (the one we're about to close) so the form can show what's being ended.
+export async function getEmployeeForReinstate(id) {
+  const viewer = await getViewer();
+  if (!viewer || !canTerminate(viewer)) return null;
+  return withViewer(viewer, async (tx) => {
+    const employee = await tx.employee.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        employmentStatus: true,
+        statusChanges: {
+          where: { endDate: null },
+          select: { id: true, type: true, startDate: true, expectedEnd: true },
+          orderBy: { startDate: "desc" },
+          take: 1,
+        },
+      },
+    });
+    if (!employee) return null;
+    return { ...employee, current: employee.statusChanges[0] ?? null };
   });
 }
 

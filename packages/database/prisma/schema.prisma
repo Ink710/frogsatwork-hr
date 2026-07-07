@@ -56,9 +56,18 @@ enum AuditEventType {
   CORRECTION
   TERMINATE
   REHIRE
+  LEAVE
+  SUSPEND
+  REINSTATE
   EXPORT
   PERMISSION_DENIED
   LOGIN_FAILED
+}
+
+// A leave or a suspension — the two non-terminal, reversible status changes.
+enum StatusChangeType {
+  LEAVE
+  SUSPENSION
 }
 
 enum ActorType {
@@ -109,10 +118,11 @@ model User {
   employee Employee?
 
   // Back-relations for the columns that record "who did this".
-  historyChanges  EmployeeHistory[]  @relation("HistoryChangedBy")
-  auditActions    EmployeeAuditLog[] @relation("AuditActor")
-  uploadedDocs    EmployeeDocument[] @relation("DocUploadedBy")
-  departmentsHead Department[]       @relation("DepartmentHead")
+  historyChanges  EmployeeHistory[]      @relation("HistoryChangedBy")
+  auditActions    EmployeeAuditLog[]     @relation("AuditActor")
+  uploadedDocs    EmployeeDocument[]     @relation("DocUploadedBy")
+  departmentsHead Department[]           @relation("DepartmentHead")
+  statusChanges   EmployeeStatusChange[] @relation("StatusChangeActor")
 
   @@index([orgId])
 }
@@ -156,6 +166,7 @@ model Employee {
   documents         EmployeeDocument[]
   auditLogs         EmployeeAuditLog[]
   emergencyContacts EmergencyContact[]
+  statusChanges     EmployeeStatusChange[]
 
   // Employee numbers are unique within an organization, not globally.
   @@unique([orgId, employeeNumber])
@@ -193,6 +204,29 @@ model EmployeeHistory {
 
   @@unique([employeeId, version])
   @@index([employeeId, effectiveFrom])
+}
+
+// A leave or suspension SPAN. One row per occurrence, retained forever (repeat occurrences
+// accumulate — "has this happened before?" is answerable directly). endDate = null means the
+// span is still open; reinstate closes it. Distinct from EmployeeHistory: status is NOT a
+// versioned field (a suspended employee keeps their title/salary), so this never touches the
+// timeline. RLS-gated by app_can_see_employee, so a manager sees their reports' records.
+model EmployeeStatusChange {
+  id          String           @id @default(uuid())
+  type        StatusChangeType
+  reason      String
+  startDate   DateTime
+  expectedEnd DateTime? // optional planned return (leave); suspensions are often open-ended
+  endDate     DateTime? // null = ongoing; set to the return date on reinstate
+  createdAt   DateTime         @default(now())
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  createdById String
+  createdBy   User   @relation("StatusChangeActor", fields: [createdById], references: [id])
+
+  @@index([employeeId, startDate])
 }
 
 model Department {

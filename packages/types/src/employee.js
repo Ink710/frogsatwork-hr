@@ -49,6 +49,19 @@ export const employeeCreateSchema = z.object({
   employmentType: z.enum(EMPLOYMENT_TYPES),
   role: z.enum(ASSIGNABLE_ROLES).default("EMPLOYEE"),
   salary: salaryString.optional(), // only honored for comp-editors
+  // Every new hire starts with one emergency contact (the "at least one at all times"
+  // invariant holds from day one). Created alongside the employee in the same transaction.
+  emergencyContactName: z.string().min(1, "Emergency contact name is required").max(100),
+  emergencyContactRelationship: z.string().min(1, "Relationship is required").max(60),
+  emergencyContactPhone: z.string().min(1, "Contact phone is required").max(30),
+});
+
+// ---- Emergency contacts ----
+export const emergencyContactSchema = z.object({
+  name: z.string().min(1, "Name is required").max(100),
+  relationship: z.string().min(1, "Relationship is required").max(60),
+  phone: z.string().min(1, "Phone is required").max(30),
+  isPrimary: z.boolean().default(false),
 });
 
 // ---- Corrections (no new version) ----
@@ -78,6 +91,29 @@ export const terminationSchema = z.object({
 
 export const rehireSchema = z.object({
   rehireDate: futureOrToday,
+});
+
+// ---- Leave / suspension (reversible status changes) ----
+export const STATUS_CHANGE_TYPES = ["LEAVE", "SUSPENSION"];
+
+// Start a leave or suspension. expectedEnd is optional (a suspension is often open-ended);
+// when given it must land on/after the start date. Both dates arrive as Date after transform,
+// so the refine compares Dates.
+export const startStatusChangeSchema = z
+  .object({
+    type: z.enum(STATUS_CHANGE_TYPES),
+    reason: z.string().min(1).max(500),
+    startDate: futureOrToday,
+    expectedEnd: futureOrToday.optional(),
+  })
+  .refine((d) => !d.expectedEnd || d.expectedEnd >= d.startDate, {
+    message: "Expected return can't be before the start date",
+    path: ["expectedEnd"],
+  });
+
+// End the current leave/suspension (return to active).
+export const reinstateSchema = z.object({
+  returnDate: futureOrToday,
 });
 
 // ---- Documents ----

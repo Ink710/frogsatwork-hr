@@ -18,8 +18,11 @@ import {
   materialCorrectionSchema,
   terminationSchema,
   rehireSchema,
+  startStatusChangeSchema,
+  reinstateSchema,
   documentUploadSchema,
   employeeCreateSchema,
+  emergencyContactSchema,
   isWithinCorrectionWindow,
 } from "@hris/types";
 import { storage } from "@/lib/storage";
@@ -461,6 +464,259 @@ export async function rehireEmployee(employeeId, _prevState, formData) {
   redirect(`/employees/${employeeId}`);
 }
 
+// PLACE ON LEAVE / SUSPEND — a reversible status change. Records a span row (retained
+// forever), flips the status, and audits it. Only HR_ADMIN. Deliberately does NOT close the
+// open EmployeeHistory version — status is not a versioned field (they keep title/salary).
+// The reason is NOT written to the audit JSON: the audit viewer is RLS-scoped and the subject
+// can read their own rows, so putting the reason there would leak it (unlike terminate, whose
+// subject can't log in).
+export async function startStatusChange(employeeId, _prevState, formData) {
+  const viewer = await getViewer();
+  if (!viewer || !canTerminate(viewer)) return { error: "You are not authorized to change status." };
+
+  const parsed = startStatusChangeSchema.safeParse({
+    type: formData.get("type"),
+    reason: formData.get("reason"),
+    startDate: formData.get("startDate"),
+    expectedEnd: formData.get("expectedEnd") || undefined,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  const input = parsed.data;
+  const newStatus = input.type === "LEAVE" ? "ON_LEAVE" : "SUSPENDED";
+
+  try {
+    await withViewer(viewer, async (tx) => {
+      const employee = await tx.employee.findUnique({
+        where: { id: employeeId },
+        select: { employmentStatus: true },
+      });
+      if (!employee) throw new Error("Employee not found.");
+      // One open span at a time: you can only start from ACTIVE.
+      if (employee.employmentStatus !== "ACTIVE") {
+        throw new Error("Only an active employee can be placed on leave or suspended.");
+      }
+
+      await tx.employeeStatusChange.create({
+        data: {
+          employeeId,
+          type: input.type,
+          reason: input.reason,
+          startDate: input.startDate,
+          expectedEnd: input.expectedEnd ?? null,
+          createdById: viewer.userId,
+        },
+      });
+      await tx.employee.update({
+        where: { id: employeeId },
+        data: { employmentStatus: newStatus },
+      });
+      await tx.employeeAuditLog.create({
+        data: {
+          employeeId,
+          eventType: input.type === "LEAVE" ? "LEAVE" : "SUSPEND",
+          actorType: "USER",
+          actorId: viewer.userId,
+          beforeState: { employmentStatus: "ACTIVE" },
+          // No reason here — see the note above. Just the transition + when.
+          afterState: { employmentStatus: newStatus, startDate: input.startDate },
+        },
+      });
+    });
+  } catch (e) {
+    return { error: e.message ?? "Could not change status." };
+  }
+
+  revalidatePath(`/employees/${employeeId}`);
+  redirect(`/employees/${employeeId}`);
+}
+
+// RETURN TO ACTIVE — close the open leave/suspension span and flip the status back. Only
+// HR_ADMIN. Audited (REINSTATE). Also does not touch EmployeeHistory.
+export async function reinstateEmployee(employeeId, _prevState, formData) {
+  const viewer = await getViewer();
+  if (!viewer || !canTerminate(viewer)) return { error: "You are not authorized to change status." };
+
+  const parsed = reinstateSchema.safeParse({ returnDate: formData.get("returnDate") });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  const input = parsed.data;
+
+  try {
+    await withViewer(viewer, async (tx) => {
+      const employee = await tx.employee.findUnique({
+        where: { id: employeeId },
+        select: { employmentStatus: true },
+      });
+      if (!employee) throw new Error("Employee not found.");
+      if (employee.employmentStatus !== "ON_LEAVE" && employee.employmentStatus !== "SUSPENDED") {
+        throw new Error("Only an employee on leave or suspended can be returned to active.");
+      }
+
+      const open = await tx.employeeStatusChange.findFirst({
+        where: { employeeId, endDate: null },
+        orderBy: { startDate: "desc" },
+      });
+      if (!open) throw new Error("No open leave or suspension to close.");
+      if (input.returnDate < open.startDate) {
+        throw new Error("Return date can't be before the status started.");
+      }
+
+      await tx.employeeStatusChange.update({
+        where: { id: open.id },
+        data: { endDate: input.returnDate },
+      });
+      await tx.employee.update({
+        where: { id: employeeId },
+        data: { employmentStatus: "ACTIVE" },
+      });
+      await tx.employeeAuditLog.create({
+        data: {
+          employeeId,
+          eventType: "REINSTATE",
+          actorType: "USER",
+          actorId: viewer.userId,
+          beforeState: { employmentStatus: employee.employmentStatus },
+          afterState: { employmentStatus: "ACTIVE", returnDate: input.returnDate },
+        },
+      });
+    });
+  } catch (e) {
+    return { error: e.message ?? "Could not return to active." };
+  }
+
+  revalidatePath(`/employees/${employeeId}`);
+  redirect(`/employees/${employeeId}`);
+}
+
+// EMERGENCY CONTACTS — add / edit / delete. Writable by HR OR the employee themselves (managers
+// can VIEW their reports' contacts via RLS but must NOT edit — the app-layer gate below is what
+// enforces that; RLS alone would let them through). Invariant: at least one contact at all times.
+
+// Shared gate. Needs the runtime employeeId (not just a role), so it's inline, not a predicate.
+function canManageContacts(viewer, employeeId) {
+  return canEditEmployee(viewer) || viewer.employeeId === employeeId;
+}
+
+export async function addEmergencyContact(employeeId, _prevState, formData) {
+  const viewer = await getViewer();
+  if (!viewer || !canManageContacts(viewer, employeeId)) return { error: "You are not authorized." };
+
+  const parsed = emergencyContactSchema.safeParse({
+    name: formData.get("name"),
+    relationship: formData.get("relationship"),
+    phone: formData.get("phone"),
+    isPrimary: formData.get("isPrimary") === "on",
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  const input = parsed.data;
+
+  try {
+    await withViewer(viewer, async (tx) => {
+      const count = await tx.emergencyContact.count({ where: { employeeId } });
+      // The first contact is always primary; otherwise honor the checkbox.
+      const makePrimary = count === 0 ? true : input.isPrimary;
+      if (makePrimary) {
+        await tx.emergencyContact.updateMany({ where: { employeeId }, data: { isPrimary: false } });
+      }
+      await tx.emergencyContact.create({
+        data: {
+          employeeId,
+          name: input.name,
+          relationship: input.relationship,
+          phone: input.phone,
+          isPrimary: makePrimary,
+        },
+      });
+    });
+  } catch (e) {
+    return { error: e.message ?? "Could not add contact." };
+  }
+
+  revalidatePath(`/employees/${employeeId}`);
+  return { ok: true };
+}
+
+export async function updateEmergencyContact(contactId, _prevState, formData) {
+  const viewer = await getViewer();
+  if (!viewer) return { error: "You are not authorized." };
+
+  const parsed = emergencyContactSchema.safeParse({
+    name: formData.get("name"),
+    relationship: formData.get("relationship"),
+    phone: formData.get("phone"),
+    isPrimary: formData.get("isPrimary") === "on",
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  const input = parsed.data;
+
+  let employeeId;
+  try {
+    await withViewer(viewer, async (tx) => {
+      // Derive employeeId from the contact (RLS-scoped) — never trust the client for it.
+      const existing = await tx.emergencyContact.findUnique({
+        where: { id: contactId },
+        select: { employeeId: true },
+      });
+      if (!existing) throw new Error("Contact not found.");
+      employeeId = existing.employeeId;
+      if (!canManageContacts(viewer, employeeId)) throw new Error("You are not authorized.");
+
+      if (input.isPrimary) {
+        await tx.emergencyContact.updateMany({ where: { employeeId }, data: { isPrimary: false } });
+      }
+      await tx.emergencyContact.update({
+        where: { id: contactId },
+        data: {
+          name: input.name,
+          relationship: input.relationship,
+          phone: input.phone,
+          isPrimary: input.isPrimary,
+        },
+      });
+    });
+  } catch (e) {
+    return { error: e.message ?? "Could not update contact." };
+  }
+
+  revalidatePath(`/employees/${employeeId}`);
+  return { ok: true };
+}
+
+export async function deleteEmergencyContact(contactId, _prevState) {
+  const viewer = await getViewer();
+  if (!viewer) return { error: "You are not authorized." };
+
+  let employeeId;
+  try {
+    await withViewer(viewer, async (tx) => {
+      const existing = await tx.emergencyContact.findUnique({
+        where: { id: contactId },
+        select: { employeeId: true, isPrimary: true },
+      });
+      if (!existing) throw new Error("Contact not found.");
+      employeeId = existing.employeeId;
+      if (!canManageContacts(viewer, employeeId)) throw new Error("You are not authorized.");
+
+      const count = await tx.emergencyContact.count({ where: { employeeId } });
+      if (count <= 1) throw new Error("You must keep at least one emergency contact.");
+
+      await tx.emergencyContact.delete({ where: { id: contactId } });
+
+      // Never leave zero primaries: if we removed the primary, promote another.
+      if (existing.isPrimary) {
+        const next = await tx.emergencyContact.findFirst({ where: { employeeId } });
+        if (next) {
+          await tx.emergencyContact.update({ where: { id: next.id }, data: { isPrimary: true } });
+        }
+      }
+    });
+  } catch (e) {
+    return { error: e.message ?? "Could not delete contact." };
+  }
+
+  revalidatePath(`/employees/${employeeId}`);
+  return { ok: true };
+}
+
 // DOCUMENTS — upload (HR only). Store the file in private storage under a server-generated
 // object key, then record the metadata. The DB never holds a public path.
 export async function uploadDocument(employeeId, _prevState, formData) {
@@ -548,6 +804,9 @@ export async function createEmployee(_prevState, formData) {
     employmentType: formData.get("employmentType"),
     role: formData.get("role") || "EMPLOYEE",
     salary: formData.get("salary") || undefined,
+    emergencyContactName: formData.get("emergencyContactName"),
+    emergencyContactRelationship: formData.get("emergencyContactRelationship"),
+    emergencyContactPhone: formData.get("emergencyContactPhone"),
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
   const input = parsed.data;
@@ -636,6 +895,18 @@ export async function createEmployee(_prevState, formData) {
             name: `${input.firstName} ${input.lastName}`,
             jobTitle: input.jobTitle,
           },
+        },
+      });
+      // 5. Emergency contact — required at hire so "at least one at all times" holds from day
+      // one. Plain create() works: the employee row now exists, so the RLS RETURNING recheck
+      // passes. First contact is always primary.
+      await tx.emergencyContact.create({
+        data: {
+          employeeId,
+          name: input.emergencyContactName,
+          relationship: input.emergencyContactRelationship,
+          phone: input.emergencyContactPhone,
+          isPrimary: true,
         },
       });
       return { employeeId, userId: user.id };

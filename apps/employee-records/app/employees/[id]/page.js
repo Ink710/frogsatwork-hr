@@ -8,6 +8,7 @@ import { HistoryTimeline } from "@/components/HistoryTimeline";
 import { UploadDocForm } from "@/components/UploadDocForm";
 import { DeleteDocButton } from "@/components/DeleteDocButton";
 import { ResendInviteButton } from "@/components/ResendInviteButton";
+import { EmergencyContacts } from "@/components/EmergencyContacts";
 
 function formatBytes(n) {
   if (n < 1024) return `${n} B`;
@@ -51,6 +52,11 @@ export default async function EmployeeProfilePage({ params }) {
   const canEdit = viewer ? canEditEmployee(viewer) : false;
   const canLifecycle = viewer ? canTerminate(viewer) : false;
   const isTerminated = e.employmentStatus === "TERMINATED";
+  const isActive = e.employmentStatus === "ACTIVE";
+  const onLeaveOrSuspended = e.employmentStatus === "ON_LEAVE" || e.employmentStatus === "SUSPENDED";
+  // Emergency contacts are writable by HR or the employee themselves — never managers (RLS would
+  // allow a manager, so this app-layer check is what actually blocks them).
+  const canManageContacts = (viewer && canEditEmployee(viewer)) || viewer?.employeeId === e.id;
   const documents = await getEmployeeDocuments(e.id);
 
   // The current version is the open history row; fall back to newest if needed.
@@ -102,6 +108,30 @@ export default async function EmployeeProfilePage({ params }) {
               </Link>
             </>
           )}
+          {canLifecycle && isActive && (
+            <>
+              <Link
+                href={`/employees/${e.id}/status?type=LEAVE`}
+                className="rounded-md border border-amber-300 px-2.5 py-1 text-xs font-medium text-amber-700 hover:bg-amber-50 dark:border-amber-900/60 dark:text-amber-400 dark:hover:bg-amber-950/30"
+              >
+                Place on leave
+              </Link>
+              <Link
+                href={`/employees/${e.id}/status?type=SUSPENSION`}
+                className="rounded-md border border-amber-300 px-2.5 py-1 text-xs font-medium text-amber-700 hover:bg-amber-50 dark:border-amber-900/60 dark:text-amber-400 dark:hover:bg-amber-950/30"
+              >
+                Suspend
+              </Link>
+            </>
+          )}
+          {canLifecycle && onLeaveOrSuspended && (
+            <Link
+              href={`/employees/${e.id}/reinstate`}
+              className="rounded-md border border-green-300 px-2.5 py-1 text-xs font-medium text-green-700 hover:bg-green-50 dark:border-green-900/60 dark:text-green-400 dark:hover:bg-green-950/30"
+            >
+              Return to active
+            </Link>
+          )}
           {canLifecycle && !isTerminated && (
             <Link
               href={`/employees/${e.id}/terminate`}
@@ -136,6 +166,31 @@ export default async function EmployeeProfilePage({ params }) {
             userId={e.userId}
             label={e.user.invitedAt ? "Resend invite" : "Send invite"}
           />
+        </div>
+      )}
+
+      {/* Current leave/suspension notice. Reason/actor are already redacted server-side when
+          the viewer is the subject of a suspension (they see the notice, not the file). */}
+      {e.currentStatusChange && (
+        <div
+          className={`mt-4 rounded-md border p-4 text-sm ${
+            e.currentStatusChange.type === "SUSPENSION"
+              ? "border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-950/20"
+              : "border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/20"
+          }`}
+        >
+          <span className="font-medium">
+            {e.currentStatusChange.type === "SUSPENSION" ? "Suspended" : "On leave"}
+          </span>
+          {" since "}
+          {formatDate(e.currentStatusChange.startDate)}
+          {e.currentStatusChange.expectedEnd && (
+            <> · expected return {formatDate(e.currentStatusChange.expectedEnd)}</>
+          )}
+          {e.currentStatusChange.reason && <> — {e.currentStatusChange.reason}</>}
+          {e.currentStatusChange.createdBy && (
+            <span className="ml-2 text-zinc-500">by {e.currentStatusChange.createdBy.name}</span>
+          )}
         </div>
       )}
 
@@ -191,27 +246,12 @@ export default async function EmployeeProfilePage({ params }) {
         </section>
       )}
 
-      {/* Emergency contacts */}
-      {e.emergencyContacts.length > 0 && (
-        <section className="mt-8">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">
-            Emergency contacts
-          </h2>
-          <ul className="space-y-2">
-            {e.emergencyContacts.map((c) => (
-              <li key={c.id} className="text-sm">
-                <span className="font-medium">{c.name}</span>{" "}
-                <span className="text-zinc-500">({c.relationship})</span> · {c.phone}
-                {c.isPrimary && (
-                  <span className="ml-2 rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-                    Primary
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      {/* Emergency contacts — editable by HR or the employee themselves (not managers). */}
+      <EmergencyContacts
+        contacts={e.emergencyContacts}
+        employeeId={e.id}
+        canManage={canManageContacts}
+      />
 
       {/* Documents — RLS-scoped list; upload/delete for HR only. */}
       <section className="mt-8">
@@ -240,6 +280,28 @@ export default async function EmployeeProfilePage({ params }) {
         )}
         {canEdit && <UploadDocForm employeeId={e.id} />}
       </section>
+
+      {/* Leave & suspension history — past occurrences, retained forever. Suspensions are
+          filtered out server-side when the viewer is the subject. */}
+      {e.statusHistory.length > 0 && (
+        <section className="mt-8">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">
+            Leave &amp; suspension history
+          </h2>
+          <ul className="divide-y divide-zinc-100 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+            {e.statusHistory.map((s) => (
+              <li key={s.id} className="px-4 py-2.5 text-sm">
+                <span className="font-medium">{s.type === "SUSPENSION" ? "Suspension" : "Leave"}</span>
+                <span className="ml-2 text-zinc-500">
+                  {formatDate(s.startDate)} — {formatDate(s.endDate)}
+                </span>
+                {s.reason && <div className="mt-0.5 text-zinc-600 dark:text-zinc-300">{s.reason}</div>}
+                {s.createdBy && <span className="text-xs text-zinc-400">by {s.createdBy.name}</span>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* The signature feature: the effective-dated timeline. */}
       <section className="mt-10">
