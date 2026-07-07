@@ -56,6 +56,18 @@ export const employeeCreateSchema = z.object({
   emergencyContactPhone: z.string().min(1, "Contact phone is required").max(30),
 });
 
+// ---- Departments ----
+// Shared by create and update. parent/head are optional (nullable → "none"); budget is an
+// optional decimal string (same fixed-precision rule as salary). The parent cycle guard lives
+// in the update action, not here (it needs the department tree). Empty strings are coerced to
+// undefined/null by the action before parsing.
+export const departmentSchema = z.object({
+  name: z.string().min(1, "Name is required").max(100),
+  parentDepartmentId: z.string().min(1).nullable().optional(),
+  headUserId: z.string().min(1).nullable().optional(),
+  budget: z.string().regex(/^\d+(\.\d{1,2})?$/, "Enter an amount like 500000 or 500000.00").optional(),
+});
+
 // ---- Emergency contacts ----
 export const emergencyContactSchema = z.object({
   name: z.string().min(1, "Name is required").max(100),

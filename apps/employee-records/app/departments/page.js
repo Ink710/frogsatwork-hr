@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { getViewer, canManageDepartments } from "@hris/auth";
 import { getDepartments } from "@/lib/queries";
 import { formatMoney } from "@/lib/format";
 
@@ -9,13 +10,26 @@ export default async function DepartmentsPage() {
   const departments = await getDepartments();
   if (!departments) notFound(); // employees / unauthenticated don't get this feature
 
+  const viewer = await getViewer();
+  const canManage = viewer ? canManageDepartments(viewer) : false;
+
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-10">
-      <header className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight">Departments</h1>
-        <p className="text-sm text-zinc-500">
-          {departments.length} department{departments.length === 1 ? "" : "s"}
-        </p>
+      <header className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Departments</h1>
+          <p className="text-sm text-zinc-500">
+            {departments.length} department{departments.length === 1 ? "" : "s"}
+          </p>
+        </div>
+        {canManage && (
+          <Link
+            href="/departments/new"
+            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+          >
+            New department
+          </Link>
+        )}
       </header>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

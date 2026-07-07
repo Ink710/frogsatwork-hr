@@ -9,21 +9,60 @@ import {
   getSubtreeIds,
   canTerminate,
   canViewBudget,
+  canManageDepartments,
 } from "@hris/auth";
-import { isWithinCorrectionWindow, CORRECTION_WINDOW_DAYS } from "@hris/types";
+import { isWithinCorrectionWindow, CORRECTION_WINDOW_DAYS, EMPLOYMENT_TYPES } from "@hris/types";
 import { buildTree } from "./tree.js";
 import { REDACTED } from "./format.js";
 
-// Data access for the employee list. Every read now runs inside withViewer(), so RLS
-// scopes the rows to the signed-in user automatically — no manual `where` filtering, and
-// no way to forget it. Compensation is still never selected here.
-export async function getEmployees() {
-  const viewer = await getViewer();
-  if (!viewer) return [];
+export const EMPLOYEE_PAGE_SIZE = 5;
 
-  const rows = await withViewer(viewer, (tx) =>
-    tx.employee.findMany({
+const EMPLOYMENT_STATUSES = ["ACTIVE", "ON_LEAVE", "SUSPENDED", "TERMINATED"];
+
+// Data access for the employee list. Runs inside withViewer(), so RLS scopes the rows to the
+// signed-in user first — the search/filter `where` and the count then narrow WITHIN that visible
+// set (a manager searching only ever matches their own subtree). Compensation is never selected.
+// Offset-paginated: returns the page plus the total so the UI can show "A–B of N" and page links.
+export async function getEmployees({ q, status, departmentId, employmentType, page = 1 } = {}) {
+  const viewer = await getViewer();
+  if (!viewer) return { rows: [], total: 0, page: 1, pageSize: EMPLOYEE_PAGE_SIZE, pageCount: 1 };
+
+  // Build the filter. Every clause is optional and ANDed under RLS.
+  const and = [];
+  // Free-text search: each whitespace token must appear in at least one field, so "Diego Santos"
+  // matches (Diego → firstName, Santos → lastName) without a dedicated full-name column.
+  const tokens = (q ?? "").trim().split(/\s+/).filter(Boolean);
+  for (const t of tokens) {
+    and.push({
+      OR: [
+        { firstName: { contains: t, mode: "insensitive" } },
+        { lastName: { contains: t, mode: "insensitive" } },
+        { employeeNumber: { contains: t, mode: "insensitive" } },
+        { email: { contains: t, mode: "insensitive" } },
+      ],
+    });
+  }
+  if (EMPLOYMENT_STATUSES.includes(status)) and.push({ employmentStatus: status });
+  if (departmentId) and.push({ departmentId });
+  // Employment type lives on the CURRENT (open) history version, not on Employee.
+  if (EMPLOYMENT_TYPES.includes(employmentType)) {
+    and.push({ history: { some: { effectiveTo: null, employmentType } } });
+  }
+  const where = and.length ? { AND: and } : {};
+
+  const pageSize = EMPLOYEE_PAGE_SIZE;
+
+  return withViewer(viewer, async (tx) => {
+    // Count and page in the same RLS transaction so the total matches what's paged.
+    const total = await tx.employee.count({ where });
+    const pageCount = Math.max(1, Math.ceil(total / pageSize));
+    const safePage = Math.min(Math.max(1, page | 0 || 1), pageCount); // clamp; ?page=99 → last page
+
+    const rows = await tx.employee.findMany({
+      where,
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      skip: (safePage - 1) * pageSize,
+      take: pageSize,
       select: {
         id: true,
         employeeNumber: true,
@@ -38,19 +77,39 @@ export async function getEmployees() {
           take: 1,
         },
       },
+    });
+
+    return {
+      rows: rows.map((e) => ({
+        id: e.id,
+        employeeNumber: e.employeeNumber,
+        name: `${e.firstName} ${e.lastName}`,
+        department: e.department?.name ?? "—",
+        manager: e.manager ? `${e.manager.firstName} ${e.manager.lastName}` : "—",
+        title: e.history[0]?.jobTitle ?? "—",
+        employmentType: e.history[0]?.employmentType ?? "—",
+        status: e.employmentStatus,
+      })),
+      total,
+      page: safePage,
+      pageSize,
+      pageCount,
+    };
+  });
+}
+
+// Department options for the list filter dropdown (id + name). Department has no RLS, so any
+// authenticated viewer may list them; not sensitive.
+export async function getDepartmentOptions() {
+  const viewer = await getViewer();
+  if (!viewer) return [];
+  return withViewer(viewer, (tx) =>
+    tx.department.findMany({
+      where: { orgId: viewer.orgId },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
     }),
   );
-
-  return rows.map((e) => ({
-    id: e.id,
-    employeeNumber: e.employeeNumber,
-    name: `${e.firstName} ${e.lastName}`,
-    department: e.department?.name ?? "—",
-    manager: e.manager ? `${e.manager.firstName} ${e.manager.lastName}` : "—",
-    title: e.history[0]?.jobTitle ?? "—",
-    employmentType: e.history[0]?.employmentType ?? "—",
-    status: e.employmentStatus,
-  }));
 }
 
 // Single employee for the profile page. Wrapped in cache() so the page body and
@@ -583,6 +642,100 @@ export async function getDepartmentDetail(id) {
       byType: byTypePairs,
       employees: emps.map((e) => ({ id: e.id, name: `${e.firstName} ${e.lastName}`, title: e.history[0]?.jobTitle ?? "—" })),
       tree,
+    };
+  });
+}
+
+// --- Department management (write-side form data) -----------------------------------------
+
+// Given all departments in the org, return the set of ids at-or-below `rootId` (the root plus
+// every descendant). Used to keep a department from being parented under itself or its own
+// child — there's no app_subtree() equivalent for the department tree, and N is tiny, so we
+// walk it in JS. Exported so the update action can re-check server-side (never trust the client).
+export function departmentDescendantIds(rootId, allDepartments) {
+  const childrenOf = new Map();
+  for (const d of allDepartments) {
+    if (!childrenOf.has(d.parentDepartmentId)) childrenOf.set(d.parentDepartmentId, []);
+    childrenOf.get(d.parentDepartmentId).push(d.id);
+  }
+  const result = new Set([rootId]);
+  const stack = [rootId];
+  while (stack.length) {
+    for (const child of childrenOf.get(stack.pop()) ?? []) {
+      if (!result.has(child)) {
+        result.add(child);
+        stack.push(child);
+      }
+    }
+  }
+  return result; // includes rootId
+}
+
+// Candidate lists for the "new department" form. Gated to HR_ADMIN.
+export async function getNewDepartmentFormData() {
+  const viewer = await getViewer();
+  if (!viewer || !canManageDepartments(viewer)) return null;
+
+  return withViewer(viewer, async (tx) => {
+    const [departments, employees] = await Promise.all([
+      tx.department.findMany({
+        where: { orgId: viewer.orgId },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      }),
+      // Head candidates: any employee, keyed by their userId (headUserId → User.id).
+      tx.employee.findMany({
+        where: { orgId: viewer.orgId },
+        select: { userId: true, firstName: true, lastName: true },
+        orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      }),
+    ]);
+    return {
+      parentOptions: departments,
+      headOptions: employees.map((e) => ({ userId: e.userId, name: `${e.firstName} ${e.lastName}` })),
+    };
+  });
+}
+
+// Prefill + candidates for the "edit department" form. Gated to HR_ADMIN. Self + descendants are
+// excluded from the parent options so the UI can't offer a cycle (the action re-checks anyway).
+export async function getDepartmentForEdit(id) {
+  const viewer = await getViewer();
+  if (!viewer || !canManageDepartments(viewer)) return null;
+
+  return withViewer(viewer, async (tx) => {
+    const department = await tx.department.findUnique({
+      where: { id },
+      select: { id: true, name: true, parentDepartmentId: true, headUserId: true },
+    });
+    if (!department) return null;
+
+    const [allDepartments, employees, budgetRow] = await Promise.all([
+      tx.department.findMany({
+        where: { orgId: viewer.orgId },
+        select: { id: true, name: true, parentDepartmentId: true },
+        orderBy: { name: "asc" },
+      }),
+      tx.employee.findMany({
+        where: { orgId: viewer.orgId },
+        select: { userId: true, firstName: true, lastName: true },
+        orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      }),
+      // HR_ADMIN passes app_can_see_budget for every dept, so this returns the row if it exists.
+      tx.departmentBudget.findUnique({ where: { departmentId: id }, select: { budget: true } }),
+    ]);
+
+    const blocked = departmentDescendantIds(id, allDepartments); // self + descendants
+    return {
+      department: {
+        id: department.id,
+        name: department.name,
+        parentDepartmentId: department.parentDepartmentId,
+        headUserId: department.headUserId,
+        budget: budgetRow?.budget?.toString() ?? "",
+      },
+      parentOptions: allDepartments.filter((d) => !blocked.has(d.id)),
+      headOptions: employees.map((e) => ({ userId: e.userId, name: `${e.firstName} ${e.lastName}` })),
     };
   });
 }

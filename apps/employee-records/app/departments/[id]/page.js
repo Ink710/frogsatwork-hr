@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { getViewer, canManageDepartments } from "@hris/auth";
 import { getDepartmentDetail } from "@/lib/queries";
 import { formatMoney, humanize } from "@/lib/format";
 import { OrgNode } from "@/components/OrgNode";
+import { DeleteDepartmentButton } from "@/components/DeleteDepartmentButton";
 
 export async function generateMetadata({ params }) {
   const { id } = await params;
@@ -30,12 +32,28 @@ export default async function DepartmentDetailPage({ params }) {
   if (!data) notFound();
   const { department, head, headcount, byType, employees, tree } = data;
 
+  const viewer = await getViewer();
+  const canManage = viewer ? canManageDepartments(viewer) : false;
+
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-10">
       <Link href="/departments" className="text-sm text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200">
         ← All departments
       </Link>
-      <h1 className="mt-4 text-2xl font-semibold tracking-tight">{department.name}</h1>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold tracking-tight">{department.name}</h1>
+        {canManage && (
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/departments/${department.id}/edit`}
+              className="rounded-md border border-zinc-300 px-2.5 py-1 text-xs font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+            >
+              Edit
+            </Link>
+            <DeleteDepartmentButton departmentId={department.id} />
+          </div>
+        )}
+      </div>
 
       <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
         <Stat label="Headcount" value={headcount} />

@@ -50,6 +50,11 @@ export function canManageSettings(viewer) {
   return viewer.role === Role.HR_ADMIN;
 }
 
+// May create / edit / delete departments and set heads + budgets. HR_ADMIN only.
+export function canManageDepartments(viewer) {
+  return viewer.role === Role.HR_ADMIN;
+}
+
 // Whether the viewer may see a department's budget. `department` = { id, headUserId };
 // `viewerDeptId` is the viewer's own department id.
 //   HR_ADMIN / PAYROLL_ADMIN → all departments
