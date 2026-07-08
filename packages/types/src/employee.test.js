@@ -43,6 +43,10 @@ describe("employeeCreateSchema", () => {
     departmentId: "d1",
     jobTitle: "Engineer",
     employmentType: "FULL_TIME",
+    // Every new hire requires an emergency contact ("at least one at all times" invariant).
+    emergencyContactName: "Grace Hopper",
+    emergencyContactRelationship: "Spouse",
+    emergencyContactPhone: "+1-555-0100",
   };
   it("accepts valid input and defaults role to EMPLOYEE", () => {
     const r = employeeCreateSchema.safeParse(base);
@@ -55,6 +59,10 @@ describe("employeeCreateSchema", () => {
   });
   it("rejects a missing employment type", () => {
     const { employmentType, ...rest } = base;
+    expect(employeeCreateSchema.safeParse(rest).success).toBe(false);
+  });
+  it("requires an emergency contact (the hire-time invariant)", () => {
+    const { emergencyContactName, ...rest } = base;
     expect(employeeCreateSchema.safeParse(rest).success).toBe(false);
   });
 });

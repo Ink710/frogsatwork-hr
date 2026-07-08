@@ -5,6 +5,9 @@ import { defineConfig } from "vitest/config";
 // Each Vitest project needs its own resolve config — the root one doesn't propagate.
 const appAlias = {
   "@": fileURLToPath(new URL("./apps/employee-records", import.meta.url)),
+  // `server-only` throws under bare Node (default export condition); stub it to a no-op so
+  // server modules can be exercised in tests. Next resolves it correctly at build time.
+  "server-only": fileURLToPath(new URL("./test/server-only-stub.js", import.meta.url)),
 };
 
 export default defineConfig({

@@ -210,6 +210,10 @@ describe("createEmployee", () => {
     fd.set("jobTitle", "Software Engineer");
     fd.set("employmentType", "FULL_TIME");
     fd.set("role", "EMPLOYEE");
+    // Required at hire (the "at least one emergency contact" invariant).
+    fd.set("emergencyContactName", "Grace Hopper");
+    fd.set("emergencyContactRelationship", "Spouse");
+    fd.set("emergencyContactPhone", "+1-555-0100");
     for (const [k, v] of Object.entries(overrides)) fd.set(k, v);
     return fd;
   }
