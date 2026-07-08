@@ -38,6 +38,9 @@ export async function AppHeader() {
           <span className="text-zinc-500">
             {name} · <span className="text-zinc-400">{humanize(role)}</span>
           </span>
+          <Link href="/preferences" className="text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100">
+            Preferences
+          </Link>
           <form action={logout}>
             <button className="rounded-md border border-zinc-300 px-2.5 py-1 text-xs font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900">
               Sign out

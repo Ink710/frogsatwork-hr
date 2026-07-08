@@ -3,9 +3,22 @@
 import { z } from "zod";
 
 export const EMPLOYMENT_TYPES = ["FULL_TIME", "PART_TIME", "CONTRACT", "INTERN"];
+// Profile-revamp enums (mirror the Prisma enums; hard-coded to keep this package DB-free).
+export const FLSA_CLASSIFICATIONS = ["EXEMPT", "NON_EXEMPT"];
+export const PAY_FREQUENCIES = ["WEEKLY", "BIWEEKLY", "SEMI_MONTHLY", "MONTHLY"];
+export const PAY_BASES = ["PER_HOUR", "PER_MONTH", "PER_YEAR"];
 
 // Salary as a fixed-precision string (never a float) — Prisma Decimal accepts it verbatim.
 const salaryString = z.string().regex(/^\d+(\.\d{1,2})?$/, "Enter an amount like 90000 or 90000.00");
+
+// A "YYYY-MM-DD" calendar date → Date at local midnight, or absent. Used for review dates
+// (which can be any past/future date, unlike futureOrToday). The caller passes `value || undefined`
+// so an empty input is simply omitted.
+const optionalCalendarDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a valid date")
+  .transform((s) => new Date(`${s}T00:00:00`))
+  .optional();
 
 // Date inputs arrive as "YYYY-MM-DD" (an <input type="date">). We validate and compare
 // them as CALENDAR-DATE STRINGS to avoid the classic timezone trap (parsing the string as
@@ -25,7 +38,11 @@ export const employeeChangeSchema = z.object({
   employmentType: z.enum(EMPLOYMENT_TYPES),
   departmentId: z.string().min(1),
   managerId: z.string().min(1).nullable().optional(),
+  // FLSA + pay frequency are versioned but NOT compensation-secret (any HR editor may set them).
+  flsaClassification: z.enum(FLSA_CLASSIFICATIONS).optional(),
+  payFrequency: z.enum(PAY_FREQUENCIES).optional(),
   salary: salaryString.optional(), // only honored for comp-editors; server enforces
+  payBasis: z.enum(PAY_BASES).optional(), // pairs with salary → comp-editors only
   currency: z.string().length(3).optional(),
   effectiveFrom: futureOrToday,
   changeReason: z.string().max(500).optional(),
@@ -48,7 +65,20 @@ export const employeeCreateSchema = z.object({
   jobTitle: z.string().min(1),
   employmentType: z.enum(EMPLOYMENT_TYPES),
   role: z.enum(ASSIGNABLE_ROLES).default("EMPLOYEE"),
+  // Versioned classification (into the v1 history row).
+  flsaClassification: z.enum(FLSA_CLASSIFICATIONS).optional(),
+  payFrequency: z.enum(PAY_FREQUENCIES).optional(),
   salary: salaryString.optional(), // only honored for comp-editors
+  payBasis: z.enum(PAY_BASES).optional(), // comp-editors only
+  // Current-state descriptive fields (onto the Employee row). All optional at hire.
+  phone: z.string().max(30).optional(),
+  location: z.string().max(120).optional(),
+  workSchedule: z.string().max(120).optional(),
+  timeZone: z.string().max(60).optional(),
+  // Comp-sensitive current-state (comp-editors only; server enforces).
+  lastReviewDate: optionalCalendarDate,
+  nextReviewDate: optionalCalendarDate,
+  equityNote: z.string().max(200).optional(),
   // Every new hire starts with one emergency contact (the "at least one at all times"
   // invariant holds from day one). Created alongside the employee in the same transaction.
   emergencyContactName: z.string().min(1, "Emergency contact name is required").max(100),
@@ -77,20 +107,34 @@ export const emergencyContactSchema = z.object({
 });
 
 // ---- Corrections (no new version) ----
-export const nameEmailCorrectionSchema = z.object({
+// Current-state descriptive fields, correctable anytime (not a temporal event). Name/email are
+// required; the rest are optional and the action only touches fields actually present in the form.
+// Review dates + equity are comp-sensitive — the action ignores them unless the viewer is a
+// comp-editor. (Formerly nameEmailCorrectionSchema, before the profile revamp added fields.)
+export const detailsCorrectionSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
   email: z.string().email(),
+  phone: z.string().max(30).optional(),
+  location: z.string().max(120).optional(),
+  workSchedule: z.string().max(120).optional(),
+  timeZone: z.string().max(60).optional(),
+  lastReviewDate: optionalCalendarDate,
+  nextReviewDate: optionalCalendarDate,
+  equityNote: z.string().max(200).optional(),
 });
 
 // Material fields amended in place, only within the grace window. All optional; the action
-// applies whichever are present.
+// applies whichever are present. Includes the versioned classification fields.
 export const materialCorrectionSchema = z.object({
   jobTitle: z.string().min(1).optional(),
   employmentType: z.enum(EMPLOYMENT_TYPES).optional(),
   departmentId: z.string().min(1).optional(),
   managerId: z.string().min(1).nullable().optional(),
+  flsaClassification: z.enum(FLSA_CLASSIFICATIONS).optional(),
+  payFrequency: z.enum(PAY_FREQUENCIES).optional(),
   salary: salaryString.optional(),
+  payBasis: z.enum(PAY_BASES).optional(),
   changeReason: z.string().max(500).optional(),
 });
 

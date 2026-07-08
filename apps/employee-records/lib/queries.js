@@ -4,10 +4,12 @@ import {
   withViewer,
   resolveCompAccess,
   isPayroll,
+  getRecordScope,
   canEditEmployee,
   canEditCompensation,
-  getSubtreeIds,
   canTerminate,
+  canManageSettings,
+  getSubtreeIds,
   canViewBudget,
   canManageDepartments,
 } from "@hris/auth";
@@ -112,16 +114,35 @@ export async function getDepartmentOptions() {
   );
 }
 
-// Single employee for the profile page. Wrapped in cache() so the page body and
-// generateMetadata share one execution per request (and one payroll audit entry).
-export const getEmployeeProfile = cache(async (id) => {
+// Leave/suspension visibility helper, shared by the Overview + History queries. RLS already
+// scoped the ROWS to this viewer; here we filter FIELDS/records by whether the viewer IS the
+// subject (like the comp guard, app-side):
+//   - non-subject (HR / managing chain): full detail — current banner + all history.
+//   - subject viewing self: sees the current status as a NOTICE (status + dates), but a
+//     SUSPENSION's reason/who is hidden; and past suspensions don't appear in their history
+//     (past leaves do).
+function scopeStatusChanges(statusChanges, isSubject) {
+  const notice = (rec) => ({ ...rec, reason: null, createdBy: null }); // strip sensitive fields
+  const openRec = statusChanges.find((r) => r.endDate === null) ?? null;
+  const currentStatusChange = openRec
+    ? isSubject && openRec.type === "SUSPENSION"
+      ? notice(openRec)
+      : openRec
+    : null;
+  let statusHistory = statusChanges.filter((r) => r.endDate !== null);
+  if (isSubject) statusHistory = statusHistory.filter((r) => r.type === "LEAVE");
+  return { currentStatusChange, statusHistory };
+}
+
+// Lean identity + contact facts for the profile LAYOUT sidebar. Deliberately NO compensation
+// and NO audit write: the layout re-runs on every tab, so this must never touch the audit log
+// (that would log a "view" per tab switch). cache() dedupes it with the layout's metadata.
+export const getEmployeeSummary = cache(async (id) => {
   const viewer = await getViewer();
   if (!viewer) return null;
 
   return withViewer(viewer, async (tx) => {
-    // Everything EXCEPT salary. If the employee isn't visible to this viewer, RLS makes
-    // this return null and we 404.
-    const employee = await tx.employee.findUnique({
+    const e = await tx.employee.findUnique({
       where: { id },
       select: {
         id: true,
@@ -129,18 +150,69 @@ export const getEmployeeProfile = cache(async (id) => {
         firstName: true,
         lastName: true,
         email: true,
+        phone: true,
+        location: true,
         employmentStatus: true,
         hireDate: true,
+        terminationDate: true, // tenure end for terminated staff
+        department: { select: { name: true } },
+        manager: { select: { id: true, firstName: true, lastName: true } },
+        history: {
+          where: { effectiveTo: null },
+          select: { jobTitle: true },
+          take: 1,
+          orderBy: { version: "desc" },
+        },
+      },
+    });
+    if (!e) return null;
+
+    return {
+      id: e.id,
+      employeeNumber: e.employeeNumber,
+      firstName: e.firstName,
+      lastName: e.lastName,
+      name: `${e.firstName} ${e.lastName}`,
+      title: e.history[0]?.jobTitle ?? null,
+      employmentStatus: e.employmentStatus,
+      hireDate: e.hireDate,
+      terminationDate: e.terminationDate,
+      location: e.location,
+      email: e.email,
+      phone: e.phone,
+      department: e.department?.name ?? "—",
+      manager: e.manager
+        ? { id: e.manager.id, name: `${e.manager.firstName} ${e.manager.lastName}` }
+        : null,
+    };
+  });
+});
+
+// The Overview tab: the current version's employment facts, the comp-gated compensation block,
+// emergency contacts, status banners, activation state, and direct reports. This is the profile
+// "view", so it (and only the default tab) writes the payroll VIEW audit entry. cache() dedupes
+// the page body with any metadata so we log at most once per request.
+export const getEmployeeOverview = cache(async (id) => {
+  const viewer = await getViewer();
+  if (!viewer) return null;
+
+  return withViewer(viewer, async (tx) => {
+    // Everything EXCEPT compensation. If the employee isn't visible, RLS returns null → 404.
+    const employee = await tx.employee.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        employmentStatus: true,
         terminationDate: true,
         terminationReason: true,
         eligibleForRehire: true,
         rehireDate: true,
-        departmentId: true, // needed for the HR peer comp check
+        departmentId: true, // for the comp-access check
         userId: true,
-        // Activation state: emailVerifiedAt is null until the new hire redeems their invite.
+        // Ungated current-state facts shown in the Employment card.
+        workSchedule: true,
+        timeZone: true,
         user: { select: { emailVerifiedAt: true, invitedAt: true } },
-        department: { select: { name: true } },
-        manager: { select: { id: true, firstName: true, lastName: true } },
         reports: {
           select: { id: true, firstName: true, lastName: true },
           orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
@@ -149,20 +221,19 @@ export const getEmployeeProfile = cache(async (id) => {
           select: { id: true, name: true, relationship: true, phone: true, isPrimary: true },
           orderBy: { isPrimary: "desc" },
         },
+        // Current (open) version — the ungated employment facts. flsa + payFrequency show in the
+        // Employment card; the row id lets us fetch its comp fields below only if allowed.
         history: {
+          where: { effectiveTo: null },
+          take: 1,
+          orderBy: { version: "desc" },
           select: {
             id: true,
-            version: true,
             jobTitle: true,
             employmentType: true,
-            departmentSnapshot: true,
-            managerSnapshot: true,
-            changeReason: true,
-            changedFields: true,
-            effectiveFrom: true,
-            effectiveTo: true,
+            flsaClassification: true,
+            payFrequency: true,
           },
-          orderBy: { version: "desc" },
         },
         statusChanges: {
           select: {
@@ -180,62 +251,168 @@ export const getEmployeeProfile = cache(async (id) => {
     });
     if (!employee) return null;
 
-    // Column-level comp guard: decide, then fetch salary only if allowed.
     const canViewComp = await resolveCompAccess(
       viewer,
       { id: employee.id, departmentId: employee.departmentId },
       tx,
     );
 
+    // Comp-sensitive block: current-version salary/basis + the current-state review/equity
+    // fields. Fetched ONLY when allowed — "don't fetch what you can't show" (same rule as salary).
+    let comp = null;
     if (canViewComp) {
-      const comp = await tx.employeeHistory.findMany({
-        where: { employeeId: id },
-        select: { id: true, salary: true, currency: true },
-      });
-      const byId = new Map(comp.map((c) => [c.id, c]));
-      employee.history = employee.history.map((h) => ({
-        ...h,
-        salary: byId.get(h.id)?.salary?.toString() ?? null,
-        currency: byId.get(h.id)?.currency ?? null,
-      }));
+      const currentVersionId = employee.history[0]?.id ?? null;
+      const [row, sensitive] = await Promise.all([
+        currentVersionId
+          ? tx.employeeHistory.findUnique({
+              where: { id: currentVersionId },
+              select: { salary: true, currency: true, payBasis: true },
+            })
+          : null,
+        tx.employee.findUnique({
+          where: { id },
+          select: { lastReviewDate: true, nextReviewDate: true, equityNote: true },
+        }),
+      ]);
+      comp = {
+        salary: row?.salary?.toString() ?? null,
+        currency: row?.currency ?? null,
+        payBasis: row?.payBasis ?? null,
+        lastReviewDate: sensitive?.lastReviewDate ?? null,
+        nextReviewDate: sensitive?.nextReviewDate ?? null,
+        equityNote: sensitive?.equityNote ?? null,
+      };
 
-      // Payroll's broad comp access is logged. occurredAt is DB-defaulted; hris_app has
-      // INSERT-only on this table.
+      // Payroll's broad comp access is logged. occurredAt is DB-defaulted; hris_app is INSERT-only.
       if (isPayroll(viewer.role)) {
         await tx.employeeAuditLog.create({
-          data: {
-            employeeId: id,
-            eventType: "VIEW",
-            actorType: "USER",
-            actorId: viewer.userId,
-          },
+          data: { employeeId: id, eventType: "VIEW", actorType: "USER", actorId: viewer.userId },
         });
       }
     }
 
-    // Leave/suspension visibility. RLS already scoped the ROWS to this viewer; here we filter
-    // FIELDS/records by whether the viewer IS the subject (like the comp guard, app-side):
-    //   - non-subject (HR / managing chain): full detail — current banner + all history.
-    //   - subject viewing self: sees the current status as a NOTICE (status + dates), but a
-    //     SUSPENSION's reason/who is hidden; and past suspensions don't appear in their history
-    //     (past leaves do).
-    const { statusChanges, ...employeeRest } = employee;
+    const { statusChanges, history, ...rest } = employee;
     const isSubject = viewer.employeeId === employee.id;
-    const notice = (rec) => ({ ...rec, reason: null, createdBy: null }); // strip sensitive fields
+    const scoped = scopeStatusChanges(statusChanges, isSubject);
 
-    const openRec = statusChanges.find((r) => r.endDate === null) ?? null;
-    const currentStatusChange = openRec
-      ? isSubject && openRec.type === "SUSPENSION"
-        ? notice(openRec)
-        : openRec
-      : null;
-
-    let statusHistory = statusChanges.filter((r) => r.endDate !== null);
-    if (isSubject) statusHistory = statusHistory.filter((r) => r.type === "LEAVE");
-
-    return { ...employeeRest, canViewComp, currentStatusChange, statusHistory };
+    return {
+      ...rest,
+      current: history[0] ?? null,
+      canViewComp,
+      comp,
+      ...scoped,
+    };
   });
 });
+
+// The History tab: the full effective-dated timeline. Salary/pay-basis are comp-gated; FLSA and
+// pay frequency ride along ungated so the timeline can show role/classification changes. Logs a
+// payroll VIEW too, since salary is exposed here just as on Overview.
+export async function getEmployeeHistory(id) {
+  const viewer = await getViewer();
+  if (!viewer) return null;
+
+  return withViewer(viewer, async (tx) => {
+    const employee = await tx.employee.findUnique({
+      where: { id },
+      select: { id: true, departmentId: true },
+    });
+    if (!employee) return null;
+
+    const history = await tx.employeeHistory.findMany({
+      where: { employeeId: id },
+      orderBy: { version: "desc" },
+      select: {
+        id: true,
+        version: true,
+        jobTitle: true,
+        employmentType: true,
+        departmentSnapshot: true,
+        managerSnapshot: true,
+        changeReason: true,
+        changedFields: true,
+        effectiveFrom: true,
+        effectiveTo: true,
+        flsaClassification: true,
+        payFrequency: true,
+      },
+    });
+
+    const canViewComp = await resolveCompAccess(
+      viewer,
+      { id: employee.id, departmentId: employee.departmentId },
+      tx,
+    );
+
+    let rows = history;
+    if (canViewComp) {
+      const comp = await tx.employeeHistory.findMany({
+        where: { employeeId: id },
+        select: { id: true, salary: true, currency: true, payBasis: true },
+      });
+      const byId = new Map(comp.map((c) => [c.id, c]));
+      rows = history.map((h) => ({
+        ...h,
+        salary: byId.get(h.id)?.salary?.toString() ?? null,
+        currency: byId.get(h.id)?.currency ?? null,
+        payBasis: byId.get(h.id)?.payBasis ?? null,
+      }));
+
+      if (isPayroll(viewer.role)) {
+        await tx.employeeAuditLog.create({
+          data: { employeeId: id, eventType: "VIEW", actorType: "USER", actorId: viewer.userId },
+        });
+      }
+    }
+
+    return { history: rows, canViewComp };
+  });
+}
+
+// The Access & RBAC tab: this employee's system role + a read-only summary of what that role
+// grants, plus their account-activation state. Gated to HR or the subject themselves (a manager
+// viewing a report gets null → the route 404s and the tab is hidden). Capabilities come straight
+// from the pure role logic in @hris/auth, so this view can never drift from real enforcement.
+export async function getEmployeeAccess(id) {
+  const viewer = await getViewer();
+  if (!viewer) return null;
+  const isSubject = viewer.employeeId === id;
+  if (!canEditEmployee(viewer) && !isSubject) return null;
+
+  return withViewer(viewer, async (tx) => {
+    const employee = await tx.employee.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        user: {
+          select: { role: true, email: true, emailVerifiedAt: true, invitedAt: true },
+        },
+      },
+    });
+    if (!employee) return null;
+
+    const roleViewer = { role: employee.user.role };
+    return {
+      employee: { id: employee.id, name: `${employee.firstName} ${employee.lastName}` },
+      role: employee.user.role,
+      email: employee.user.email,
+      activation: {
+        emailVerifiedAt: employee.user.emailVerifiedAt,
+        invitedAt: employee.user.invitedAt,
+      },
+      capabilities: {
+        recordScope: getRecordScope(roleViewer),
+        editRecords: canEditEmployee(roleViewer),
+        editCompensation: canEditCompensation(roleViewer),
+        terminate: canTerminate(roleViewer),
+        manageDepartments: canManageDepartments(roleViewer),
+        manageSettings: canManageSettings(roleViewer),
+      },
+    };
+  });
+}
 
 // Prefill data for the "record a change" form. Returns null if the viewer may not edit
 // (also gates the route). Manager candidates exclude the employee's own subtree so a
@@ -265,9 +442,11 @@ export async function getEmployeeForEdit(id) {
       select: {
         jobTitle: true,
         employmentType: true,
+        flsaClassification: true,
+        payFrequency: true,
         currency: true,
         effectiveFrom: true,
-        ...(canEditComp ? { salary: true } : {}),
+        ...(canEditComp ? { salary: true, payBasis: true } : {}),
       },
     });
 
@@ -314,6 +493,14 @@ export async function getEmployeeForCorrection(id) {
         email: true,
         departmentId: true,
         managerId: true,
+        // Current-state descriptive fields (prefill the details-correction form).
+        phone: true,
+        location: true,
+        workSchedule: true,
+        timeZone: true,
+        ...(canEditComp
+          ? { lastReviewDate: true, nextReviewDate: true, equityNote: true }
+          : {}),
       },
     });
     if (!employee) return null;
@@ -324,9 +511,11 @@ export async function getEmployeeForCorrection(id) {
       select: {
         jobTitle: true,
         employmentType: true,
+        flsaClassification: true,
+        payFrequency: true,
         currency: true,
         createdAt: true,
-        ...(canEditComp ? { salary: true } : {}),
+        ...(canEditComp ? { salary: true, payBasis: true } : {}),
       },
     });
 
@@ -747,7 +936,14 @@ const AUDIT_PAGE_SIZE = 25;
 // RLS hides ROWS, not JSON contents: an audit diff can carry a salary the viewer isn't
 // entitled to (e.g. HR_GENERALIST reading a superior's UPDATE). Same guard as the profile,
 // applied to the before/after payloads.
-const COMP_KEYS = new Set(["salary", "currency"]);
+const COMP_KEYS = new Set([
+  "salary",
+  "currency",
+  "payBasis",
+  "lastReviewDate",
+  "nextReviewDate",
+  "equityNote",
+]);
 function redactComp(state) {
   if (!state || typeof state !== "object") return state;
   return Object.fromEntries(
@@ -766,7 +962,7 @@ export const getEmployeeAuditLog = cache(async (employeeId, cursor = null) => {
   if (!viewer) return null;
 
   return withViewer(viewer, async (tx) => {
-    // Lean fetch on purpose — NOT getEmployeeProfile, which writes a VIEW audit row for
+    // Lean fetch on purpose — NOT getEmployeeOverview, which writes a VIEW audit row for
     // payroll viewers. Reading the log must never add to the log.
     const employee = await tx.employee.findUnique({
       where: { id: employeeId },

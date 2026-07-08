@@ -1,4 +1,4 @@
-import { humanize, formatDate, formatMoney } from "@/lib/format";
+import { humanize, formatDate, formatMoney, formatPayBasis } from "@/lib/format";
 
 // Presentational, server-rendered (no "use client" — it has no interactivity).
 // Renders the effective-dated history as a vertical timeline, newest at the top.
@@ -53,10 +53,25 @@ export function HistoryTimeline({ history }) {
                 <dt className="text-zinc-400">Manager</dt>
                 <dd>{h.managerSnapshot ?? "—"}</dd>
               </div>
+              {h.flsaClassification && (
+                <div className="flex gap-2">
+                  <dt className="text-zinc-400">FLSA</dt>
+                  <dd>{humanize(h.flsaClassification)}</dd>
+                </div>
+              )}
+              {h.payFrequency && (
+                <div className="flex gap-2">
+                  <dt className="text-zinc-400">Pay frequency</dt>
+                  <dd>{humanize(h.payFrequency)}</dd>
+                </div>
+              )}
               {h.salary != null && (
                 <div className="flex gap-2">
                   <dt className="text-zinc-400">Salary</dt>
-                  <dd className="font-medium">{formatMoney(h.salary, h.currency)}</dd>
+                  <dd className="font-medium">
+                    {formatMoney(h.salary, h.currency)}
+                    {formatPayBasis(h.payBasis)}
+                  </dd>
                 </div>
               )}
               {h.changeReason && (

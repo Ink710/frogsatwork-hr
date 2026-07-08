@@ -14,7 +14,7 @@ import {
 import { randomUUID } from "node:crypto";
 import {
   employeeChangeSchema,
-  nameEmailCorrectionSchema,
+  detailsCorrectionSchema,
   materialCorrectionSchema,
   terminationSchema,
   rehireSchema,
@@ -41,7 +41,10 @@ export async function recordChange(employeeId, _prevState, formData) {
     employmentType: formData.get("employmentType"),
     departmentId: formData.get("departmentId"),
     managerId: formData.get("managerId") || null,
+    flsaClassification: formData.get("flsaClassification") || undefined,
+    payFrequency: formData.get("payFrequency") || undefined,
     salary: formData.get("salary") || undefined,
+    payBasis: formData.get("payBasis") || undefined,
     currency: formData.get("currency") || undefined,
     effectiveFrom: formData.get("effectiveFrom"),
     changeReason: formData.get("changeReason") || undefined,
@@ -68,14 +71,19 @@ export async function recordChange(employeeId, _prevState, formData) {
         throw new Error("Effective date must be after the current version started.");
       }
 
-      // Compensation is separately guarded: a salary change requires comp rights.
+      // Compensation is separately guarded: a salary or pay-basis change requires comp rights.
+      const canComp = canEditCompensation(viewer);
       const currentSalaryStr = current.salary.toString();
       const wantsSalaryChange = input.salary != null && input.salary !== currentSalaryStr;
-      if (wantsSalaryChange && !canEditCompensation(viewer)) {
+      const wantsPayBasisChange = input.payBasis != null && input.payBasis !== current.payBasis;
+      if ((wantsSalaryChange || wantsPayBasisChange) && !canComp) {
         throw new Error("You are not authorized to change compensation.");
       }
-      const newSalary =
-        canEditCompensation(viewer) && input.salary != null ? input.salary : currentSalaryStr;
+      const newSalary = canComp && input.salary != null ? input.salary : currentSalaryStr;
+      const newPayBasis = canComp && input.payBasis != null ? input.payBasis : current.payBasis;
+      // FLSA + pay frequency aren't comp-secret; carry forward the current value if omitted.
+      const newFlsa = input.flsaClassification ?? current.flsaClassification;
+      const newPayFrequency = input.payFrequency ?? current.payFrequency;
 
       // Cycle guard: a new manager can't be the employee or anyone in their subtree.
       if (input.managerId) {
@@ -115,7 +123,10 @@ export async function recordChange(employeeId, _prevState, formData) {
       mark("employmentType", current.employmentType, input.employmentType);
       mark("departmentId", employee.departmentId, input.departmentId);
       mark("managerId", employee.managerId, input.managerId ?? null);
+      mark("flsaClassification", current.flsaClassification, newFlsa);
+      mark("payFrequency", current.payFrequency, newPayFrequency);
       if (wantsSalaryChange) mark("salary", currentSalaryStr, newSalary);
+      if (wantsPayBasisChange) mark("payBasis", current.payBasis, newPayBasis);
 
       if (changed.length === 0) throw new Error("Nothing changed.");
 
@@ -131,7 +142,10 @@ export async function recordChange(employeeId, _prevState, formData) {
           version: current.version + 1,
           jobTitle: input.jobTitle,
           employmentType: input.employmentType,
+          flsaClassification: newFlsa,
+          payFrequency: newPayFrequency,
           salary: newSalary,
+          payBasis: newPayBasis,
           currency: input.currency ?? current.currency,
           departmentSnapshot: dept?.name ?? current.departmentSnapshot,
           managerSnapshot,
@@ -169,43 +183,85 @@ export async function recordChange(employeeId, _prevState, formData) {
   redirect(`/employees/${employeeId}`);
 }
 
-// CORRECTION — identity (name/email). Not a temporal event: updates the current value,
-// no new version. Always allowed for HR, no date restriction. Audited as CORRECTION.
-export async function correctIdentity(employeeId, _prevState, formData) {
+// CORRECTION — current-state details (name/email + phone/location/schedule/timezone, and the
+// comp-sensitive review dates + equity). Not a temporal event: updates current values, no new
+// version. Only fields actually PRESENT in the submitted form are touched (formData.has), so a
+// partial form never blanks a field it didn't render. Comp-sensitive fields are applied only for
+// comp-editors. Audited as CORRECTION; the comp keys are redacted in the audit query for viewers
+// who can't see compensation.
+export async function correctDetails(employeeId, _prevState, formData) {
   const viewer = await getViewer();
   if (!viewer || !canEditEmployee(viewer)) return { error: "You are not authorized to edit." };
+  const canComp = canEditCompensation(viewer);
 
-  const parsed = nameEmailCorrectionSchema.safeParse({
+  const parsed = detailsCorrectionSchema.safeParse({
     firstName: formData.get("firstName"),
     lastName: formData.get("lastName"),
     email: formData.get("email"),
+    phone: formData.get("phone") ?? undefined,
+    location: formData.get("location") ?? undefined,
+    workSchedule: formData.get("workSchedule") ?? undefined,
+    timeZone: formData.get("timeZone") ?? undefined,
+    lastReviewDate: formData.get("lastReviewDate") || undefined,
+    nextReviewDate: formData.get("nextReviewDate") || undefined,
+    equityNote: formData.get("equityNote") ?? undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
   const input = parsed.data;
+
+  // Empty string clears a nullable field.
+  const nz = (v) => (v == null || v === "" ? null : v);
 
   try {
     await withViewer(viewer, async (tx) => {
       const before = await tx.employee.findUnique({
         where: { id: employeeId },
-        select: { firstName: true, lastName: true, email: true },
+        select: {
+          firstName: true, lastName: true, email: true,
+          phone: true, location: true, workSchedule: true, timeZone: true,
+          lastReviewDate: true, nextReviewDate: true, equityNote: true,
+        },
       });
       if (!before) throw new Error("Employee not found.");
 
-      const changed = {};
-      for (const k of ["firstName", "lastName", "email"]) {
-        if (before[k] !== input[k]) changed[k] = { from: before[k], to: input[k] };
+      // Build the update only from fields the form actually submitted.
+      const next = { firstName: input.firstName, lastName: input.lastName, email: input.email };
+      if (formData.has("phone")) next.phone = nz(input.phone);
+      if (formData.has("location")) next.location = nz(input.location);
+      if (formData.has("workSchedule")) next.workSchedule = nz(input.workSchedule);
+      if (formData.has("timeZone")) next.timeZone = nz(input.timeZone);
+      // Comp-sensitive: only a comp-editor may change these (others' values are ignored, not applied).
+      if (canComp) {
+        if (formData.has("lastReviewDate")) next.lastReviewDate = input.lastReviewDate ?? null;
+        if (formData.has("nextReviewDate")) next.nextReviewDate = input.nextReviewDate ?? null;
+        if (formData.has("equityNote")) next.equityNote = nz(input.equityNote);
       }
-      if (Object.keys(changed).length === 0) throw new Error("Nothing to correct.");
 
-      await tx.employee.update({ where: { id: employeeId }, data: input });
+      // Diff for the audit. Dates compare by time; store as ISO date strings.
+      const iso = (v) => (v instanceof Date ? v.toISOString().slice(0, 10) : v);
+      const same = (a, b) =>
+        a instanceof Date || b instanceof Date
+          ? (a ? new Date(a).getTime() : null) === (b ? new Date(b).getTime() : null)
+          : (a ?? "") === (b ?? "");
+      const beforeState = {};
+      const afterState = {};
+      for (const k of Object.keys(next)) {
+        if (!same(before[k], next[k])) {
+          beforeState[k] = iso(before[k]) ?? null;
+          afterState[k] = iso(next[k]) ?? null;
+        }
+      }
+      if (Object.keys(afterState).length === 0) throw new Error("Nothing to correct.");
+
+      await tx.employee.update({ where: { id: employeeId }, data: next });
       await tx.employeeAuditLog.create({
         data: {
           employeeId,
           eventType: "CORRECTION",
           actorType: "USER",
           actorId: viewer.userId,
-          beforeState: Object.fromEntries(Object.entries(changed).map(([k, v]) => [k, v.from])),
-          afterState: Object.fromEntries(Object.entries(changed).map(([k, v]) => [k, v.to])),
+          beforeState,
+          afterState,
         },
       });
     });
@@ -229,7 +285,10 @@ export async function correctMaterial(employeeId, _prevState, formData) {
     employmentType: formData.get("employmentType") || undefined,
     departmentId: formData.get("departmentId") || undefined,
     managerId: formData.get("managerId") ?? undefined, // "" means "None"
+    flsaClassification: formData.get("flsaClassification") || undefined,
+    payFrequency: formData.get("payFrequency") || undefined,
     salary: formData.get("salary") || undefined,
+    payBasis: formData.get("payBasis") || undefined,
     changeReason: formData.get("changeReason") || undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
@@ -258,7 +317,8 @@ export async function correctMaterial(employeeId, _prevState, formData) {
 
       const salaryStr = current.salary.toString();
       const wantsSalary = input.salary != null && input.salary !== salaryStr;
-      if (wantsSalary && !canEditCompensation(viewer)) {
+      const wantsPayBasis = input.payBasis != null && input.payBasis !== current.payBasis;
+      if ((wantsSalary || wantsPayBasis) && !canEditCompensation(viewer)) {
         throw new Error("You are not authorized to correct compensation.");
       }
       if (managerProvided && managerId) {
@@ -282,7 +342,12 @@ export async function correctMaterial(employeeId, _prevState, formData) {
       if (input.jobTitle != null) mark("jobTitle", current.jobTitle, input.jobTitle, versionData);
       if (input.employmentType != null)
         mark("employmentType", current.employmentType, input.employmentType, versionData);
+      if (input.flsaClassification != null)
+        mark("flsaClassification", current.flsaClassification, input.flsaClassification, versionData);
+      if (input.payFrequency != null)
+        mark("payFrequency", current.payFrequency, input.payFrequency, versionData);
       if (wantsSalary) mark("salary", salaryStr, input.salary, versionData);
+      if (wantsPayBasis) mark("payBasis", current.payBasis, input.payBasis, versionData);
 
       if (input.departmentId != null && input.departmentId !== employee.departmentId) {
         const dept = await tx.department.findUnique({
@@ -803,15 +868,31 @@ export async function createEmployee(_prevState, formData) {
     jobTitle: formData.get("jobTitle"),
     employmentType: formData.get("employmentType"),
     role: formData.get("role") || "EMPLOYEE",
+    flsaClassification: formData.get("flsaClassification") || undefined,
+    payFrequency: formData.get("payFrequency") || undefined,
     salary: formData.get("salary") || undefined,
+    payBasis: formData.get("payBasis") || undefined,
+    phone: formData.get("phone") || undefined,
+    location: formData.get("location") || undefined,
+    workSchedule: formData.get("workSchedule") || undefined,
+    timeZone: formData.get("timeZone") || undefined,
+    lastReviewDate: formData.get("lastReviewDate") || undefined,
+    nextReviewDate: formData.get("nextReviewDate") || undefined,
+    equityNote: formData.get("equityNote") || undefined,
     emergencyContactName: formData.get("emergencyContactName"),
     emergencyContactRelationship: formData.get("emergencyContactRelationship"),
     emergencyContactPhone: formData.get("emergencyContactPhone"),
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
   const input = parsed.data;
-  // Salary only honored for comp-editors; otherwise the record starts at 0.00 (set later).
-  const salary = canEditCompensation(viewer) && input.salary ? input.salary : "0.00";
+  // Compensation fields only honored for comp-editors; otherwise salary starts at 0.00 and the
+  // comp-sensitive fields (payBasis / review dates / equity) start empty (set later by payroll).
+  const canComp = canEditCompensation(viewer);
+  const salary = canComp && input.salary ? input.salary : "0.00";
+  const payBasis = canComp ? (input.payBasis ?? null) : null;
+  const lastReviewDate = canComp ? (input.lastReviewDate ?? null) : null;
+  const nextReviewDate = canComp ? (input.nextReviewDate ?? null) : null;
+  const equityNote = canComp ? (input.equityNote ?? null) : null;
 
   let newId;
   try {
@@ -860,11 +941,16 @@ export async function createEmployee(_prevState, formData) {
       await tx.$executeRaw`
         INSERT INTO "Employee"
           (id, "employeeNumber", "firstName", "lastName", email, "employmentStatus",
-           "hireDate", "userId", "orgId", "departmentId", "managerId", "createdAt", "updatedAt")
+           "hireDate", "userId", "orgId", "departmentId", "managerId",
+           location, phone, "workSchedule", "timeZone", "lastReviewDate", "nextReviewDate", "equityNote",
+           "createdAt", "updatedAt")
         VALUES
           (${employeeId}, ${employeeNumber}, ${input.firstName}, ${input.lastName}, ${input.email},
            ${"ACTIVE"}::"EmploymentStatus", ${input.hireDate}, ${user.id}, ${viewer.orgId},
-           ${input.departmentId}, ${input.managerId ?? null}, now(), now())`;
+           ${input.departmentId}, ${input.managerId ?? null},
+           ${input.location ?? null}, ${input.phone ?? null}, ${input.workSchedule ?? null},
+           ${input.timeZone ?? null}, ${lastReviewDate}, ${nextReviewDate}, ${equityNote},
+           now(), now())`;
       // 3. Initial version.
       await tx.employeeHistory.create({
         data: {
@@ -872,7 +958,10 @@ export async function createEmployee(_prevState, formData) {
           version: 1,
           jobTitle: input.jobTitle,
           employmentType: input.employmentType,
+          flsaClassification: input.flsaClassification ?? null,
+          payFrequency: input.payFrequency ?? null,
           salary,
+          payBasis,
           currency: "USD",
           departmentSnapshot: dept.name,
           managerSnapshot,

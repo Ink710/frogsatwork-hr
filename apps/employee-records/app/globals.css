@@ -1,8 +1,21 @@
 @import "tailwindcss";
 
+/* Class-based dark mode: `dark:` utilities activate when an ancestor (the <html>) has the
+   `.dark` class, instead of following prefers-color-scheme directly. The theme controller sets
+   that class — from the saved preference, or from the OS when the preference is "system" — so a
+   manual choice can override the browser setting. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --org-line: #d4d4d8;
+}
+
+.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --org-line: #3f3f46;
 }
 
 @theme inline {
@@ -10,13 +23,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
@@ -90,9 +96,4 @@ body {
   width: 0;
   height: 20px;
   border-left: 1px solid var(--org-line, #d4d4d8);
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --org-line: #3f3f46;
-  }
 }

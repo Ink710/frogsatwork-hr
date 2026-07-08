@@ -30,7 +30,7 @@ import { getViewer } from "@hris/auth";
 import { withViewer } from "@hris/auth";
 import {
   recordChange,
-  correctIdentity,
+  correctDetails,
   correctMaterial,
   terminateEmployee,
   rehireEmployee,
@@ -69,6 +69,11 @@ const versionCount = (empId) =>
   withViewer(V.ana, (tx) => tx.employeeHistory.count({ where: { employeeId: empId } }));
 const auditCount = (empId, eventType) =>
   withViewer(V.ana, (tx) => tx.employeeAuditLog.count({ where: { employeeId: empId, eventType } }));
+const currentVersion = (empId) =>
+  withViewer(V.ana, (tx) =>
+    tx.employeeHistory.findFirst({ where: { employeeId: empId, effectiveTo: null }, orderBy: { version: "desc" } }));
+const employeeRow = (empId) =>
+  withViewer(V.ana, (tx) => tx.employee.findUnique({ where: { id: empId } }));
 
 function changeForm(overrides = {}) {
   const fd = new FormData();
@@ -155,7 +160,7 @@ describe("corrections", () => {
     fd.set("firstName", "Priyanka");
     fd.set("lastName", "Nair");
     fd.set("email", "priya.nair@peoplebase.test");
-    const r = await invoke(correctIdentity(ID.priya, {}, fd));
+    const r = await invoke(correctDetails(ID.priya, {}, fd));
     expect(r.ok).toBe(true);
     expect(await versionCount(ID.priya)).toBe(1);
     expect(await auditCount(ID.priya, "CORRECTION")).toBe(1);
@@ -254,5 +259,110 @@ describe("createEmployee", () => {
     getViewer.mockResolvedValue(V.marcus);
     const r = await invoke(createEmployee({}, createForm()));
     expect(r.error).toMatch(/authorized/i);
+  });
+
+  function createForm2(overrides = {}) {
+    const fd = new FormData();
+    fd.set("firstName", "Ada");
+    fd.set("lastName", "Lovelace");
+    fd.set("email", `ada+${Math.floor(Math.random() * 1e6)}@peoplebase.test`);
+    fd.set("hireDate", today());
+    fd.set("departmentId", DEPT_ENG);
+    fd.set("jobTitle", "Software Engineer");
+    fd.set("employmentType", "FULL_TIME");
+    fd.set("role", "EMPLOYEE");
+    fd.set("emergencyContactName", "Grace Hopper");
+    fd.set("emergencyContactRelationship", "Spouse");
+    fd.set("emergencyContactPhone", "+1-555-0100");
+    for (const [k, v] of Object.entries(overrides)) fd.set(k, v);
+    return fd;
+  }
+  const findFull = (email) =>
+    withViewer(V.ana, (tx) => tx.employee.findFirst({ where: { email }, include: { history: true } }));
+
+  it("HR_ADMIN create persists versioned + current-state profile fields", async () => {
+    getViewer.mockResolvedValue(V.ana);
+    const fd = createForm2({
+      flsaClassification: "NON_EXEMPT", payFrequency: "MONTHLY", salary: "90000", payBasis: "PER_MONTH",
+      phone: "+1 555 0001", location: "Remote", workSchedule: "Flexible", timeZone: "America/Denver",
+      lastReviewDate: "2025-03-01", equityNote: "None",
+    });
+    const email = fd.get("email");
+    expect((await invoke(createEmployee({}, fd))).ok).toBe(true);
+    const emp = await findFull(email);
+    expect(emp.phone).toBe("+1 555 0001");
+    expect(emp.location).toBe("Remote");
+    expect(emp.timeZone).toBe("America/Denver");
+    expect(emp.equityNote).toBe("None");
+    expect(emp.history[0].flsaClassification).toBe("NON_EXEMPT");
+    expect(emp.history[0].payFrequency).toBe("MONTHLY");
+    expect(emp.history[0].payBasis).toBe("PER_MONTH");
+  });
+
+  it("HR_GENERALIST create drops comp-sensitive fields (payBasis, review, equity)", async () => {
+    getViewer.mockResolvedValue(V.bianca);
+    const fd = createForm2({ payBasis: "PER_MONTH", lastReviewDate: "2025-03-01", equityNote: "Lots" });
+    const email = fd.get("email");
+    expect((await invoke(createEmployee({}, fd))).ok).toBe(true);
+    const emp = await findFull(email);
+    expect(emp.lastReviewDate).toBeNull();
+    expect(emp.equityNote).toBeNull();
+    expect(emp.history[0].payBasis).toBeNull();
+  });
+});
+
+describe("profile fields (Phase C)", () => {
+  it("recordChange persists FLSA + pay frequency into the new version", async () => {
+    getViewer.mockResolvedValue(V.ana);
+    const r = await invoke(recordChange(ID.priya, {}, changeForm({ flsaClassification: "NON_EXEMPT", payFrequency: "MONTHLY" })));
+    expect(r.ok).toBe(true);
+    const v = await currentVersion(ID.priya);
+    expect(v.version).toBe(2);
+    expect(v.flsaClassification).toBe("NON_EXEMPT");
+    expect(v.payFrequency).toBe("MONTHLY");
+    expect(v.changedFields).toEqual(expect.arrayContaining(["flsaClassification", "payFrequency"]));
+  });
+
+  it("payBasis change needs comp rights; FLSA does not", async () => {
+    // Generalist: a payBasis change is rejected (comp), leaving nothing written.
+    getViewer.mockResolvedValue(V.bianca);
+    const denied = await invoke(recordChange(ID.priya, {}, changeForm({ payBasis: "PER_MONTH" })));
+    expect(denied.error).toMatch(/compensation/i);
+    expect(await versionCount(ID.priya)).toBe(1);
+    // But the same generalist CAN flip FLSA (not comp-secret).
+    const ok = await invoke(recordChange(ID.priya, {}, changeForm({ flsaClassification: "NON_EXEMPT" })));
+    expect(ok.ok).toBe(true);
+    expect((await currentVersion(ID.priya)).flsaClassification).toBe("NON_EXEMPT");
+  });
+
+  it("correctDetails updates phone without blanking location (formData.has gating)", async () => {
+    getViewer.mockResolvedValue(V.ana);
+    const before = await employeeRow(ID.priya);
+    const fd = new FormData();
+    fd.set("firstName", before.firstName);
+    fd.set("lastName", before.lastName);
+    fd.set("email", before.email);
+    fd.set("phone", "+1 999 0000"); // location deliberately NOT submitted
+    const r = await invoke(correctDetails(ID.priya, {}, fd));
+    expect(r.ok).toBe(true);
+    const after = await employeeRow(ID.priya);
+    expect(after.phone).toBe("+1 999 0000");
+    expect(after.location).toBe(before.location); // untouched
+    expect(await auditCount(ID.priya, "CORRECTION")).toBe(1);
+  });
+
+  it("correctDetails: a non-comp editor cannot change equity", async () => {
+    getViewer.mockResolvedValue(V.bianca);
+    const before = await employeeRow(ID.priya);
+    const fd = new FormData();
+    fd.set("firstName", "Priyanka"); // a real change so it isn't "nothing to correct"
+    fd.set("lastName", before.lastName);
+    fd.set("email", before.email);
+    fd.set("equityNote", "Hacked");
+    const r = await invoke(correctDetails(ID.priya, {}, fd));
+    expect(r.ok).toBe(true);
+    const after = await employeeRow(ID.priya);
+    expect(after.firstName).toBe("Priyanka"); // name applied
+    expect(after.equityNote).toBe(before.equityNote); // equity ignored
   });
 });

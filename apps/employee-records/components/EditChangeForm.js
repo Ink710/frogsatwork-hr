@@ -2,13 +2,12 @@
 
 import { useActionState } from "react";
 import { recordChange } from "@/app/employees/[id]/actions";
-
-const TYPES = [
-  ["FULL_TIME", "Full time"],
-  ["PART_TIME", "Part time"],
-  ["CONTRACT", "Contract"],
-  ["INTERN", "Intern"],
-];
+import {
+  EMPLOYMENT_TYPE_OPTIONS,
+  FLSA_OPTIONS,
+  PAY_FREQUENCY_OPTIONS,
+  PAY_BASIS_OPTIONS,
+} from "@/lib/enums";
 
 const field = "mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900";
 const label = "block text-sm font-medium";
@@ -34,8 +33,23 @@ export function EditChangeForm({ employeeId, employee, current, departments, man
       <div>
         <label className={label} htmlFor="employmentType">Employment type</label>
         <select id="employmentType" name="employmentType" defaultValue={current?.employmentType ?? "FULL_TIME"} className={field}>
-          {TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          {EMPLOYMENT_TYPE_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className={label} htmlFor="flsaClassification">FLSA classification</label>
+          <select id="flsaClassification" name="flsaClassification" defaultValue={current?.flsaClassification ?? "EXEMPT"} className={field}>
+            {FLSA_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className={label} htmlFor="payFrequency">Pay frequency</label>
+          <select id="payFrequency" name="payFrequency" defaultValue={current?.payFrequency ?? "SEMI_MONTHLY"} className={field}>
+            {PAY_FREQUENCY_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </div>
       </div>
 
       <div>
@@ -54,11 +68,19 @@ export function EditChangeForm({ employeeId, employee, current, departments, man
       </div>
 
       {canEditComp && (
-        <div>
-          <label className={label} htmlFor="salary">Salary</label>
-          <input id="salary" name="salary" defaultValue={current?.salary ?? ""} inputMode="decimal"
-                 placeholder="e.g. 120000" className={field} />
-          <input type="hidden" name="currency" value={current?.currency ?? "USD"} />
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className={label} htmlFor="salary">Salary</label>
+            <input id="salary" name="salary" defaultValue={current?.salary ?? ""} inputMode="decimal"
+                   placeholder="e.g. 120000" className={field} />
+            <input type="hidden" name="currency" value={current?.currency ?? "USD"} />
+          </div>
+          <div>
+            <label className={label} htmlFor="payBasis">Pay basis</label>
+            <select id="payBasis" name="payBasis" defaultValue={current?.payBasis ?? "PER_YEAR"} className={field}>
+              {PAY_BASIS_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </div>
         </div>
       )}
 

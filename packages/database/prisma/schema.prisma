@@ -41,6 +41,29 @@ enum EmploymentType {
   INTERN
 }
 
+// FLSA exemption status — whether the role is overtime-exempt (US Fair Labor Standards Act).
+// Versioned on EmployeeHistory because a promotion can flip it.
+enum FlsaClassification {
+  EXEMPT
+  NON_EXEMPT
+}
+
+// How often the employee is paid. Versioned because it can change with a comp/role change.
+enum PayFrequency {
+  WEEKLY
+  BIWEEKLY
+  SEMI_MONTHLY
+  MONTHLY
+}
+
+// The period the salary figure is expressed in — lets us render "MXN 78,000 / mo" vs "/ yr".
+// Versioned alongside salary (they only make sense together).
+enum PayBasis {
+  PER_HOUR
+  PER_MONTH
+  PER_YEAR
+}
+
 enum DocumentType {
   CONTRACT
   IDENTIFICATION
@@ -143,7 +166,17 @@ model Employee {
   terminationReason String? // free-text circumstances of dismissal
   eligibleForRehire Boolean         @default(true) // set at termination; gates rehire
   rehireDate       DateTime?
-  locationId       String? // plain string for now; promote to a Location model later
+  location         String? // plain string for now (e.g. "Mexico City, MX"); promote to a Location model later
+  // Current-state descriptive fields (NOT versioned — a phone number changing isn't a dated
+  // career event). Edited via the correction flow; never overwrite the history timeline.
+  phone           String?
+  workSchedule    String? // free text for now, e.g. "Mon-Fri, 09:00-18:00"
+  timeZone        String? // IANA name, e.g. "America/Mexico_City"
+  // Review dates + equity are comp-sensitive current-state: shown only inside the gated
+  // Compensation card, conditionally selected only when the viewer can see compensation.
+  lastReviewDate  DateTime?
+  nextReviewDate  DateTime?
+  equityNote      String? // free text, e.g. "4-yr cliff 1"
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
 
@@ -188,6 +221,12 @@ model EmployeeHistory {
   employmentType     EmploymentType
   salary             Decimal        @db.Decimal(12, 2) // money is never a float
   currency           String         @default("USD")
+  // Versioned comp/role attributes. Nullable so pre-existing history rows migrate without a
+  // backfill guess; every new version (create/change) sets them. flsa + payFrequency render in
+  // the (ungated) Employment card; payBasis pairs with salary in the gated Compensation card.
+  flsaClassification FlsaClassification?
+  payFrequency       PayFrequency?
+  payBasis           PayBasis?
   changedFields      Json // which fields changed in this version, e.g. ["salary","jobTitle"]
   changeReason       String?
   effectiveFrom      DateTime

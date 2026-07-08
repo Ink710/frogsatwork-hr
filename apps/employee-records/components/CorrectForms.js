@@ -1,28 +1,31 @@
 "use client";
 
 import { useActionState } from "react";
-import { correctIdentity, correctMaterial } from "@/app/employees/[id]/actions";
+import { correctDetails, correctMaterial } from "@/app/employees/[id]/actions";
+import {
+  EMPLOYMENT_TYPE_OPTIONS,
+  FLSA_OPTIONS,
+  PAY_FREQUENCY_OPTIONS,
+  PAY_BASIS_OPTIONS,
+} from "@/lib/enums";
 
-const TYPES = [
-  ["FULL_TIME", "Full time"],
-  ["PART_TIME", "Part time"],
-  ["CONTRACT", "Contract"],
-  ["INTERN", "Intern"],
-];
 const field = "mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900";
 const label = "block text-sm font-medium";
 
+// A stored Date → "YYYY-MM-DD" for a date input (UTC slice matches the stored calendar date).
+const toDateInput = (d) => (d ? new Date(d).toISOString().slice(0, 10) : "");
+
 export function CorrectForms({ employeeId, employee, current, withinWindow, windowDays, departments, managerOptions, canEditComp }) {
-  const identityAction = correctIdentity.bind(null, employeeId);
+  const detailsAction = correctDetails.bind(null, employeeId);
   const materialAction = correctMaterial.bind(null, employeeId);
-  const [idState, idForm, idPending] = useActionState(identityAction, {});
+  const [idState, idForm, idPending] = useActionState(detailsAction, {});
   const [mtState, mtForm, mtPending] = useActionState(materialAction, {});
 
   return (
     <div className="mt-6 space-y-10">
-      {/* Identity — always correctable */}
+      {/* Details — current-state, always correctable */}
       <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Identity</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Details</h2>
         <p className="mt-1 text-xs text-zinc-400">Descriptive data — correctable anytime, timestamped in the audit log.</p>
         <form action={idForm} className="mt-4 space-y-4">
           {idState?.error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-400">{idState.error}</p>}
@@ -40,8 +43,48 @@ export function CorrectForms({ employeeId, employee, current, withinWindow, wind
             <label className={label} htmlFor="email">Email</label>
             <input id="email" name="email" type="email" defaultValue={employee.email} required className={field} />
           </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className={label} htmlFor="phone">Phone</label>
+              <input id="phone" name="phone" defaultValue={employee.phone ?? ""} className={field} />
+            </div>
+            <div>
+              <label className={label} htmlFor="location">Location</label>
+              <input id="location" name="location" defaultValue={employee.location ?? ""} placeholder="e.g. Austin, TX" className={field} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className={label} htmlFor="workSchedule">Work schedule</label>
+              <input id="workSchedule" name="workSchedule" defaultValue={employee.workSchedule ?? ""} placeholder="e.g. Mon–Fri, 09:00–18:00" className={field} />
+            </div>
+            <div>
+              <label className={label} htmlFor="timeZone">Time zone</label>
+              <input id="timeZone" name="timeZone" defaultValue={employee.timeZone ?? ""} placeholder="e.g. America/Chicago" className={field} />
+            </div>
+          </div>
+
+          {/* Comp-sensitive current-state — only rendered (and only accepted) for comp-editors. */}
+          {canEditComp && (
+            <div className="grid grid-cols-2 gap-4 rounded-md border border-zinc-200 p-4 dark:border-zinc-800">
+              <p className="col-span-2 text-xs font-medium text-zinc-500">Compensation details</p>
+              <div>
+                <label className={label} htmlFor="lastReviewDate">Last review</label>
+                <input id="lastReviewDate" name="lastReviewDate" type="date" defaultValue={toDateInput(employee.lastReviewDate)} className={field} />
+              </div>
+              <div>
+                <label className={label} htmlFor="nextReviewDate">Next review</label>
+                <input id="nextReviewDate" name="nextReviewDate" type="date" defaultValue={toDateInput(employee.nextReviewDate)} className={field} />
+              </div>
+              <div className="col-span-2">
+                <label className={label} htmlFor="equityNote">Equity vesting</label>
+                <input id="equityNote" name="equityNote" defaultValue={employee.equityNote ?? ""} placeholder="e.g. 4-yr cliff · yr 1" className={field} />
+              </div>
+            </div>
+          )}
+
           <button type="submit" disabled={idPending} className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50">
-            {idPending ? "Saving…" : "Save identity correction"}
+            {idPending ? "Saving…" : "Save details correction"}
           </button>
         </form>
       </section>
@@ -60,10 +103,24 @@ export function CorrectForms({ employeeId, employee, current, withinWindow, wind
                 <label className={label} htmlFor="jobTitle">Job title</label>
                 <input id="jobTitle" name="jobTitle" defaultValue={current?.jobTitle ?? ""} className={field} />
               </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={label} htmlFor="employmentType">Employment type</label>
+                  <select id="employmentType" name="employmentType" defaultValue={current?.employmentType ?? "FULL_TIME"} className={field}>
+                    {EMPLOYMENT_TYPE_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={label} htmlFor="flsaClassification">FLSA classification</label>
+                  <select id="flsaClassification" name="flsaClassification" defaultValue={current?.flsaClassification ?? "EXEMPT"} className={field}>
+                    {FLSA_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                </div>
+              </div>
               <div>
-                <label className={label} htmlFor="employmentType">Employment type</label>
-                <select id="employmentType" name="employmentType" defaultValue={current?.employmentType ?? "FULL_TIME"} className={field}>
-                  {TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                <label className={label} htmlFor="payFrequency">Pay frequency</label>
+                <select id="payFrequency" name="payFrequency" defaultValue={current?.payFrequency ?? "SEMI_MONTHLY"} className={field}>
+                  {PAY_FREQUENCY_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
               </div>
               <div>
@@ -80,9 +137,17 @@ export function CorrectForms({ employeeId, employee, current, withinWindow, wind
                 </select>
               </div>
               {canEditComp && (
-                <div>
-                  <label className={label} htmlFor="salary">Salary</label>
-                  <input id="salary" name="salary" defaultValue={current?.salary ?? ""} inputMode="decimal" className={field} />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className={label} htmlFor="salary">Salary</label>
+                    <input id="salary" name="salary" defaultValue={current?.salary ?? ""} inputMode="decimal" className={field} />
+                  </div>
+                  <div>
+                    <label className={label} htmlFor="payBasis">Pay basis</label>
+                    <select id="payBasis" name="payBasis" defaultValue={current?.payBasis ?? "PER_YEAR"} className={field}>
+                      {PAY_BASIS_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                    </select>
+                  </div>
                 </div>
               )}
               <button type="submit" disabled={mtPending} className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50">

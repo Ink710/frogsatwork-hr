@@ -104,25 +104,33 @@ function ContactRow({ contact, employeeId, canManage, canDelete }) {
   );
 }
 
-export function EmergencyContacts({ contacts, employeeId, canManage }) {
+// `embedded` = rendered inside a titled profile Card, so we drop the outer section + heading
+// (the Card supplies the title) and keep only the Add button + list.
+export function EmergencyContacts({ contacts, employeeId, canManage, embedded = false }) {
   const [adding, setAdding] = useState(false);
+  const Wrapper = embedded ? "div" : "section";
+  const showHeader = !embedded || (canManage && !adding);
 
   return (
-    <section className="mt-8">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
-          Emergency contacts
-        </h2>
-        {canManage && !adding && (
-          <button
-            type="button"
-            onClick={() => setAdding(true)}
-            className="rounded-md border border-zinc-300 px-2.5 py-1 text-xs font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
-          >
-            Add contact
-          </button>
-        )}
-      </div>
+    <Wrapper className={embedded ? "" : "mt-8"}>
+      {showHeader && (
+        <div className="mb-3 flex items-center justify-between">
+          {!embedded && (
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+              Emergency contacts
+            </h2>
+          )}
+          {canManage && !adding && (
+            <button
+              type="button"
+              onClick={() => setAdding(true)}
+              className="rounded-md border border-zinc-300 px-2.5 py-1 text-xs font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+            >
+              Add contact
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Zero-state: every employee should have at least one on file. */}
       {contacts.length === 0 ? (
@@ -146,6 +154,6 @@ export function EmergencyContacts({ contacts, employeeId, canManage }) {
       {canManage && adding && (
         <ContactForm employeeId={employeeId} onDone={() => setAdding(false)} />
       )}
-    </section>
+    </Wrapper>
   );
 }

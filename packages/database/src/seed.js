@@ -23,8 +23,15 @@ loadEnv({ path: fileURLToPath(new URL("../../../.env", import.meta.url)) });
 // the full dataset. The app itself always uses the restricted hris_app role.
 const { PrismaClient } = await import("./generated/client/index.js");
 const { PrismaPg } = await import("@prisma/adapter-pg");
-const { SYSTEM_USER_ID, Role, EmploymentStatus, EmploymentType } =
-  await import("./index.js");
+const {
+  SYSTEM_USER_ID,
+  Role,
+  EmploymentStatus,
+  EmploymentType,
+  FlsaClassification,
+  PayFrequency,
+  PayBasis,
+} = await import("./index.js");
 
 const adapter = new PrismaPg({ connectionString: process.env.DIRECT_URL });
 const prisma = new PrismaClient({ adapter });
@@ -154,6 +161,24 @@ const PEOPLE = {
   },
 };
 
+// Current-state profile fields (the profile revamp), keyed like PEOPLE. Kept separate so the
+// PEOPLE map stays about identity + reporting + salary history. location/phone/timeZone are the
+// ungated sidebar/Employment-card facts; equityNote is comp-sensitive (gated Compensation card).
+const PROFILES = {
+  ana:    { location: "San Francisco, CA", phone: "+1 415 555 0101", timeZone: "America/Los_Angeles", equityNote: "4-yr cliff · yr 4" },
+  marcus: { location: "San Francisco, CA", phone: "+1 415 555 0102", timeZone: "America/Los_Angeles", equityNote: "4-yr cliff · yr 3" },
+  bianca: { location: "Austin, TX",        phone: "+1 512 555 0103", timeZone: "America/Chicago",     equityNote: "4-yr cliff · yr 2" },
+  diego:  { location: "New York, NY",      phone: "+1 212 555 0104", timeZone: "America/New_York",    equityNote: "4-yr cliff · yr 1" },
+  priya:  { location: "New York, NY",      phone: "+1 212 555 0105", timeZone: "America/New_York",    equityNote: "4-yr cliff · yr 1" },
+  tom:    { location: "Denver, CO (Remote)", phone: "+1 720 555 0106", timeZone: "America/Denver",    equityNote: null },
+  nadia:  { location: "Austin, TX",        phone: "+1 512 555 0107", timeZone: "America/Chicago",     equityNote: "4-yr cliff · yr 2" },
+};
+
+// Shared demo cadence so every profile renders a review cycle without per-person noise.
+const WORK_SCHEDULE = "Mon–Fri, 09:00–18:00";
+const LAST_REVIEW = new Date("2025-01-15");
+const NEXT_REVIEW = new Date("2026-01-15");
+
 async function main() {
   // One hash reused for all seeded logins (bcrypt salts internally, so identical
   // passwords still produce distinct hashes were we to hash per-user).
@@ -224,7 +249,8 @@ async function main() {
 
   // 4. Users + Employees. Pass 1 creates every user and employee WITHOUT a manager
   //    link, so no row references one that doesn't exist yet.
-  for (const p of Object.values(PEOPLE)) {
+  for (const [key, p] of Object.entries(PEOPLE)) {
+    const profile = PROFILES[key];
     await prisma.user.upsert({
       where: { id: p.userId },
       // passwordHash + emailVerifiedAt in `update` too, so re-seeding an existing DB backfills
@@ -241,9 +267,20 @@ async function main() {
       },
     });
 
+    // Profile-revamp fields go in BOTH create and update so re-seeding an existing dev DB
+    // backfills them onto already-seeded rows (same pattern as the user passwordHash above).
+    const profileFields = {
+      location: profile.location,
+      phone: profile.phone,
+      timeZone: profile.timeZone,
+      workSchedule: WORK_SCHEDULE,
+      lastReviewDate: LAST_REVIEW,
+      nextReviewDate: NEXT_REVIEW,
+      equityNote: profile.equityNote,
+    };
     await prisma.employee.upsert({
       where: { id: p.empId },
-      update: {},
+      update: profileFields,
       create: {
         id: p.empId,
         employeeNumber: p.number,
@@ -255,6 +292,7 @@ async function main() {
         userId: p.userId,
         orgId: org.id,
         departmentId: DEPT[p.dept],
+        ...profileFields,
       },
     });
   }
@@ -286,9 +324,19 @@ async function main() {
     let version = 0;
     for (const h of p.history) {
       version += 1;
+      // Versioned comp/role attributes. Full-time salaried roles are overtime-EXEMPT; the
+      // one part-timer (Tom) is NON_EXEMPT. All paid semi-monthly on an annual (PER_YEAR) basis.
+      const versioned = {
+        flsaClassification:
+          h.type === EmploymentType.FULL_TIME
+            ? FlsaClassification.EXEMPT
+            : FlsaClassification.NON_EXEMPT,
+        payFrequency: PayFrequency.SEMI_MONTHLY,
+        payBasis: PayBasis.PER_YEAR,
+      };
       await prisma.employeeHistory.upsert({
         where: { employeeId_version: { employeeId: p.empId, version } },
-        update: {},
+        update: versioned, // backfill onto existing rows on re-seed
         create: {
           employeeId: p.empId,
           version,
@@ -303,6 +351,7 @@ async function main() {
           effectiveFrom: new Date(h.from),
           effectiveTo: h.to ? new Date(h.to) : null,
           changedById: SYSTEM_USER_ID,
+          ...versioned,
         },
       });
     }

@@ -1,14 +1,14 @@
-// Suspense fallback while the audit page awaits its first batch of events.
+// Fallback while the audit tab awaits its first batch of events (renders inside the profile
+// layout's content slot, so no full-page wrapper).
 export default function Loading() {
   return (
-    <main className="mx-auto w-full max-w-3xl px-6 py-10">
-      <div className="h-5 w-28 animate-pulse rounded bg-zinc-200 dark:bg-zinc-800" />
-      <div className="mt-4 h-8 w-40 animate-pulse rounded bg-zinc-200 dark:bg-zinc-800" />
-      <div className="mt-8 space-y-2">
+    <div className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900/40" aria-busy="true">
+      <div className="mb-5 h-5 w-40 animate-pulse rounded bg-zinc-200 dark:bg-zinc-800" />
+      <div className="space-y-2">
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="h-14 animate-pulse rounded bg-zinc-100 dark:bg-zinc-900" />
         ))}
       </div>
-    </main>
+    </div>
   );
 }
