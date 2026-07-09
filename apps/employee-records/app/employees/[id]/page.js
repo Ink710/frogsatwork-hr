@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getViewer, canEditEmployee, canTerminate } from "@hris/auth";
 import { getEmployeeOverview } from "@/lib/queries";
-import { humanize, formatDate, formatMoney, formatPayBasis } from "@/lib/format";
+import { getT, getLocale } from "@/lib/i18n.server";
+import { INTL_LOCALE } from "@/lib/i18n";
+import { formatDate, formatMoney, formatPayBasis } from "@/lib/format";
 import { Card, Field, FieldGrid, Pill } from "@/components/profile-ui";
 import { EmergencyContacts } from "@/components/EmergencyContacts";
 import { ResendInviteButton } from "@/components/ResendInviteButton";
@@ -15,48 +17,50 @@ export default async function EmployeeOverviewPage({ params }) {
   const e = await getEmployeeOverview(id);
   if (!e) notFound();
 
-  const viewer = await getViewer();
+  const [viewer, t, localeCode] = await Promise.all([getViewer(), getT(), getLocale()]);
+  const locale = INTL_LOCALE[localeCode];
+  const te = (kind, val) => (val ? t(`enum.${kind}.${val}`) : "—");
+
   const canEdit = viewer ? canEditEmployee(viewer) : false;
   const canLifecycle = viewer ? canTerminate(viewer) : false;
   const isTerminated = e.employmentStatus === "TERMINATED";
   const isActive = e.employmentStatus === "ACTIVE";
   const onLeaveOrSuspended =
     e.employmentStatus === "ON_LEAVE" || e.employmentStatus === "SUSPENDED";
-  // Emergency contacts: writable by HR or the employee themselves, never managers.
   const canManageContacts = canEdit || viewer?.employeeId === e.id;
 
-  const c = e.current; // current version's employment facts (may be null in edge cases)
+  const c = e.current;
   const salaryLabel =
     e.comp?.salary != null
-      ? `${formatMoney(e.comp.salary, e.comp.currency)}${formatPayBasis(e.comp.payBasis)}`
+      ? `${formatMoney(e.comp.salary, e.comp.currency, locale)}${formatPayBasis(e.comp.payBasis)}`
       : null;
 
   return (
     <div className="space-y-6">
-      {/* Actions — available from the Overview (the profile landing tab). */}
+      {/* Actions */}
       {(canEdit || canLifecycle) && !isTerminated && (
         <div className="flex flex-wrap justify-end gap-2">
           {canEdit && (
             <>
-              <Link href={`/employees/${e.id}/edit`} className={actionBtn}>Record change</Link>
-              <Link href={`/employees/${e.id}/correct`} className={actionBtn}>Correct data</Link>
+              <Link href={`/employees/${e.id}/edit`} className={actionBtn}>{t("profile.recordChange")}</Link>
+              <Link href={`/employees/${e.id}/correct`} className={actionBtn}>{t("profile.correctData")}</Link>
             </>
           )}
           {canLifecycle && isActive && (
             <>
-              <Link href={`/employees/${e.id}/status?type=LEAVE`} className={actionBtn}>Place on leave</Link>
-              <Link href={`/employees/${e.id}/status?type=SUSPENSION`} className={actionBtn}>Suspend</Link>
+              <Link href={`/employees/${e.id}/status?type=LEAVE`} className={actionBtn}>{t("profile.placeOnLeave")}</Link>
+              <Link href={`/employees/${e.id}/status?type=SUSPENSION`} className={actionBtn}>{t("profile.suspend")}</Link>
             </>
           )}
           {canLifecycle && onLeaveOrSuspended && (
-            <Link href={`/employees/${e.id}/reinstate`} className={actionBtn}>Return to active</Link>
+            <Link href={`/employees/${e.id}/reinstate`} className={actionBtn}>{t("profile.returnActive")}</Link>
           )}
           {canLifecycle && (
             <Link
               href={`/employees/${e.id}/terminate`}
               className="rounded-md border border-red-300 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50 dark:border-red-900/60 dark:text-red-400 dark:hover:bg-red-950/30"
             >
-              Terminate
+              {t("profile.terminate")}
             </Link>
           )}
         </div>
@@ -67,27 +71,25 @@ export default async function EmployeeOverviewPage({ params }) {
             href={`/employees/${e.id}/rehire`}
             className="rounded-md border border-green-300 px-2.5 py-1 text-xs font-medium text-green-700 hover:bg-green-50 dark:border-green-900/60 dark:text-green-400 dark:hover:bg-green-950/30"
           >
-            Rehire
+            {t("profile.rehire")}
           </Link>
         </div>
       )}
 
-      {/* Account activation prompt (HR only, until the new hire sets a password). */}
+      {/* Account activation */}
       {canEdit && !isTerminated && e.user && !e.user.emailVerifiedAt && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm dark:border-amber-900/50 dark:bg-amber-950/20">
           <div>
-            <span className="font-medium text-amber-800 dark:text-amber-300">Invite pending</span>
+            <span className="font-medium text-amber-800 dark:text-amber-300">{t("profile.invitePending")}</span>
             <span className="ml-2 text-amber-700 dark:text-amber-400">
-              {e.user.invitedAt
-                ? "This employee hasn't set a password yet."
-                : "No invite has been sent yet."}
+              {e.user.invitedAt ? t("profile.inviteNotSet") : t("profile.inviteNotSent")}
             </span>
           </div>
-          <ResendInviteButton userId={e.userId} label={e.user.invitedAt ? "Resend invite" : "Send invite"} />
+          <ResendInviteButton userId={e.userId} label={e.user.invitedAt ? t("profile.resendInvite") : t("profile.sendInvite")} />
         </div>
       )}
 
-      {/* Current leave/suspension notice (reason/actor already redacted for a subject's own suspension). */}
+      {/* Current leave/suspension notice */}
       {e.currentStatusChange && (
         <div
           className={`rounded-md border p-4 text-sm ${
@@ -97,75 +99,66 @@ export default async function EmployeeOverviewPage({ params }) {
           }`}
         >
           <span className="font-medium">
-            {e.currentStatusChange.type === "SUSPENSION" ? "Suspended" : "On leave"}
+            {e.currentStatusChange.type === "SUSPENSION" ? t("profile.suspended") : t("profile.onLeave")}
           </span>
-          {" since "}
-          {formatDate(e.currentStatusChange.startDate)}
+          {" "}
+          {t("profile.since")}{" "}
+          {formatDate(e.currentStatusChange.startDate, locale)}
           {e.currentStatusChange.expectedEnd && (
-            <> · expected return {formatDate(e.currentStatusChange.expectedEnd)}</>
+            <> · {t("profile.expectedReturn", { date: formatDate(e.currentStatusChange.expectedEnd, locale) })}</>
           )}
           {e.currentStatusChange.reason && <> — {e.currentStatusChange.reason}</>}
           {e.currentStatusChange.createdBy && (
-            <span className="ml-2 text-zinc-500">by {e.currentStatusChange.createdBy.name}</span>
+            <span className="ml-2 text-zinc-500">{t("common.by", { name: e.currentStatusChange.createdBy.name })}</span>
           )}
         </div>
       )}
 
       {isTerminated && (
         <div className="rounded-md border border-zinc-200 bg-zinc-50 p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900/50">
-          <span className="font-medium">Terminated</span>
-          {e.terminationDate && <> on {formatDate(e.terminationDate)}</>}
+          <span className="font-medium">{t("profile.terminated")}</span>
+          {e.terminationDate && <> {t("profile.terminatedOn", { date: formatDate(e.terminationDate, locale) })}</>}
           {e.terminationReason && <> — {e.terminationReason}</>}
           <span className="ml-2 text-zinc-500">
-            ({e.eligibleForRehire ? "eligible for rehire" : "not eligible for rehire"})
+            ({e.eligibleForRehire ? t("profile.eligibleRehire") : t("profile.notEligibleRehire")})
           </span>
         </div>
       )}
 
-      {/* Employment details — ungated. */}
-      <Card title="Employment details">
+      {/* Employment details */}
+      <Card title={t("profile.employmentDetails")}>
         <FieldGrid>
-          <Field label="Job title">{c?.jobTitle}</Field>
-          <Field label="Employment type">{humanize(c?.employmentType)}</Field>
-          <Field label="FLSA classification">{humanize(c?.flsaClassification)}</Field>
-          <Field label="Pay frequency">{humanize(c?.payFrequency)}</Field>
-          <Field label="Work schedule">{e.workSchedule}</Field>
-          <Field label="Time zone">{e.timeZone}</Field>
+          <Field label={t("profile.jobTitle")}>{c?.jobTitle}</Field>
+          <Field label={t("profile.employmentType")}>{te("employmentType", c?.employmentType)}</Field>
+          <Field label={t("profile.flsa")}>{te("flsa", c?.flsaClassification)}</Field>
+          <Field label={t("profile.payFrequency")}>{te("payFrequency", c?.payFrequency)}</Field>
+          <Field label={t("profile.workSchedule")}>{e.workSchedule}</Field>
+          <Field label={t("profile.timeZone")}>{e.timeZone}</Field>
         </FieldGrid>
       </Card>
 
-      {/* Compensation — gated by the comp guard (self + subtree + HR/payroll per the matrix). */}
-      <Card
-        title="Compensation"
-        action={e.canViewComp ? <Pill>HR / Payroll only</Pill> : null}
-      >
+      {/* Compensation */}
+      <Card title={t("profile.compensation")} action={e.canViewComp ? <Pill>{t("profile.compBadge")}</Pill> : null}>
         {e.canViewComp ? (
           <FieldGrid>
-            <Field label="Base salary">{salaryLabel}</Field>
-            <Field label="Last review">{formatDate(e.comp.lastReviewDate)}</Field>
-            <Field label="Next review">{formatDate(e.comp.nextReviewDate)}</Field>
-            <Field label="Equity vesting">{e.comp.equityNote}</Field>
+            <Field label={t("profile.baseSalary")}>{salaryLabel}</Field>
+            <Field label={t("profile.lastReview")}>{formatDate(e.comp.lastReviewDate, locale)}</Field>
+            <Field label={t("profile.nextReview")}>{formatDate(e.comp.nextReviewDate, locale)}</Field>
+            <Field label={t("profile.equity")}>{e.comp.equityNote}</Field>
           </FieldGrid>
         ) : (
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Compensation is hidden for your role.
-          </p>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">{t("profile.compHidden")}</p>
         )}
       </Card>
 
-      {/* Emergency contact — editable by HR or the employee themselves. */}
-      <Card title="Emergency contact">
-        <EmergencyContacts
-          contacts={e.emergencyContacts}
-          employeeId={e.id}
-          canManage={canManageContacts}
-          embedded
-        />
+      {/* Emergency contact */}
+      <Card title={t("profile.emergencyContact")}>
+        <EmergencyContacts contacts={e.emergencyContacts} employeeId={e.id} canManage={canManageContacts} embedded />
       </Card>
 
-      {/* Direct reports — click to walk the org tree. */}
+      {/* Direct reports */}
       {e.reports.length > 0 && (
-        <Card title={`Direct reports (${e.reports.length})`}>
+        <Card title={t("profile.directReports", { count: e.reports.length })}>
           <ul className="flex flex-wrap gap-2">
             {e.reports.map((r) => (
               <li key={r.id}>
@@ -181,18 +174,18 @@ export default async function EmployeeOverviewPage({ params }) {
         </Card>
       )}
 
-      {/* Leave & suspension history (subject sees only their own past leaves). */}
+      {/* Leave & suspension history */}
       {e.statusHistory.length > 0 && (
-        <Card title="Leave & suspension history">
+        <Card title={t("profile.leaveHistory")}>
           <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
             {e.statusHistory.map((s) => (
               <li key={s.id} className="py-2.5 text-sm first:pt-0 last:pb-0">
-                <span className="font-medium">{s.type === "SUSPENSION" ? "Suspension" : "Leave"}</span>
+                <span className="font-medium">{s.type === "SUSPENSION" ? t("profile.suspended") : t("profile.onLeave")}</span>
                 <span className="ml-2 text-zinc-500">
-                  {formatDate(s.startDate)} — {formatDate(s.endDate)}
+                  {formatDate(s.startDate, locale)} — {formatDate(s.endDate, locale)}
                 </span>
                 {s.reason && <div className="mt-0.5 text-zinc-600 dark:text-zinc-300">{s.reason}</div>}
-                {s.createdBy && <span className="text-xs text-zinc-400">by {s.createdBy.name}</span>}
+                {s.createdBy && <span className="text-xs text-zinc-400">{t("common.by", { name: s.createdBy.name })}</span>}
               </li>
             ))}
           </ul>

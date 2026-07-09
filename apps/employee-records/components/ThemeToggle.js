@@ -2,17 +2,18 @@
 
 import { useSyncExternalStore } from "react";
 import { THEMES, getStoredTheme, setTheme, subscribeTheme } from "@/lib/theme";
-
-const META = {
-  system: { label: "System", hint: "Match your device" },
-  light: { label: "Light", hint: "Always light" },
-  dark: { label: "Dark", hint: "Always dark" },
-};
+import { useT } from "./LocaleProvider";
 
 // A three-way segmented control. useSyncExternalStore reads the saved preference from localStorage
 // (an external store): the server snapshot is "system", so the first client paint matches and
 // there's no hydration mismatch; after mount it reflects the real value and re-renders on change.
 export function ThemeToggle() {
+  const t = useT();
+  const META = {
+    system: { label: t("prefs.theme.system"), hint: t("prefs.theme.systemHint") },
+    light: { label: t("prefs.theme.light"), hint: t("prefs.theme.lightHint") },
+    dark: { label: t("prefs.theme.dark"), hint: t("prefs.theme.darkHint") },
+  };
   const theme = useSyncExternalStore(subscribeTheme, getStoredTheme, () => "system");
 
   return (

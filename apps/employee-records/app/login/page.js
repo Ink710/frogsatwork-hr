@@ -1,12 +1,17 @@
 import { redirect } from "next/navigation";
 import { signIn, AuthError } from "@hris/auth";
+import { getT } from "@/lib/i18n.server";
 
-export const metadata = { title: "Sign in · PeopleBase" };
+export async function generateMetadata() {
+  const t = await getT();
+  return { title: `${t("login.title")} · PeopleBase` };
+}
 
 export default async function LoginPage({ searchParams }) {
   const params = await searchParams; // async in Next 16
   const hasError = Boolean(params?.error);
   const justActivated = Boolean(params?.activated);
+  const t = await getT();
 
   // Server Action: runs on the server, calls Auth.js signIn. On success, signIn throws
   // a NEXT_REDIRECT (to /employees) which must propagate; on bad credentials it throws
@@ -30,21 +35,21 @@ export default async function LoginPage({ searchParams }) {
   return (
     <main className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center px-6 py-24">
       <p className="text-sm font-medium uppercase tracking-wide text-zinc-400">PeopleBase</p>
-      <h1 className="mt-1 text-2xl font-semibold tracking-tight">Sign in</h1>
+      <h1 className="mt-1 text-2xl font-semibold tracking-tight">{t("login.title")}</h1>
 
       <form action={login} className="mt-6 space-y-4">
         {justActivated && !hasError && (
           <p className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-700 dark:bg-green-950/30 dark:text-green-400">
-            Password set. You can sign in now.
+            {t("login.activated")}
           </p>
         )}
         {hasError && (
           <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-400">
-            Invalid email or password.
+            {t("login.invalid")}
           </p>
         )}
         <div>
-          <label className="block text-sm font-medium" htmlFor="email">Email</label>
+          <label className="block text-sm font-medium" htmlFor="email">{t("login.email")}</label>
           <input
             id="email"
             name="email"
@@ -55,7 +60,7 @@ export default async function LoginPage({ searchParams }) {
           />
         </div>
         <div>
-          <label className="block text-sm font-medium" htmlFor="password">Password</label>
+          <label className="block text-sm font-medium" htmlFor="password">{t("login.password")}</label>
           <input
             id="password"
             name="password"
@@ -69,13 +74,13 @@ export default async function LoginPage({ searchParams }) {
           type="submit"
           className="w-full rounded-md bg-foreground px-3 py-2 text-sm font-medium text-background hover:opacity-90"
         >
-          Sign in
+          {t("login.submit")}
         </button>
       </form>
 
       {/* Dev convenience — remove once real accounts exist. */}
       <div className="mt-8 rounded-md border border-dashed border-zinc-300 p-3 text-xs text-zinc-500 dark:border-zinc-700">
-        <p className="font-medium">Seeded logins (password: <code>password123</code>)</p>
+        <p className="font-medium">{t("login.seededHint")}</p>
         <ul className="mt-1 space-y-0.5">
           <li>ana.okafor@peoplebase.test — HR Admin (sees all)</li>
           <li>marcus.lee@peoplebase.test — Manager (his team)</li>

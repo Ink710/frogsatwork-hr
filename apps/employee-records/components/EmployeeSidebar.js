@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { formatDate, formatTenure, initials } from "@/lib/format";
+import { formatDate, tenureParts, initials } from "@/lib/format";
+import { getT, getLocale } from "@/lib/i18n.server";
+import { INTL_LOCALE } from "@/lib/i18n";
 import { Avatar, StatusBadge } from "@/components/profile-ui";
 
 // Minimal inline icon set (16px, currentColor) so the sidebar matches the mockup without a
@@ -56,8 +58,18 @@ function SectionLabel({ children }) {
 
 // The persistent left identity rail. Rendered by the [id] layout, so it stays put while the
 // user switches tabs. `s` is the lean summary from getEmployeeSummary (no compensation).
-export function EmployeeSidebar({ s }) {
-  const tenure = formatTenure(s.hireDate, s.terminationDate);
+export async function EmployeeSidebar({ s }) {
+  const [t, localeCode] = await Promise.all([getT(), getLocale()]);
+  const locale = INTL_LOCALE[localeCode];
+
+  const parts = tenureParts(s.hireDate, s.terminationDate);
+  let tenure = null;
+  if (parts) {
+    const out = [];
+    if (parts.years) out.push(t(parts.years === 1 ? "tenure.year" : "tenure.years", { n: parts.years }));
+    if (parts.months) out.push(t(parts.months === 1 ? "tenure.month" : "tenure.months", { n: parts.months }));
+    tenure = out.length ? out.join(" ") : t("tenure.lessThanMonth");
+  }
 
   return (
     <aside className="w-full">
@@ -67,20 +79,20 @@ export function EmployeeSidebar({ s }) {
         <h1 className="mt-4 text-xl font-semibold tracking-tight">{s.name}</h1>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">{s.title ?? "—"}</p>
         <div className="mt-2">
-          <StatusBadge status={s.employmentStatus} />
+          <StatusBadge status={s.employmentStatus} label={t(`enum.status.${s.employmentStatus}`)} />
         </div>
       </div>
 
       <hr className="my-6 border-zinc-200 dark:border-zinc-800" />
 
       {/* Employee info */}
-      <SectionLabel>Employee info</SectionLabel>
+      <SectionLabel>{t("profile.employeeInfo")}</SectionLabel>
       <div className="space-y-4">
-        <InfoRow icon="id" label="Employee ID">
+        <InfoRow icon="id" label={t("profile.employeeId")}>
           <span className="font-mono">{s.employeeNumber}</span>
         </InfoRow>
-        <InfoRow icon="building" label="Department">{s.department}</InfoRow>
-        <InfoRow icon="user" label="Reports to">
+        <InfoRow icon="building" label={t("profile.department")}>{s.department}</InfoRow>
+        <InfoRow icon="user" label={t("profile.reportsTo")}>
           {s.manager ? (
             <Link href={`/employees/${s.manager.id}`} className="text-blue-600 hover:underline dark:text-blue-400">
               {s.manager.name}
@@ -89,22 +101,22 @@ export function EmployeeSidebar({ s }) {
             "—"
           )}
         </InfoRow>
-        <InfoRow icon="pin" label="Location">{s.location}</InfoRow>
-        <InfoRow icon="calendar" label="Hire date">{formatDate(s.hireDate)}</InfoRow>
-        <InfoRow icon="clock" label="Tenure">{tenure}</InfoRow>
+        <InfoRow icon="pin" label={t("profile.location")}>{s.location}</InfoRow>
+        <InfoRow icon="calendar" label={t("profile.hireDate")}>{formatDate(s.hireDate, locale)}</InfoRow>
+        <InfoRow icon="clock" label={t("profile.tenure")}>{tenure}</InfoRow>
       </div>
 
       <hr className="my-6 border-zinc-200 dark:border-zinc-800" />
 
       {/* Contact */}
-      <SectionLabel>Contact</SectionLabel>
+      <SectionLabel>{t("profile.contact")}</SectionLabel>
       <div className="space-y-4">
-        <InfoRow icon="mail" label="Work email">
+        <InfoRow icon="mail" label={t("profile.workEmail")}>
           <a href={`mailto:${s.email}`} className="text-blue-600 hover:underline dark:text-blue-400">
             {s.email}
           </a>
         </InfoRow>
-        <InfoRow icon="phone" label="Phone">{s.phone}</InfoRow>
+        <InfoRow icon="phone" label={t("profile.phone")}>{s.phone}</InfoRow>
       </div>
     </aside>
   );

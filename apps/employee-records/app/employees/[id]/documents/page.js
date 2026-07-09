@@ -1,6 +1,8 @@
 import { getViewer, canEditEmployee } from "@hris/auth";
 import { getEmployeeDocuments } from "@/lib/documents";
-import { humanize, formatDate } from "@/lib/format";
+import { getT, getLocale } from "@/lib/i18n.server";
+import { INTL_LOCALE } from "@/lib/i18n";
+import { formatDate } from "@/lib/format";
 import { Card } from "@/components/profile-ui";
 import { UploadDocForm } from "@/components/UploadDocForm";
 import { DeleteDocButton } from "@/components/DeleteDocButton";
@@ -15,13 +17,19 @@ function formatBytes(n) {
 // visible at all, the profile layout already 404s before this renders.
 export default async function EmployeeDocumentsPage({ params }) {
   const { id } = await params;
-  const [documents, viewer] = await Promise.all([getEmployeeDocuments(id), getViewer()]);
+  const [documents, viewer, t, localeCode] = await Promise.all([
+    getEmployeeDocuments(id),
+    getViewer(),
+    getT(),
+    getLocale(),
+  ]);
+  const locale = INTL_LOCALE[localeCode];
   const canEdit = viewer ? canEditEmployee(viewer) : false;
 
   return (
-    <Card title={`Documents (${documents.length})`}>
+    <Card title={t("documents.title", { count: documents.length })}>
       {documents.length === 0 ? (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">No documents.</p>
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">{t("documents.none")}</p>
       ) : (
         <ul className="divide-y divide-zinc-100 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
           {documents.map((d) => (
@@ -31,8 +39,8 @@ export default async function EmployeeDocumentsPage({ params }) {
                   {d.fileName}
                 </a>
                 <span className="ml-2 text-xs text-zinc-400">
-                  {humanize(d.documentType)} · {formatBytes(d.fileSizeBytes)} · {formatDate(d.createdAt)} · {d.uploadedByName}
-                  {d.expiresAt ? ` · expires ${formatDate(d.expiresAt)}` : ""}
+                  {t(`enum.documentType.${d.documentType}`)} · {formatBytes(d.fileSizeBytes)} · {formatDate(d.createdAt, locale)} · {d.uploadedByName}
+                  {d.expiresAt ? ` · ${t("documents.expires", { date: formatDate(d.expiresAt, locale) })}` : ""}
                 </span>
               </div>
               {canEdit && <DeleteDocButton docId={d.id} />}

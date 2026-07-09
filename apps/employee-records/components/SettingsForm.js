@@ -2,8 +2,10 @@
 
 import { useActionState } from "react";
 import { setStorageDir } from "@/app/settings/actions";
+import { useT } from "./LocaleProvider";
 
 export function SettingsForm({ storageDir }) {
+  const t = useT();
   const [state, formAction, pending] = useActionState(setStorageDir, {});
   const current = state?.value ?? storageDir;
 
@@ -13,10 +15,10 @@ export function SettingsForm({ storageDir }) {
         <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-400">{state.error}</p>
       )}
       {state?.ok && (
-        <p className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-700 dark:bg-green-950/30 dark:text-green-400">Saved.</p>
+        <p className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-700 dark:bg-green-950/30 dark:text-green-400">{t("settings.saved")}</p>
       )}
       <div>
-        <label className="block text-sm font-medium" htmlFor="storageDir">Document storage folder</label>
+        <label className="block text-sm font-medium" htmlFor="storageDir">{t("settings.storageDir")}</label>
         <input
           id="storageDir"
           name="storageDir"
@@ -24,10 +26,10 @@ export function SettingsForm({ storageDir }) {
           required
           className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 font-mono text-sm dark:border-zinc-700 dark:bg-zinc-900"
         />
-        <p className="mt-1 text-xs text-zinc-400">Absolute path where uploaded files are stored. New uploads land here.</p>
+        <p className="mt-1 text-xs text-zinc-400">{t("settings.storageHint")}</p>
       </div>
       <button type="submit" disabled={pending} className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50">
-        {pending ? "Saving…" : "Save"}
+        {pending ? t("settings.saving") : t("settings.save")}
       </button>
     </form>
   );

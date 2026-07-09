@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getViewer, canEditEmployee } from "@hris/auth";
 import { getEmployeeSummary } from "@/lib/queries";
+import { getT } from "@/lib/i18n.server";
 import { EmployeeSidebar } from "@/components/EmployeeSidebar";
 import { TabNav } from "@/components/TabNav";
 
@@ -18,7 +19,7 @@ export async function generateMetadata({ params }) {
 // deliberately audit-free — see the note on that query.
 export default async function EmployeeProfileLayout({ children, params }) {
   const { id } = await params;
-  const [summary, viewer] = await Promise.all([getEmployeeSummary(id), getViewer()]);
+  const [summary, viewer, t] = await Promise.all([getEmployeeSummary(id), getViewer(), getT()]);
 
   // RLS hid the employee (or no session) → 404 for the whole profile, tabs included.
   if (!summary) notFound();
@@ -30,11 +31,11 @@ export default async function EmployeeProfileLayout({ children, params }) {
 
   const base = `/employees/${id}`;
   const tabs = [
-    { href: base, label: "Overview" },
-    { href: `${base}/history`, label: "History" },
-    { href: `${base}/documents`, label: "Documents" },
-    ...(showAccess ? [{ href: `${base}/access`, label: "Access & RBAC" }] : []),
-    { href: `${base}/audit`, label: "Audit log" },
+    { href: base, label: t("profile.tab.overview") },
+    { href: `${base}/history`, label: t("profile.tab.history") },
+    { href: `${base}/documents`, label: t("profile.tab.documents") },
+    ...(showAccess ? [{ href: `${base}/access`, label: t("profile.tab.access") }] : []),
+    { href: `${base}/audit`, label: t("profile.tab.audit") },
   ];
 
   return (
@@ -43,7 +44,7 @@ export default async function EmployeeProfileLayout({ children, params }) {
         href="/employees"
         className="text-sm text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
       >
-        ← All employees
+        {t("profile.allEmployees")}
       </Link>
 
       <div className="mt-4 grid grid-cols-1 gap-8 lg:grid-cols-[280px_1fr]">

@@ -2,6 +2,9 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AppHeader } from "@/components/AppHeader";
 import { ThemeWatcher } from "@/components/ThemeWatcher";
+import { LocaleProvider } from "@/components/LocaleProvider";
+import { getLocale } from "@/lib/i18n.server";
+import { messagesFor } from "@/lib/messages/index.js";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -23,12 +26,15 @@ export const metadata = {
 // lib/theme.js: read the saved preference, fall back to "system" → the OS setting.
 const THEME_SCRIPT = `(function(){try{var t=localStorage.getItem('theme');if(t!=='light'&&t!=='dark')t='system';var d=t==='dark'||(t==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);var e=document.documentElement;e.classList.toggle('dark',d);e.style.colorScheme=d?'dark':'light';}catch(_){}})();`;
 
-export default function RootLayout({ children }) {
+export default async function RootLayout({ children }) {
+  const locale = await getLocale();
+  const messages = messagesFor(locale);
+
   return (
     // suppressHydrationWarning: the script above sets the `dark` class before React hydrates,
     // which would otherwise be flagged as a server/client attribute mismatch on <html>.
     <html
-      lang="en"
+      lang={locale}
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
@@ -37,8 +43,10 @@ export default function RootLayout({ children }) {
       </head>
       <body className="min-h-full flex flex-col">
         <ThemeWatcher />
-        <AppHeader />
-        {children}
+        <LocaleProvider locale={locale} messages={messages}>
+          <AppHeader />
+          {children}
+        </LocaleProvider>
       </body>
     </html>
   );

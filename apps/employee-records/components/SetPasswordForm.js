@@ -2,8 +2,10 @@
 
 import { useActionState } from "react";
 import { setPassword } from "@/app/set-password/actions";
+import { useT } from "./LocaleProvider";
 
 export function SetPasswordForm({ token }) {
+  const t = useT();
   const [state, formAction, pending] = useActionState(setPassword, {});
 
   return (
@@ -16,7 +18,7 @@ export function SetPasswordForm({ token }) {
         </p>
       )}
       <div>
-        <label className="block text-sm font-medium" htmlFor="password">New password</label>
+        <label className="block text-sm font-medium" htmlFor="password">{t("setpw.newPassword")}</label>
         <input
           id="password"
           name="password"
@@ -28,7 +30,7 @@ export function SetPasswordForm({ token }) {
         />
       </div>
       <div>
-        <label className="block text-sm font-medium" htmlFor="confirm">Confirm password</label>
+        <label className="block text-sm font-medium" htmlFor="confirm">{t("setpw.confirm")}</label>
         <input
           id="confirm"
           name="confirm"
@@ -43,7 +45,7 @@ export function SetPasswordForm({ token }) {
         disabled={pending}
         className="w-full rounded-md bg-foreground px-3 py-2 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50"
       >
-        {pending ? "Setting…" : "Set password & sign in"}
+        {pending ? t("setpw.setting") : t("setpw.submit")}
       </button>
     </form>
   );

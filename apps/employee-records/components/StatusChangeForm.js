@@ -2,11 +2,13 @@
 
 import { useActionState } from "react";
 import { startStatusChange } from "@/app/employees/[id]/actions";
+import { useT } from "./LocaleProvider";
 
 const fieldCls = "mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900";
 const labelCls = "block text-sm font-medium";
 
 export function StatusChangeForm({ employeeId, type }) {
+  const t = useT();
   const action = startStatusChange.bind(null, employeeId);
   const [state, formAction, pending] = useActionState(action, {});
   const today = new Date().toLocaleDateString("en-CA");
@@ -20,18 +22,16 @@ export function StatusChangeForm({ employeeId, type }) {
       {/* Type is fixed by the entry point (the button that got you here). */}
       <input type="hidden" name="type" value={type} />
       <div>
-        <label className={labelCls} htmlFor="startDate">Start date</label>
+        <label className={labelCls} htmlFor="startDate">{t("status.startDate")}</label>
         <input id="startDate" name="startDate" type="date" defaultValue={today} min={today} required className={fieldCls} />
       </div>
       <div>
-        <label className={labelCls} htmlFor="expectedEnd">
-          Expected return <span className="text-zinc-400">(optional)</span>
-        </label>
+        <label className={labelCls} htmlFor="expectedEnd">{t("status.expectedEnd")}</label>
         <input id="expectedEnd" name="expectedEnd" type="date" min={today} className={fieldCls} />
       </div>
       <div>
         <label className={labelCls} htmlFor="reason">
-          {isSuspension ? "Reason for suspension" : "Reason for leave"}
+          {isSuspension ? t("status.reasonSuspension") : t("status.reasonLeave")}
         </label>
         <textarea id="reason" name="reason" required rows={3} className={fieldCls} />
       </div>
@@ -40,7 +40,7 @@ export function StatusChangeForm({ employeeId, type }) {
         disabled={pending}
         className="rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
       >
-        {pending ? "Saving…" : isSuspension ? "Suspend employee" : "Place on leave"}
+        {pending ? t("status.submitting") : isSuspension ? t("status.submitSuspendBtn") : t("status.submitLeaveBtn")}
       </button>
     </form>
   );

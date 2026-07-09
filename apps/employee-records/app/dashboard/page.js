@@ -1,8 +1,13 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getViewer } from "@hris/auth";
 import { getDashboardStats } from "@/lib/queries";
-import { humanize } from "@/lib/format";
+import { getT } from "@/lib/i18n.server";
 
-export const metadata = { title: "Dashboard · PeopleBase" };
+export async function generateMetadata() {
+  const t = await getT();
+  return { title: `${t("dash.title")} · PeopleBase` };
+}
 
 function StatCard({ label, value, hint, href }) {
   const body = (
@@ -22,13 +27,13 @@ function StatCard({ label, value, hint, href }) {
   );
 }
 
-function Bars({ title, data, format = (x) => x }) {
+function Bars({ title, data, emptyText, format = (x) => x }) {
   const max = Math.max(1, ...data.map((d) => d.count));
   return (
     <section>
       <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">{title}</h2>
       {data.length === 0 ? (
-        <p className="text-sm text-zinc-400">No data.</p>
+        <p className="text-sm text-zinc-400">{emptyText}</p>
       ) : (
         <ul className="space-y-2">
           {data.map((d) => (
@@ -50,28 +55,36 @@ function Bars({ title, data, format = (x) => x }) {
 }
 
 export default async function DashboardPage() {
+  // The dashboard isn't part of an employee's world (own profile + org chart only).
+  const me = await getViewer();
+  if (me?.role === "EMPLOYEE" && me.employeeId) {
+    redirect(`/employees/${me.employeeId}`);
+  }
+
   const s = await getDashboardStats();
   if (!s) return null;
+  const t = await getT();
+  const noData = t("dash.noData");
 
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-10">
       <header className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-zinc-500">Headcount and composition — scoped to what you can see.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("dash.title")}</h1>
+        <p className="text-sm text-zinc-500">{t("dash.subtitle")}</p>
       </header>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatCard label="Active headcount" value={s.activeHeadcount} />
-        <StatCard label="Departments" value={s.departmentCount} hint="view all →" href="/departments" />
-        <StatCard label="New hires" value={s.newHires} hint="this year" />
-        <StatCard label="Terminations" value={s.terminations} hint="this year" />
+        <StatCard label={t("dash.activeHeadcount")} value={s.activeHeadcount} />
+        <StatCard label={t("dash.departments")} value={s.departmentCount} hint={t("dash.viewAll")} href="/departments" />
+        <StatCard label={t("dash.newHires")} value={s.newHires} hint={t("dash.thisYear")} />
+        <StatCard label={t("dash.terminations")} value={s.terminations} hint={t("dash.thisYear")} />
       </div>
 
       <div className="mt-10 grid grid-cols-1 gap-10 sm:grid-cols-2">
-        <Bars title="By department" data={s.byDepartment} />
-        <Bars title="By employment type" data={s.byType} format={humanize} />
-        <Bars title="By status" data={s.byStatus} format={humanize} />
-        <Bars title="Span of control (top managers)" data={s.spanOfControl} />
+        <Bars title={t("dash.byDepartment")} data={s.byDepartment} emptyText={noData} />
+        <Bars title={t("dash.byType")} data={s.byType} emptyText={noData} format={(v) => t(`enum.employmentType.${v}`)} />
+        <Bars title={t("dash.byStatus")} data={s.byStatus} emptyText={noData} format={(v) => t(`enum.status.${v}`)} />
+        <Bars title={t("dash.spanOfControl")} data={s.spanOfControl} emptyText={noData} />
       </div>
     </main>
   );

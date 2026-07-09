@@ -13,9 +13,9 @@ export function humanize(value) {
 // These are CALENDAR dates — hire/effective/review dates stored as UTC midnight. We format in
 // UTC so a negative-offset server timezone can't shift "2023-04-01" back to "Mar 31". (Contrast
 // formatDateTime below, which is for real instants and stays in local time.)
-export function formatDate(date) {
+export function formatDate(date, locale = "en-US") {
   if (!date) return null;
-  return new Intl.DateTimeFormat("en-US", {
+  return new Intl.DateTimeFormat(locale, {
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -25,9 +25,9 @@ export function formatDate(date) {
 
 // A Date (or null) -> "Apr 1, 2023, 3:42 PM". Audit events need time-of-day; formatDate
 // stays date-only for effective dates, which are calendar facts, not instants.
-export function formatDateTime(date) {
+export function formatDateTime(date, locale = "en-US") {
   if (!date) return null;
-  return new Intl.DateTimeFormat("en-US", {
+  return new Intl.DateTimeFormat(locale, {
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -43,9 +43,9 @@ export const REDACTED = "[REDACTED]";
 
 // A salary string/number + ISO currency -> "$112,000". Returns null for missing input
 // so callers never accidentally render a blank/zero for guarded compensation.
-export function formatMoney(amount, currency = "USD") {
+export function formatMoney(amount, currency = "USD", locale = "en-US") {
   if (amount == null) return null;
-  return new Intl.NumberFormat("en-US", {
+  return new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
     maximumFractionDigits: 0,
@@ -68,6 +68,18 @@ export function initials(firstName = "", lastName = "") {
 // calendar months (not day-precise) — HR tenure is conventionally counted in months. Returns
 // null for missing input; "< 1 mo" for brand-new hires so we never render an empty string.
 export function formatTenure(hireDate, endDate = null) {
+  const parts = tenureParts(hireDate, endDate);
+  if (!parts) return null;
+  const { years, months } = parts;
+  const out = [];
+  if (years) out.push(`${years} yr${years === 1 ? "" : "s"}`);
+  if (months) out.push(`${months} mo${months === 1 ? "" : "s"}`);
+  return out.length ? out.join(" ") : "< 1 mo";
+}
+
+// Whole-calendar-month tenure as structured parts, so callers can localize the unit words.
+// Returns { years, months } or null for missing input.
+export function tenureParts(hireDate, endDate = null) {
   if (!hireDate) return null;
   const start = new Date(hireDate);
   const end = endDate ? new Date(endDate) : new Date();
@@ -75,10 +87,5 @@ export function formatTenure(hireDate, endDate = null) {
     (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
   if (end.getDate() < start.getDate()) months -= 1; // the current month isn't complete yet
   if (months < 0) months = 0;
-  const years = Math.floor(months / 12);
-  const rem = months % 12;
-  const parts = [];
-  if (years) parts.push(`${years} yr${years === 1 ? "" : "s"}`);
-  if (rem) parts.push(`${rem} mo${rem === 1 ? "" : "s"}`);
-  return parts.length ? parts.join(" ") : "< 1 mo";
+  return { years: Math.floor(months / 12), months: months % 12 };
 }

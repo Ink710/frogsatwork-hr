@@ -606,40 +606,33 @@ export async function getEmployeeForReinstate(id) {
   });
 }
 
-// Build the org tree from the viewer's RLS-scoped employees. Because findMany is already
-// row-filtered, the tree automatically shows only nodes this viewer may see: HR sees the
-// whole company, a manager sees their subtree (they become the root), an employee sees
-// just themselves. Terminated staff are excluded (the chart is the CURRENT structure).
-export async function getOrgTree() {
+// The COMPLETE company org chart (a directory), shown to every signed-in user. Structure comes
+// from the app_org_chart() SECURITY DEFINER function, which bypasses the Employee RLS but returns
+// ONLY non-sensitive columns (name/title/department/manager) — so no personal data leaks even to
+// an employee who can't open anyone else's profile. Each node is marked `linkable` only if the
+// viewer may actually open that profile (their RLS-visible set), so the chart has no dead links.
+export async function getOrgChart() {
   const viewer = await getViewer();
   if (!viewer) return [];
 
-  const rows = await withViewer(viewer, (tx) =>
-    tx.employee.findMany({
-      where: { employmentStatus: { not: "TERMINATED" } },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        managerId: true,
-        department: { select: { name: true } },
-        history: { where: { effectiveTo: null }, select: { jobTitle: true }, take: 1 },
-      },
-      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-    }),
-  );
+  return withViewer(viewer, async (tx) => {
+    const rows = await tx.$queryRaw`SELECT * FROM app_org_chart(${viewer.orgId})`;
+    // The subset of those the viewer may open (RLS-scoped) → which nodes become links.
+    const visible = await tx.employee.findMany({ select: { id: true } });
+    const visibleSet = new Set(visible.map((v) => v.id));
 
-  // Roots = nodes whose manager isn't in the visible set (see buildTree).
-  return buildTree(
-    rows.map((r) => ({
-      id: r.id,
-      managerId: r.managerId,
-      name: `${r.firstName} ${r.lastName}`,
-      initials: `${r.firstName[0] ?? ""}${r.lastName[0] ?? ""}`.toUpperCase(),
-      title: r.history[0]?.jobTitle ?? "—",
-      department: r.department?.name ?? null,
-    })),
-  );
+    return buildTree(
+      rows.map((r) => ({
+        id: r.id,
+        managerId: r.managerId,
+        name: `${r.firstName} ${r.lastName}`,
+        initials: `${r.firstName?.[0] ?? ""}${r.lastName?.[0] ?? ""}`.toUpperCase(),
+        title: r.jobTitle ?? "—",
+        department: r.department ?? null,
+        linkable: visibleSet.has(r.id),
+      })),
+    );
+  });
 }
 
 // Aggregations for the HR dashboard. Every count is computed from the viewer's RLS-scoped
@@ -807,7 +800,8 @@ export async function getDepartmentDetail(id) {
       .map(([label, count]) => ({ label, count }))
       .sort((a, b) => b.count - a.count);
 
-    // Mini org tree, restricted to this department's visible set (same builder as getOrgTree).
+    // Mini org tree, restricted to this department's RLS-visible set. Every node here IS visible
+    // to the viewer (RLS already scoped `emps`), so all are linkable.
     const tree = buildTree(
       emps.map((e) => ({
         id: e.id,
@@ -816,6 +810,7 @@ export async function getDepartmentDetail(id) {
         initials: `${e.firstName[0] ?? ""}${e.lastName[0] ?? ""}`.toUpperCase(),
         title: e.history[0]?.jobTitle ?? "—",
         department: null,
+        linkable: true,
       })),
     );
 

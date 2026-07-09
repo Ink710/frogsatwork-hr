@@ -17,12 +17,13 @@ const STATUS_DOT = {
   TERMINATED: "bg-zinc-400",
 };
 
-// A colored dot + humanized status label (e.g. "● Active"). Matches the mockup's sidebar badge.
-export function StatusBadge({ status }) {
+// A colored dot + status label (e.g. "● Active"). `label` is the translated text; falls back to
+// humanize(status) when not provided.
+export function StatusBadge({ status, label }) {
   return (
     <span className={`inline-flex items-center gap-1.5 text-sm font-medium ${STATUS_STYLES[status] ?? STATUS_STYLES.TERMINATED}`}>
       <span className={`h-2 w-2 rounded-full ${STATUS_DOT[status] ?? STATUS_DOT.TERMINATED}`} />
-      {humanize(status)}
+      {label ?? humanize(status)}
     </span>
   );
 }

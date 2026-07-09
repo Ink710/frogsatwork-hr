@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { createDepartment, updateDepartment } from "@/app/departments/actions";
+import { useT } from "./LocaleProvider";
 
 const field = "mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900";
 const label = "block text-sm font-medium";
@@ -9,6 +10,7 @@ const label = "block text-sm font-medium";
 // Shared by create and edit. `department` present → edit mode (binds updateDepartment); absent →
 // create mode. `parentOptions` already excludes self + descendants in edit mode.
 export function DepartmentForm({ department, parentOptions, headOptions }) {
+  const t = useT();
   const action = department ? updateDepartment.bind(null, department.id) : createDepartment;
   const [state, formAction, pending] = useActionState(action, {});
 
@@ -19,14 +21,14 @@ export function DepartmentForm({ department, parentOptions, headOptions }) {
       )}
 
       <div>
-        <label className={label} htmlFor="name">Department name</label>
+        <label className={label} htmlFor="name">{t("dept.fieldName")}</label>
         <input id="name" name="name" defaultValue={department?.name ?? ""} required className={field} />
       </div>
 
       <div>
-        <label className={label} htmlFor="parentDepartmentId">Parent department</label>
+        <label className={label} htmlFor="parentDepartmentId">{t("dept.fieldParent")}</label>
         <select id="parentDepartmentId" name="parentDepartmentId" defaultValue={department?.parentDepartmentId ?? ""} className={field}>
-          <option value="">— None (top level) —</option>
+          <option value="">{t("dept.parentNone")}</option>
           {parentOptions.map((d) => (
             <option key={d.id} value={d.id}>{d.name}</option>
           ))}
@@ -34,9 +36,9 @@ export function DepartmentForm({ department, parentOptions, headOptions }) {
       </div>
 
       <div>
-        <label className={label} htmlFor="headUserId">Department head</label>
+        <label className={label} htmlFor="headUserId">{t("dept.fieldHead")}</label>
         <select id="headUserId" name="headUserId" defaultValue={department?.headUserId ?? ""} className={field}>
-          <option value="">— None —</option>
+          <option value="">{t("common.none")}</option>
           {headOptions.map((h) => (
             <option key={h.userId} value={h.userId}>{h.name}</option>
           ))}
@@ -44,13 +46,13 @@ export function DepartmentForm({ department, parentOptions, headOptions }) {
       </div>
 
       <div>
-        <label className={label} htmlFor="budget">Budget <span className="text-zinc-400">(optional)</span></label>
+        <label className={label} htmlFor="budget">{t("dept.fieldBudget")} <span className="text-zinc-400">({t("common.optional")})</span></label>
         <input id="budget" name="budget" inputMode="decimal" defaultValue={department?.budget ?? ""} placeholder="e.g. 500000" className={field} />
-        <p className="mt-1 text-xs text-zinc-400">Leave blank to clear the budget.</p>
+        <p className="mt-1 text-xs text-zinc-400">{t("dept.budgetHint")}</p>
       </div>
 
       <button type="submit" disabled={pending} className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50">
-        {pending ? "Saving…" : department ? "Save changes" : "Create department"}
+        {pending ? t("dept.saving") : department ? t("dept.saveChanges") : t("dept.createBtn")}
       </button>
     </form>
   );

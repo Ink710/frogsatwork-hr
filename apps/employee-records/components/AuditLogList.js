@@ -2,7 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { loadMoreAuditLog } from "@/app/employees/[id]/actions";
-import { humanize, formatDateTime, REDACTED } from "@/lib/format";
+import { formatDateTime, REDACTED } from "@/lib/format";
+import { INTL_LOCALE } from "@/lib/i18n";
+import { useT, useLocale } from "./LocaleProvider";
 
 const EVENT_STYLES = {
   CREATE: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
@@ -19,33 +21,18 @@ const EVENT_STYLES = {
   EXPORT: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
 };
 
-const EVENT_SUMMARIES = {
-  VIEW: "Compensation accessed",
-  CREATE: "Employee record created",
-  UPDATE: "Effective-dated change",
-  CORRECTION: "In-place correction",
-  TERMINATE: "Employment terminated",
-  REHIRE: "Employee rehired",
-  LEAVE: "Placed on leave",
-  SUSPEND: "Suspended",
-  REINSTATE: "Returned to active",
-  EXPORT: "Data exported",
-  PERMISSION_DENIED: "Permission denied",
-  LOGIN_FAILED: "Login failed",
-};
-
-// beforeState/afterState keys are camelCase field names ("jobTitle"), so humanize()
-// (built for SNAKE_CASE enums) doesn't fit — split on capitals instead.
+// beforeState/afterState keys are camelCase field names ("jobTitle"); prettify by splitting on
+// capitals. (These are raw audit-payload keys, kept neutral rather than fully localized.)
 function labelize(key) {
   const words = key.replace(/([A-Z])/g, " $1").toLowerCase();
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-function DiffValue({ value }) {
+function DiffValue({ value, t }) {
   if (value === REDACTED) {
     return (
       <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-500 dark:bg-zinc-800">
-        Hidden for your role
+        {t("audit.hiddenValue")}
       </span>
     );
   }
@@ -58,7 +45,7 @@ function DiffValue({ value }) {
 // Field-by-field before → after view of the event's JSON payload. The stored values are
 // rendered verbatim (ids stay ids) — an audit trail shows what was written, not a prettied
 // interpretation of it.
-function Diff({ before, after }) {
+function Diff({ before, after, t }) {
   const keys = [...new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})])];
   if (keys.length === 0) return null;
   return (
@@ -69,11 +56,11 @@ function Diff({ before, after }) {
           <dd className="flex flex-wrap items-baseline gap-x-1.5">
             {before && k in before && (
               <>
-                <DiffValue value={before[k]} />
+                <DiffValue value={before[k]} t={t} />
                 <span className="text-zinc-400">→</span>
               </>
             )}
-            <DiffValue value={after?.[k]} />
+            <DiffValue value={after?.[k]} t={t} />
           </dd>
         </div>
       ))}
@@ -82,6 +69,8 @@ function Diff({ before, after }) {
 }
 
 export function AuditLogList({ employeeId, initialEvents, initialCursor }) {
+  const t = useT();
+  const locale = INTL_LOCALE[useLocale()];
   const [events, setEvents] = useState(initialEvents);
   const [cursor, setCursor] = useState(initialCursor);
   const [error, setError] = useState(null);
@@ -112,23 +101,23 @@ export function AuditLogList({ employeeId, initialEvents, initialCursor }) {
                     EVENT_STYLES[e.eventType] ?? EVENT_STYLES.VIEW
                   }`}
                 >
-                  {humanize(e.eventType)}
+                  {t(`enum.auditEvent.${e.eventType}`)}
                 </span>
                 <span className="text-sm">
-                  {EVENT_SUMMARIES[e.eventType] ?? humanize(e.eventType)}
+                  {t(`audit.summary.${e.eventType}`)}
                 </span>
                 <span className="text-sm text-zinc-500">
-                  by {e.actorName}
-                  {e.actorType !== "USER" && ` (${humanize(e.actorType)})`}
+                  {t("common.by", { name: e.actorName })}
+                  {e.actorType !== "USER" && ` (${t(`enum.actorType.${e.actorType}`)})`}
                 </span>
               </div>
               {/* The server renders this in its timezone, the browser in the user's —
                   suppress the (expected) hydration diff instead of crashing on it. */}
               <time className="text-xs text-zinc-400" suppressHydrationWarning>
-                {formatDateTime(e.occurredAt)}
+                {formatDateTime(e.occurredAt, locale)}
               </time>
             </div>
-            <Diff before={e.beforeState} after={e.afterState} />
+            <Diff before={e.beforeState} after={e.afterState} t={t} />
           </li>
         ))}
       </ul>
@@ -142,7 +131,7 @@ export function AuditLogList({ employeeId, initialEvents, initialCursor }) {
           disabled={pending}
           className="mt-4 rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
         >
-          {pending ? "Loading…" : "Load more"}
+          {pending ? t("audit.loading") : t("audit.loadMore")}
         </button>
       )}
     </div>
