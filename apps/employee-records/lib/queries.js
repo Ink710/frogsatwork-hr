@@ -635,6 +635,24 @@ export async function getOrgChart() {
   });
 }
 
+// Where a user lands right after signing in (the home page dispatches here). Role-based:
+//   EMPLOYEE → their own profile   MANAGER → their department   HR/Payroll → the employee list.
+export async function getLandingPath() {
+  const viewer = await getViewer();
+  if (!viewer) return "/login";
+
+  if (viewer.role === "EMPLOYEE") {
+    return viewer.employeeId ? `/employees/${viewer.employeeId}` : "/employees";
+  }
+  if (viewer.role === "MANAGER" && viewer.employeeId) {
+    const me = await withViewer(viewer, (tx) =>
+      tx.employee.findUnique({ where: { id: viewer.employeeId }, select: { departmentId: true } }),
+    );
+    if (me?.departmentId) return `/departments/${me.departmentId}`;
+  }
+  return "/employees";
+}
+
 // Aggregations for the HR dashboard. Every count is computed from the viewer's RLS-scoped
 // employees, so the dashboard auto-scopes: HR sees the whole org, a manager sees their
 // team's numbers. Compensation aggregates are intentionally omitted (sensitive).

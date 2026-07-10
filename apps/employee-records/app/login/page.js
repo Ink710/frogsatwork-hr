@@ -22,7 +22,9 @@ export default async function LoginPage({ searchParams }) {
       await signIn("credentials", {
         email: formData.get("email"),
         password: formData.get("password"),
-        redirectTo: "/employees",
+        // Land on the home dispatcher, which routes by role (employee → own profile,
+        // manager → their department, HR/payroll → the employee list).
+        redirectTo: "/",
       });
     } catch (error) {
       if (error instanceof AuthError) {
