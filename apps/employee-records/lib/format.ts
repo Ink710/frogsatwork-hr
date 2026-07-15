@@ -1,7 +1,11 @@
 // Small presentation helpers shared across the list and profile views.
 
+// Anything the Date constructor accepts. Our callers pass Prisma DateTime values (Date),
+// ISO strings, or epoch numbers — never all three at once, but the union keeps callers honest.
+type DateInput = Date | string | number;
+
 // FULL_TIME -> "Full time", ON_LEAVE -> "On leave"
-export function humanize(value) {
+export function humanize(value: string | null | undefined) {
   if (!value) return "—";
   return value
     .toLowerCase()
@@ -13,7 +17,7 @@ export function humanize(value) {
 // These are CALENDAR dates — hire/effective/review dates stored as UTC midnight. We format in
 // UTC so a negative-offset server timezone can't shift "2023-04-01" back to "Mar 31". (Contrast
 // formatDateTime below, which is for real instants and stays in local time.)
-export function formatDate(date, locale = "en-US") {
+export function formatDate(date: DateInput | null | undefined, locale = "en-US") {
   if (!date) return null;
   return new Intl.DateTimeFormat(locale, {
     year: "numeric",
@@ -25,7 +29,7 @@ export function formatDate(date, locale = "en-US") {
 
 // A Date (or null) -> "Apr 1, 2023, 3:42 PM". Audit events need time-of-day; formatDate
 // stays date-only for effective dates, which are calendar facts, not instants.
-export function formatDateTime(date, locale = "en-US") {
+export function formatDateTime(date: DateInput | null | undefined, locale = "en-US") {
   if (!date) return null;
   return new Intl.DateTimeFormat(locale, {
     year: "numeric",
@@ -43,7 +47,11 @@ export const REDACTED = "[REDACTED]";
 
 // A salary string/number + ISO currency -> "$112,000". Returns null for missing input
 // so callers never accidentally render a blank/zero for guarded compensation.
-export function formatMoney(amount, currency = "USD", locale = "en-US") {
+export function formatMoney(
+  amount: string | number | null | undefined,
+  currency = "USD",
+  locale = "en-US",
+) {
   if (amount == null) return null;
   return new Intl.NumberFormat(locale, {
     style: "currency",
@@ -54,8 +62,9 @@ export function formatMoney(amount, currency = "USD", locale = "en-US") {
 
 // PayBasis enum -> a short pay-period suffix, e.g. "$112,000 / yr". "" for missing so it
 // composes cleanly with formatMoney (`${money}${formatPayBasis(basis)}`).
-const PAY_BASIS_SUFFIX = { PER_HOUR: " / hr", PER_MONTH: " / mo", PER_YEAR: " / yr" };
-export function formatPayBasis(payBasis) {
+const PAY_BASIS_SUFFIX: Record<string, string> = { PER_HOUR: " / hr", PER_MONTH: " / mo", PER_YEAR: " / yr" };
+export function formatPayBasis(payBasis: string | null | undefined) {
+  if (!payBasis) return "";
   return PAY_BASIS_SUFFIX[payBasis] ?? "";
 }
 
@@ -67,7 +76,7 @@ export function initials(firstName = "", lastName = "") {
 // Tenure between a hire date and now (or a termination date) -> "4 yrs 3 mos". Uses whole
 // calendar months (not day-precise) — HR tenure is conventionally counted in months. Returns
 // null for missing input; "< 1 mo" for brand-new hires so we never render an empty string.
-export function formatTenure(hireDate, endDate = null) {
+export function formatTenure(hireDate: DateInput | null | undefined, endDate: DateInput | null = null) {
   const parts = tenureParts(hireDate, endDate);
   if (!parts) return null;
   const { years, months } = parts;
@@ -79,7 +88,7 @@ export function formatTenure(hireDate, endDate = null) {
 
 // Whole-calendar-month tenure as structured parts, so callers can localize the unit words.
 // Returns { years, months } or null for missing input.
-export function tenureParts(hireDate, endDate = null) {
+export function tenureParts(hireDate: DateInput | null | undefined, endDate: DateInput | null = null) {
   if (!hireDate) return null;
   const start = new Date(hireDate);
   const end = endDate ? new Date(endDate) : new Date();

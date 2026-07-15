@@ -1,0 +1,24 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The app runs in the browser too, so pull in DOM types (base is Node-only libs).
+    "lib": ["DOM", "DOM.Iterable", "ES2023"],
+    // Next compiles JSX itself; tsc just needs to preserve it for type-checking.
+    "jsx": "preserve",
+    // The Next TS plugin adds route/config type-checking in editors.
+    "plugins": [{ "name": "next" }],
+    // Mirror the "@/..." import alias the app already uses (was in jsconfig.json).
+    "paths": { "@/*": ["./*"] },
+    "incremental": true
+  },
+  // Only .ts/.tsx are type-CHECKED here; the remaining .js files are still allowed
+  // (allowJs in the base) and resolved as needed, just not checked — that's how the
+  // migration stays incremental. next-env.d.ts + .next/types give us Next's ambient types.
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": ["node_modules"]
+}

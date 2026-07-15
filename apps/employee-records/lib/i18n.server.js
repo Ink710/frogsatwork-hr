@@ -1,7 +1,7 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { cache } from "react";
-import { LOCALE_COOKIE, normalizeLocale, createTranslator } from "./i18n.js";
+import { LOCALE_COOKIE, normalizeLocale, createTranslator } from "./i18n";
 import { messagesFor } from "./messages/index.js";
 
 // Read the active locale from the cookie (Server Components / actions). cache() dedupes the

@@ -8,7 +8,7 @@ import {
   canTerminate,
   canRehire,
   canViewBudget,
-} from "./roles.js";
+} from "./roles";
 
 // Minimal viewer factory.
 const V = (role, extra = {}) => ({ role, employeeId: "self", userId: "u-self", ...extra });

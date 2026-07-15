@@ -1,6 +1,6 @@
 import { describe, it, expect, afterAll } from "vitest";
 import { prisma } from "@hris/database";
-import { withViewer } from "../../../packages/auth/src/rls.js";
+import { withViewer } from "../../../packages/auth/src/rls";
 
 const ORG = "10000000-0000-0000-0000-000000000001";
 const V = {

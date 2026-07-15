@@ -8,7 +8,7 @@ export { authConfig } from "./auth.config.js";
 export { AuthError } from "next-auth";
 
 // Authorization surface (Phase B).
-export { getViewer } from "./session.js";
+export { getViewer } from "./session";
 export {
   RECORD_SCOPE,
   getRecordScope,
@@ -23,16 +23,16 @@ export {
   canManageDepartments,
   isPayroll,
   isHrRole,
-} from "./roles.js";
+} from "./roles";
 export {
   getSubtreeIds,
   getAncestorIds,
   getDepth,
   getCompContext,
   resolveCompAccess,
-} from "./scope.js";
-export { withViewer } from "./rls.js";
+} from "./scope";
+export { withViewer } from "./rls";
 
 // Type-only surface. `export type` is required under isolatedModules: a single-file
 // transpiler (SWC/esbuild) can't tell these are types to be erased, so we mark them.
-export type { Viewer, CompTarget, CompContext, RecordScope } from "./roles.js";
+export type { Viewer, CompTarget, CompContext, RecordScope } from "./roles";

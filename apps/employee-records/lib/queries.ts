@@ -14,24 +14,41 @@ import {
   canViewBudgetOverview,
   canManageDepartments,
 } from "@hris/auth";
+import type { Viewer } from "@hris/auth";
+import { Prisma } from "@hris/database";
+import type { EmploymentStatus, EmploymentType } from "@hris/database";
 import { isWithinCorrectionWindow, CORRECTION_WINDOW_DAYS, EMPLOYMENT_TYPES } from "@hris/types";
 import { buildTree } from "./tree.js";
-import { REDACTED } from "./format.js";
+// Extensionless: format is now .ts. An explicit "./format.js" resolves to the .ts file in tsc
+// and esbuild but NOT in Next's bundler — extensionless resolves everywhere. (tree is still .js.)
+import { REDACTED } from "./format";
 
 export const EMPLOYEE_PAGE_SIZE = 5;
 
 const EMPLOYMENT_STATUSES = ["ACTIVE", "ON_LEAVE", "SUSPENDED", "TERMINATED"];
 
+// Filters for the employee list. Every field is optional and arrives unvalidated from the URL
+// query string (hence plain strings), so the body validates + narrows before using them.
+type EmployeeListFilters = {
+  q?: string;
+  status?: string;
+  departmentId?: string;
+  employmentType?: string;
+  page?: number;
+};
+
 // Data access for the employee list. Runs inside withViewer(), so RLS scopes the rows to the
 // signed-in user first — the search/filter `where` and the count then narrow WITHIN that visible
 // set (a manager searching only ever matches their own subtree). Compensation is never selected.
 // Offset-paginated: returns the page plus the total so the UI can show "A–B of N" and page links.
-export async function getEmployees({ q, status, departmentId, employmentType, page = 1 } = {}) {
+export async function getEmployees({ q, status, departmentId, employmentType, page = 1 }: EmployeeListFilters = {}) {
   const viewer = await getViewer();
   if (!viewer) return { rows: [], total: 0, page: 1, pageSize: EMPLOYEE_PAGE_SIZE, pageCount: 1 };
 
-  // Build the filter. Every clause is optional and ANDed under RLS.
-  const and = [];
+  // Build the filter. Every clause is optional and ANDed under RLS. Typing the array as
+  // Prisma.EmployeeWhereInput[] makes every pushed clause checked against the real schema
+  // (a typo'd field name or bad enum value is now a compile error, not a silent 0-row query).
+  const and: Prisma.EmployeeWhereInput[] = [];
   // Free-text search: each whitespace token must appear in at least one field, so "Diego Santos"
   // matches (Diego → firstName, Santos → lastName) without a dedicated full-name column.
   const tokens = (q ?? "").trim().split(/\s+/).filter(Boolean);
@@ -45,11 +62,17 @@ export async function getEmployees({ q, status, departmentId, employmentType, pa
       ],
     });
   }
-  if (EMPLOYMENT_STATUSES.includes(status)) and.push({ employmentStatus: status });
+  // Runtime-validate the URL string, then cast to the enum for Prisma. (EMPLOYMENT_STATUSES is a
+  // plain string[], so .includes accepts a string directly.)
+  if (status && EMPLOYMENT_STATUSES.includes(status)) {
+    and.push({ employmentStatus: status as EmploymentStatus });
+  }
   if (departmentId) and.push({ departmentId });
-  // Employment type lives on the CURRENT (open) history version, not on Employee.
-  if (EMPLOYMENT_TYPES.includes(employmentType)) {
-    and.push({ history: { some: { effectiveTo: null, employmentType } } });
+  // Employment type lives on the CURRENT (open) history version, not on Employee. EMPLOYMENT_TYPES
+  // is a readonly tuple of literals (`as const` in @hris/types), so .includes() won't take an
+  // arbitrary string — widen it to readonly string[] for the membership test, then cast.
+  if (employmentType && (EMPLOYMENT_TYPES as readonly string[]).includes(employmentType)) {
+    and.push({ history: { some: { effectiveTo: null, employmentType: employmentType as EmploymentType } } });
   }
   const where = and.length ? { AND: and } : {};
 
@@ -122,8 +145,11 @@ export async function getDepartmentOptions() {
 //   - subject viewing self: sees the current status as a NOTICE (status + dates), but a
 //     SUSPENSION's reason/who is hidden; and past suspensions don't appear in their history
 //     (past leaves do).
-function scopeStatusChanges(statusChanges, isSubject) {
-  const notice = (rec) => ({ ...rec, reason: null, createdBy: null }); // strip sensitive fields
+function scopeStatusChanges<T extends { type: string; endDate: Date | null }>(
+  statusChanges: T[],
+  isSubject: boolean,
+) {
+  const notice = (rec: T) => ({ ...rec, reason: null, createdBy: null }); // strip sensitive fields
   const openRec = statusChanges.find((r) => r.endDate === null) ?? null;
   const currentStatusChange = openRec
     ? isSubject && openRec.type === "SUSPENSION"
@@ -138,7 +164,7 @@ function scopeStatusChanges(statusChanges, isSubject) {
 // Lean identity + contact facts for the profile LAYOUT sidebar. Deliberately NO compensation
 // and NO audit write: the layout re-runs on every tab, so this must never touch the audit log
 // (that would log a "view" per tab switch). cache() dedupes it with the layout's metadata.
-export const getEmployeeSummary = cache(async (id) => {
+export const getEmployeeSummary = cache(async (id: string) => {
   const viewer = await getViewer();
   if (!viewer) return null;
 
@@ -193,7 +219,7 @@ export const getEmployeeSummary = cache(async (id) => {
 // emergency contacts, status banners, activation state, and direct reports. This is the profile
 // "view", so it (and only the default tab) writes the payroll VIEW audit entry. cache() dedupes
 // the page body with any metadata so we log at most once per request.
-export const getEmployeeOverview = cache(async (id) => {
+export const getEmployeeOverview = cache(async (id: string) => {
   const viewer = await getViewer();
   if (!viewer) return null;
 
@@ -260,7 +286,15 @@ export const getEmployeeOverview = cache(async (id) => {
 
     // Comp-sensitive block: current-version salary/basis + the current-state review/equity
     // fields. Fetched ONLY when allowed — "don't fetch what you can't show" (same rule as salary).
-    let comp = null;
+    // `let comp = null` would infer the type `null`; annotate so the object assignment below fits.
+    let comp: {
+      salary: string | null;
+      currency: string | null;
+      payBasis: string | null;
+      lastReviewDate: Date | null;
+      nextReviewDate: Date | null;
+      equityNote: string | null;
+    } | null = null;
     if (canViewComp) {
       const currentVersionId = employee.history[0]?.id ?? null;
       const [row, sensitive] = await Promise.all([
@@ -309,7 +343,7 @@ export const getEmployeeOverview = cache(async (id) => {
 // The History tab: the full effective-dated timeline. Salary/pay-basis are comp-gated; FLSA and
 // pay frequency ride along ungated so the timeline can show role/classification changes. Logs a
 // payroll VIEW too, since salary is exposed here just as on Overview.
-export async function getEmployeeHistory(id) {
+export async function getEmployeeHistory(id: string) {
   const viewer = await getViewer();
   if (!viewer) return null;
 
@@ -374,7 +408,7 @@ export async function getEmployeeHistory(id) {
 // grants, plus their account-activation state. Gated to HR or the subject themselves (a manager
 // viewing a report gets null → the route 404s and the tab is hidden). Capabilities come straight
 // from the pure role logic in @hris/auth, so this view can never drift from real enforcement.
-export async function getEmployeeAccess(id) {
+export async function getEmployeeAccess(id: string) {
   const viewer = await getViewer();
   if (!viewer) return null;
   const isSubject = viewer.employeeId === id;
@@ -394,7 +428,15 @@ export async function getEmployeeAccess(id) {
     });
     if (!employee) return null;
 
-    const roleViewer = { role: employee.user.role };
+    // A SYNTHETIC viewer standing in for the TARGET employee's role, used only to preview what
+    // that role grants. The predicates below read only `.role`, so the other Viewer fields are
+    // placeholders (never inspected here). Typed as Viewer so the capability calls type-check.
+    const roleViewer: Viewer = {
+      userId: "",
+      employeeId: null,
+      role: employee.user.role,
+      orgId: viewer.orgId,
+    };
     return {
       employee: { id: employee.id, name: `${employee.firstName} ${employee.lastName}` },
       role: employee.user.role,
@@ -418,7 +460,7 @@ export async function getEmployeeAccess(id) {
 // Prefill data for the "record a change" form. Returns null if the viewer may not edit
 // (also gates the route). Manager candidates exclude the employee's own subtree so a
 // reassignment can't create a reporting cycle.
-export async function getEmployeeForEdit(id) {
+export async function getEmployeeForEdit(id: string) {
   const viewer = await getViewer();
   if (!viewer || !canEditEmployee(viewer)) return null;
   const canEditComp = canEditCompensation(viewer);
@@ -470,7 +512,11 @@ export async function getEmployeeForEdit(id) {
 
     return {
       employee,
-      current: current ? { ...current, salary: current.salary?.toString() ?? null } : null,
+      // `salary` is only present when it was conditionally selected (comp editors); the
+      // `"salary" in current` guard narrows the union so TS knows the field exists here.
+      current: current
+        ? { ...current, salary: "salary" in current ? (current.salary?.toString() ?? null) : null }
+        : null,
       departments,
       managerOptions,
       canEditComp,
@@ -479,7 +525,7 @@ export async function getEmployeeForEdit(id) {
 }
 
 // Prefill + window status for the "Correct data" page.
-export async function getEmployeeForCorrection(id) {
+export async function getEmployeeForCorrection(id: string) {
   const viewer = await getViewer();
   if (!viewer || !canEditEmployee(viewer)) return null;
   const canEditComp = canEditCompensation(viewer);
@@ -538,7 +584,11 @@ export async function getEmployeeForCorrection(id) {
 
     return {
       employee,
-      current: current ? { ...current, salary: current.salary?.toString() ?? null } : null,
+      // `salary` is only present when it was conditionally selected (comp editors); the
+      // `"salary" in current` guard narrows the union so TS knows the field exists here.
+      current: current
+        ? { ...current, salary: "salary" in current ? (current.salary?.toString() ?? null) : null }
+        : null,
       // The window is about ENTRY recency (createdAt), not the effective date.
       withinWindow: current ? isWithinCorrectionWindow(current.createdAt) : false,
       windowDays: CORRECTION_WINDOW_DAYS,
@@ -550,7 +600,7 @@ export async function getEmployeeForCorrection(id) {
 }
 
 // Light query for the terminate/rehire pages. Gated to lifecycle managers (HR_ADMIN).
-export async function getEmployeeForLifecycle(id) {
+export async function getEmployeeForLifecycle(id: string) {
   const viewer = await getViewer();
   if (!viewer || !canTerminate(viewer)) return null;
   return withViewer(viewer, async (tx) => {
@@ -570,7 +620,7 @@ export async function getEmployeeForLifecycle(id) {
 
 // Prefill for the "place on leave / suspend" page. Gated to HR_ADMIN. The action re-checks
 // that the employee is ACTIVE; we return the status so the form can refuse up front too.
-export async function getEmployeeForStatusChange(id) {
+export async function getEmployeeForStatusChange(id: string) {
   const viewer = await getViewer();
   if (!viewer || !canTerminate(viewer)) return null;
   return withViewer(viewer, (tx) =>
@@ -583,7 +633,7 @@ export async function getEmployeeForStatusChange(id) {
 
 // Prefill for the "return to active" page. Gated to HR_ADMIN. Includes the open status
 // record (the one we're about to close) so the form can show what's being ended.
-export async function getEmployeeForReinstate(id) {
+export async function getEmployeeForReinstate(id: string) {
   const viewer = await getViewer();
   if (!viewer || !canTerminate(viewer)) return null;
   return withViewer(viewer, async (tx) => {
@@ -617,7 +667,17 @@ export async function getOrgChart() {
   if (!viewer) return [];
 
   return withViewer(viewer, async (tx) => {
-    const rows = await tx.$queryRaw`SELECT * FROM app_org_chart(${viewer.orgId})`;
+    // app_org_chart returns ONLY these non-sensitive structural columns (SECURITY DEFINER,
+    // bypasses Employee RLS) — declare the row shape so the map below is typed.
+    type OrgRow = {
+      id: string;
+      managerId: string | null;
+      firstName: string;
+      lastName: string;
+      jobTitle: string | null;
+      department: string | null;
+    };
+    const rows = await tx.$queryRaw<OrgRow[]>`SELECT * FROM app_org_chart(${viewer.orgId})`;
     // The subset of those the viewer may open (RLS-scoped) → which nodes become links.
     const visible = await tx.employee.findMany({ select: { id: true } });
     const visibleSet = new Set(visible.map((v) => v.id));
@@ -646,8 +706,11 @@ export async function getLandingPath() {
     return viewer.employeeId ? `/employees/${viewer.employeeId}` : "/employees";
   }
   if (viewer.role === "MANAGER" && viewer.employeeId) {
+    // Capture into a const: TS narrows viewer.employeeId to string here, but that narrowing is
+    // lost inside the withViewer callback (a closure could run later), so the local keeps it.
+    const employeeId = viewer.employeeId;
     const me = await withViewer(viewer, (tx) =>
-      tx.employee.findUnique({ where: { id: viewer.employeeId }, select: { departmentId: true } }),
+      tx.employee.findUnique({ where: { id: employeeId }, select: { departmentId: true } }),
     );
     if (me?.departmentId) return `/departments/${me.departmentId}`;
   }
@@ -699,10 +762,12 @@ export async function getDashboardStats() {
   const thisYear = new Date().getFullYear();
   const nameById = new Map(rows.map((r) => [r.id, `${r.firstName} ${r.lastName}`]));
 
-  const byStatus = {};
-  const byType = {};
-  const byDept = {};
-  const reports = {}; // managerId -> active direct-report count
+  // Keyed tallies. Without the Record<string, number> annotation, indexing `{}` by a dynamic
+  // string key ("Element implicitly has an any type") is a strict-mode error.
+  const byStatus: Record<string, number> = {};
+  const byType: Record<string, number> = {};
+  const byDept: Record<string, number> = {};
+  const reports: Record<string, number> = {}; // managerId -> active direct-report count
   let newHires = 0;
   let terminations = 0;
 
@@ -722,7 +787,7 @@ export async function getDashboardStats() {
     }
   }
 
-  const toSortedPairs = (obj) =>
+  const toSortedPairs = (obj: Record<string, number>) =>
     Object.entries(obj)
       .map(([label, count]) => ({ label, count }))
       .sort((a, b) => b.count - a.count);
@@ -791,7 +856,7 @@ export async function getDepartments() {
 
 // One department: gated budget, RLS-scoped employees + stats, head profile link, and a
 // mini org tree restricted to this department's visible members.
-export async function getDepartmentDetail(id) {
+export async function getDepartmentDetail(id: string) {
   const viewer = await getViewer();
   if (!viewer || viewer.role === "EMPLOYEE") return null;
 
@@ -821,15 +886,17 @@ export async function getDepartmentDetail(id) {
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
     });
 
-    // Head's linkable employee (only if visible under RLS).
-    let head = null;
-    if (department.head) {
+    // Head's linkable employee (only if visible under RLS). Guarding on headUserId too narrows
+    // it from `string | null` to string for the Prisma `where`, and typing `head` up front lets
+    // the object assignment fit (a bare `let head = null` would infer the type `null`).
+    let head: { name: string; employeeId: string | null } | null = null;
+    if (department.head && department.headUserId) {
       const headEmp = await tx.employee.findFirst({ where: { userId: department.headUserId }, select: { id: true } });
       head = { name: department.head.name, employeeId: headEmp?.id ?? null };
     }
 
     // Composition by employment type.
-    const byType = {};
+    const byType: Record<string, number> = {};
     for (const e of emps) {
       const t = e.history[0]?.employmentType ?? "UNKNOWN";
       byType[t] = (byType[t] ?? 0) + 1;
@@ -874,16 +941,24 @@ export async function getDepartmentDetail(id) {
 // every descendant). Used to keep a department from being parented under itself or its own
 // child — there's no app_subtree() equivalent for the department tree, and N is tiny, so we
 // walk it in JS. Exported so the update action can re-check server-side (never trust the client).
-export function departmentDescendantIds(rootId, allDepartments) {
-  const childrenOf = new Map();
+export function departmentDescendantIds(
+  rootId: string,
+  allDepartments: Array<{ id: string; parentDepartmentId: string | null }>,
+) {
+  const childrenOf = new Map<string | null, string[]>();
   for (const d of allDepartments) {
-    if (!childrenOf.has(d.parentDepartmentId)) childrenOf.set(d.parentDepartmentId, []);
-    childrenOf.get(d.parentDepartmentId).push(d.id);
+    // Fetch-or-create the sibling list instead of has()+get(): TS can't correlate the two, so
+    // a bare childrenOf.get(...).push(...) would be "possibly undefined".
+    const siblings = childrenOf.get(d.parentDepartmentId);
+    if (siblings) siblings.push(d.id);
+    else childrenOf.set(d.parentDepartmentId, [d.id]);
   }
   const result = new Set([rootId]);
   const stack = [rootId];
   while (stack.length) {
-    for (const child of childrenOf.get(stack.pop()) ?? []) {
+    const currentId = stack.pop();
+    if (currentId === undefined) break; // unreachable given the while guard, but narrows the type
+    for (const child of childrenOf.get(currentId) ?? []) {
       if (!result.has(child)) {
         result.add(child);
         stack.push(child);
@@ -921,7 +996,7 @@ export async function getNewDepartmentFormData() {
 
 // Prefill + candidates for the "edit department" form. Gated to HR_ADMIN. Self + descendants are
 // excluded from the parent options so the UI can't offer a cycle (the action re-checks anyway).
-export async function getDepartmentForEdit(id) {
+export async function getDepartmentForEdit(id: string) {
   const viewer = await getViewer();
   if (!viewer || !canManageDepartments(viewer)) return null;
 
@@ -977,7 +1052,7 @@ const COMP_KEYS = new Set([
   "nextReviewDate",
   "equityNote",
 ]);
-function redactComp(state) {
+function redactComp(state: Prisma.JsonValue): Prisma.JsonValue {
   if (!state || typeof state !== "object") return state;
   return Object.fromEntries(
     Object.entries(state).map(([k, v]) => [k, COMP_KEYS.has(k) ? REDACTED : v]),
@@ -990,7 +1065,7 @@ function redactComp(state) {
 // the top; a cursor row can never move or disappear, unlike OFFSET pages).
 // Wrapped in cache() so the page body and generateMetadata share one execution.
 // Returns null when RLS hides the employee (→ 404), like the profile.
-export const getEmployeeAuditLog = cache(async (employeeId, cursor = null) => {
+export const getEmployeeAuditLog = cache(async (employeeId: string, cursor: string | null = null) => {
   const viewer = await getViewer();
   if (!viewer) return null;
 

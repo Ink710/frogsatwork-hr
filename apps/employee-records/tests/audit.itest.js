@@ -5,9 +5,9 @@ import { resetDb } from "../../../test/resetDb.js";
 // Same pattern as actions.itest.js: mock only getViewer (set per test); everything else —
 // withViewer, RLS session vars, comp predicates — is the real thing against the test DB.
 vi.mock("@hris/auth", async () => {
-  const rls = await import("../../../packages/auth/src/rls.js");
-  const roles = await import("../../../packages/auth/src/roles.js");
-  const scope = await import("../../../packages/auth/src/scope.js");
+  const rls = await import("../../../packages/auth/src/rls");
+  const roles = await import("../../../packages/auth/src/roles");
+  const scope = await import("../../../packages/auth/src/scope");
   return {
     getViewer: vi.fn(), // set per test
     withViewer: rls.withViewer,
@@ -22,8 +22,8 @@ vi.mock("@hris/auth", async () => {
 });
 
 import { getViewer, withViewer } from "@hris/auth";
-import { getEmployeeAuditLog } from "../lib/queries.js";
-import { REDACTED } from "../lib/format.js";
+import { getEmployeeAuditLog } from "../lib/queries";
+import { REDACTED } from "../lib/format";
 
 // Seeded ids (see packages/database/src/seed.js).
 const ORG = "10000000-0000-0000-0000-000000000001";

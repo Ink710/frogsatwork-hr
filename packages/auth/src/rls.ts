@@ -6,7 +6,7 @@
 // the viewer's queries on that transaction's client (`tx`). When the transaction ends,
 // the settings vanish with it.
 import { prisma, Prisma } from "@hris/database";
-import type { Viewer } from "./roles.js";
+import type { Viewer } from "./roles";
 
 // Generic over T: withViewer returns exactly whatever the callback returns. Without the
 // <T> the return type would collapse to `any` (or `unknown`) and every caller would lose

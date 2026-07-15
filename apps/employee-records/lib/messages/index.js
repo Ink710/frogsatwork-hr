@@ -1,6 +1,6 @@
 import en from "./en.js";
 import es from "./es.js";
-import { DEFAULT_LOCALE } from "../i18n.js";
+import { DEFAULT_LOCALE } from "../i18n";
 
 const DICTS = { en, es };
 

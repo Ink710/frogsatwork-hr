@@ -8,8 +8,8 @@
 // The tree walks call SECURITY DEFINER functions (app_subtree / app_ancestors), which
 // bypass RLS by design — computing "who is in my subtree" must see the whole tree.
 import { prisma, Prisma } from "@hris/database";
-import { canViewCompensation, isHrRole, isPayroll } from "./roles.js";
-import type { Viewer, CompContext, CompTarget } from "./roles.js";
+import { canViewCompensation, isHrRole, isPayroll } from "./roles";
+import type { Viewer, CompContext, CompTarget } from "./roles";
 
 // These helpers accept EITHER the shared prisma client OR a withViewer transaction
 // (`tx`). TransactionClient is the common supertype (it has the model delegates and

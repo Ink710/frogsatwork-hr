@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { humanize, formatDate, formatMoney } from "./format.js";
+import { humanize, formatDate, formatMoney } from "./format";
 
 describe("humanize", () => {
   it("turns enum tokens into readable labels", () => {

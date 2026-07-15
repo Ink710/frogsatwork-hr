@@ -11,6 +11,7 @@ import {
   canRehire,
   getSubtreeIds,
 } from "@hris/auth";
+import type { Viewer } from "@hris/auth";
 import { randomUUID } from "node:crypto";
 import {
   employeeChangeSchema,
@@ -25,14 +26,26 @@ import {
   emergencyContactSchema,
   isWithinCorrectionWindow,
 } from "@hris/types";
+import { Prisma } from "@hris/database";
 import { storage } from "@/lib/storage";
 import { getEmployeeAuditLog } from "@/lib/queries";
 import { sendInvite } from "@/lib/invite";
 
+// What every form action returns to useActionState. Each action resolves to one of these
+// (or never-returns, when it redirect()s on success).
+type FormState = { error: string } | { ok: true } | undefined;
+
+// In strict mode a `catch (e)` binds `e` as `unknown` (you can't assume it's an Error). This
+// narrows it safely: the thrown Error's message, or undefined for anything else (so callers can
+// `?? "fallback"`). Every action's catch uses it instead of the old `e.message`.
+function errorMessage(e: unknown): string | undefined {
+  return e instanceof Error ? e.message : undefined;
+}
+
 // Record an effective-dated change: close the current open history version and open a new
 // one, atomically. `employeeId` is bound by the form; the (prevState, formData) shape is
 // for useActionState. Returns { error } on failure; redirects on success.
-export async function recordChange(employeeId, _prevState, formData) {
+export async function recordChange(employeeId: string, _prevState: FormState, formData: FormData) {
   const viewer = await getViewer();
   if (!viewer || !canEditEmployee(viewer)) return { error: "You are not authorized to edit." };
 
@@ -108,11 +121,12 @@ export async function recordChange(employeeId, _prevState, formData) {
         managerSnapshot = mgr ? `${mgr.firstName} ${mgr.lastName}` : null;
       }
 
-      // Which fields actually changed (drives changedFields + the audit before/after).
-      const changed = [];
-      const before = {};
-      const after = {};
-      const mark = (field, oldV, newV) => {
+      // Which fields actually changed (drives changedFields + the audit before/after). before/after
+      // are keyed by field name (Record) so they can be indexed dynamically; changed is a string[].
+      const changed: string[] = [];
+      const before: Record<string, string | null> = {};
+      const after: Record<string, string | null> = {};
+      const mark = (field: string, oldV: string | null | undefined, newV: string | null | undefined) => {
         if (String(oldV ?? "") !== String(newV ?? "")) {
           changed.push(field);
           before[field] = oldV ?? null;
@@ -176,7 +190,7 @@ export async function recordChange(employeeId, _prevState, formData) {
       });
     });
   } catch (e) {
-    return { error: e.message ?? "Could not record the change." };
+    return { error: errorMessage(e) ?? "Could not record the change." };
   }
 
   revalidatePath(`/employees/${employeeId}`);
@@ -189,7 +203,7 @@ export async function recordChange(employeeId, _prevState, formData) {
 // partial form never blanks a field it didn't render. Comp-sensitive fields are applied only for
 // comp-editors. Audited as CORRECTION; the comp keys are redacted in the audit query for viewers
 // who can't see compensation.
-export async function correctDetails(employeeId, _prevState, formData) {
+export async function correctDetails(employeeId: string, _prevState: FormState, formData: FormData) {
   const viewer = await getViewer();
   if (!viewer || !canEditEmployee(viewer)) return { error: "You are not authorized to edit." };
   const canComp = canEditCompensation(viewer);
@@ -210,7 +224,7 @@ export async function correctDetails(employeeId, _prevState, formData) {
   const input = parsed.data;
 
   // Empty string clears a nullable field.
-  const nz = (v) => (v == null || v === "" ? null : v);
+  const nz = (v: string | null | undefined): string | null => (v == null || v === "" ? null : v);
 
   try {
     await withViewer(viewer, async (tx) => {
@@ -224,8 +238,13 @@ export async function correctDetails(employeeId, _prevState, formData) {
       });
       if (!before) throw new Error("Employee not found.");
 
-      // Build the update only from fields the form actually submitted.
-      const next = { firstName: input.firstName, lastName: input.lastName, email: input.email };
+      // Build the update only from fields the form actually submitted. Keyed as a Record so we
+      // can add fields conditionally and index it in the diff loop below.
+      const next: Record<string, string | Date | null> = {
+        firstName: input.firstName,
+        lastName: input.lastName,
+        email: input.email,
+      };
       if (formData.has("phone")) next.phone = nz(input.phone);
       if (formData.has("location")) next.location = nz(input.location);
       if (formData.has("workSchedule")) next.workSchedule = nz(input.workSchedule);
@@ -237,23 +256,27 @@ export async function correctDetails(employeeId, _prevState, formData) {
         if (formData.has("equityNote")) next.equityNote = nz(input.equityNote);
       }
 
-      // Diff for the audit. Dates compare by time; store as ISO date strings.
-      const iso = (v) => (v instanceof Date ? v.toISOString().slice(0, 10) : v);
-      const same = (a, b) =>
+      // Diff for the audit. Dates compare by time; store as ISO date strings. `before` is a typed
+      // Prisma row — alias it as an indexable record so we can look fields up by dynamic key.
+      const beforeRec = before as Record<string, string | Date | null>;
+      const iso = (v: string | Date | null): string | null =>
+        v instanceof Date ? v.toISOString().slice(0, 10) : v;
+      const same = (a: string | Date | null, b: string | Date | null) =>
         a instanceof Date || b instanceof Date
           ? (a ? new Date(a).getTime() : null) === (b ? new Date(b).getTime() : null)
           : (a ?? "") === (b ?? "");
-      const beforeState = {};
-      const afterState = {};
+      const beforeState: Record<string, string | null> = {};
+      const afterState: Record<string, string | null> = {};
       for (const k of Object.keys(next)) {
-        if (!same(before[k], next[k])) {
-          beforeState[k] = iso(before[k]) ?? null;
+        if (!same(beforeRec[k], next[k])) {
+          beforeState[k] = iso(beforeRec[k]) ?? null;
           afterState[k] = iso(next[k]) ?? null;
         }
       }
       if (Object.keys(afterState).length === 0) throw new Error("Nothing to correct.");
 
-      await tx.employee.update({ where: { id: employeeId }, data: next });
+      // Cast at the dynamic→Prisma boundary: `next` is a Record we assembled field-by-field.
+      await tx.employee.update({ where: { id: employeeId }, data: next as Prisma.EmployeeUpdateInput });
       await tx.employeeAuditLog.create({
         data: {
           employeeId,
@@ -266,7 +289,7 @@ export async function correctDetails(employeeId, _prevState, formData) {
       });
     });
   } catch (e) {
-    return { error: e.message ?? "Could not save the correction." };
+    return { error: errorMessage(e) ?? "Could not save the correction." };
   }
 
   revalidatePath(`/employees/${employeeId}`);
@@ -276,7 +299,7 @@ export async function correctDetails(employeeId, _prevState, formData) {
 // CORRECTION — material fields, amended IN PLACE on the current version (no new version),
 // allowed only within the grace window (anchored on the version's createdAt). Fixes a
 // mis-entry; it is NOT a real change. Salary corrections still require comp rights.
-export async function correctMaterial(employeeId, _prevState, formData) {
+export async function correctMaterial(employeeId: string, _prevState: FormState, formData: FormData) {
   const viewer = await getViewer();
   if (!viewer || !canEditEmployee(viewer)) return { error: "You are not authorized to edit." };
 
@@ -294,7 +317,8 @@ export async function correctMaterial(employeeId, _prevState, formData) {
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
   const input = parsed.data;
   const managerProvided = formData.has("managerId");
-  const managerId = formData.get("managerId") || null;
+  // formData.get returns string | File | null; a text field is always a string, so narrow it.
+  const managerId = (formData.get("managerId") || null) as string | null;
 
   try {
     await withViewer(viewer, async (tx) => {
@@ -327,11 +351,18 @@ export async function correctMaterial(employeeId, _prevState, formData) {
         if (subtree.has(managerId)) throw new Error("That manager reports to this employee — cycle.");
       }
 
-      const versionData = {};
-      const empData = {};
-      const before = {};
-      const after = {};
-      const mark = (field, oldV, newV, sink) => {
+      // versionData/empData collect the fields to write to each table; before/after collect the
+      // audit diff. All keyed Records so they can be built dynamically and indexed by field name.
+      const versionData: Record<string, string | null> = {};
+      const empData: Record<string, string | null> = {};
+      const before: Record<string, string | null> = {};
+      const after: Record<string, string | null> = {};
+      const mark = (
+        field: string,
+        oldV: string | null,
+        newV: string | null,
+        sink: Record<string, string | null>,
+      ) => {
         if (String(oldV ?? "") !== String(newV ?? "")) {
           sink[field] = newV;
           before[field] = oldV ?? null;
@@ -346,8 +377,10 @@ export async function correctMaterial(employeeId, _prevState, formData) {
         mark("flsaClassification", current.flsaClassification, input.flsaClassification, versionData);
       if (input.payFrequency != null)
         mark("payFrequency", current.payFrequency, input.payFrequency, versionData);
-      if (wantsSalary) mark("salary", salaryStr, input.salary, versionData);
-      if (wantsPayBasis) mark("payBasis", current.payBasis, input.payBasis, versionData);
+      // wantsSalary/wantsPayBasis already imply these are defined; `?? null` satisfies mark's
+      // string|null param (TS can't narrow through the separate boolean consts).
+      if (wantsSalary) mark("salary", salaryStr, input.salary ?? null, versionData);
+      if (wantsPayBasis) mark("payBasis", current.payBasis, input.payBasis ?? null, versionData);
 
       if (input.departmentId != null && input.departmentId !== employee.departmentId) {
         const dept = await tx.department.findUnique({
@@ -372,10 +405,14 @@ export async function correctMaterial(employeeId, _prevState, formData) {
 
       if (Object.keys(before).length === 0) throw new Error("Nothing to correct.");
 
-      // Amend the current version IN PLACE — no version bump, effectiveFrom untouched.
-      await tx.employeeHistory.update({ where: { id: current.id }, data: versionData });
+      // Amend the current version IN PLACE — no version bump, effectiveFrom untouched. Cast the
+      // dynamically-built Records to Prisma's input types at the boundary.
+      await tx.employeeHistory.update({
+        where: { id: current.id },
+        data: versionData as Prisma.EmployeeHistoryUpdateInput,
+      });
       if (Object.keys(empData).length > 0) {
-        await tx.employee.update({ where: { id: employeeId }, data: empData });
+        await tx.employee.update({ where: { id: employeeId }, data: empData as Prisma.EmployeeUpdateInput });
       }
       await tx.employeeAuditLog.create({
         data: {
@@ -389,7 +426,7 @@ export async function correctMaterial(employeeId, _prevState, formData) {
       });
     });
   } catch (e) {
-    return { error: e.message ?? "Could not save the correction." };
+    return { error: errorMessage(e) ?? "Could not save the correction." };
   }
 
   revalidatePath(`/employees/${employeeId}`);
@@ -399,7 +436,7 @@ export async function correctMaterial(employeeId, _prevState, formData) {
 // TERMINATE — soft delete. Set status + terminationDate + reason + rehire eligibility, and
 // close the open history version (a terminated employee has no active/open version).
 // The record is never removed. Only HR_ADMIN.
-export async function terminateEmployee(employeeId, _prevState, formData) {
+export async function terminateEmployee(employeeId: string, _prevState: FormState, formData: FormData) {
   const viewer = await getViewer();
   if (!viewer || !canTerminate(viewer)) return { error: "You are not authorized to terminate." };
 
@@ -455,7 +492,7 @@ export async function terminateEmployee(employeeId, _prevState, formData) {
       });
     });
   } catch (e) {
-    return { error: e.message ?? "Could not terminate." };
+    return { error: errorMessage(e) ?? "Could not terminate." };
   }
 
   revalidatePath(`/employees/${employeeId}`);
@@ -464,7 +501,7 @@ export async function terminateEmployee(employeeId, _prevState, formData) {
 
 // REHIRE — reactivate a terminated (and rehire-eligible) employee. Opens a fresh active
 // version carrying forward their last known state. Only HR_ADMIN.
-export async function rehireEmployee(employeeId, _prevState, formData) {
+export async function rehireEmployee(employeeId: string, _prevState: FormState, formData: FormData) {
   const viewer = await getViewer();
   if (!viewer || !canRehire(viewer)) return { error: "You are not authorized to rehire." };
 
@@ -522,7 +559,7 @@ export async function rehireEmployee(employeeId, _prevState, formData) {
       });
     });
   } catch (e) {
-    return { error: e.message ?? "Could not rehire." };
+    return { error: errorMessage(e) ?? "Could not rehire." };
   }
 
   revalidatePath(`/employees/${employeeId}`);
@@ -535,7 +572,7 @@ export async function rehireEmployee(employeeId, _prevState, formData) {
 // The reason is NOT written to the audit JSON: the audit viewer is RLS-scoped and the subject
 // can read their own rows, so putting the reason there would leak it (unlike terminate, whose
 // subject can't log in).
-export async function startStatusChange(employeeId, _prevState, formData) {
+export async function startStatusChange(employeeId: string, _prevState: FormState, formData: FormData) {
   const viewer = await getViewer();
   if (!viewer || !canTerminate(viewer)) return { error: "You are not authorized to change status." };
 
@@ -588,7 +625,7 @@ export async function startStatusChange(employeeId, _prevState, formData) {
       });
     });
   } catch (e) {
-    return { error: e.message ?? "Could not change status." };
+    return { error: errorMessage(e) ?? "Could not change status." };
   }
 
   revalidatePath(`/employees/${employeeId}`);
@@ -597,7 +634,7 @@ export async function startStatusChange(employeeId, _prevState, formData) {
 
 // RETURN TO ACTIVE — close the open leave/suspension span and flip the status back. Only
 // HR_ADMIN. Audited (REINSTATE). Also does not touch EmployeeHistory.
-export async function reinstateEmployee(employeeId, _prevState, formData) {
+export async function reinstateEmployee(employeeId: string, _prevState: FormState, formData: FormData) {
   const viewer = await getViewer();
   if (!viewer || !canTerminate(viewer)) return { error: "You are not authorized to change status." };
 
@@ -645,7 +682,7 @@ export async function reinstateEmployee(employeeId, _prevState, formData) {
       });
     });
   } catch (e) {
-    return { error: e.message ?? "Could not return to active." };
+    return { error: errorMessage(e) ?? "Could not return to active." };
   }
 
   revalidatePath(`/employees/${employeeId}`);
@@ -657,11 +694,11 @@ export async function reinstateEmployee(employeeId, _prevState, formData) {
 // enforces that; RLS alone would let them through). Invariant: at least one contact at all times.
 
 // Shared gate. Needs the runtime employeeId (not just a role), so it's inline, not a predicate.
-function canManageContacts(viewer, employeeId) {
+function canManageContacts(viewer: Viewer, employeeId: string) {
   return canEditEmployee(viewer) || viewer.employeeId === employeeId;
 }
 
-export async function addEmergencyContact(employeeId, _prevState, formData) {
+export async function addEmergencyContact(employeeId: string, _prevState: FormState, formData: FormData) {
   const viewer = await getViewer();
   if (!viewer || !canManageContacts(viewer, employeeId)) return { error: "You are not authorized." };
 
@@ -693,14 +730,14 @@ export async function addEmergencyContact(employeeId, _prevState, formData) {
       });
     });
   } catch (e) {
-    return { error: e.message ?? "Could not add contact." };
+    return { error: errorMessage(e) ?? "Could not add contact." };
   }
 
   revalidatePath(`/employees/${employeeId}`);
   return { ok: true };
 }
 
-export async function updateEmergencyContact(contactId, _prevState, formData) {
+export async function updateEmergencyContact(contactId: string, _prevState: FormState, formData: FormData) {
   const viewer = await getViewer();
   if (!viewer) return { error: "You are not authorized." };
 
@@ -739,14 +776,14 @@ export async function updateEmergencyContact(contactId, _prevState, formData) {
       });
     });
   } catch (e) {
-    return { error: e.message ?? "Could not update contact." };
+    return { error: errorMessage(e) ?? "Could not update contact." };
   }
 
   revalidatePath(`/employees/${employeeId}`);
   return { ok: true };
 }
 
-export async function deleteEmergencyContact(contactId, _prevState) {
+export async function deleteEmergencyContact(contactId: string, _prevState: FormState) {
   const viewer = await getViewer();
   if (!viewer) return { error: "You are not authorized." };
 
@@ -775,7 +812,7 @@ export async function deleteEmergencyContact(contactId, _prevState) {
       }
     });
   } catch (e) {
-    return { error: e.message ?? "Could not delete contact." };
+    return { error: errorMessage(e) ?? "Could not delete contact." };
   }
 
   revalidatePath(`/employees/${employeeId}`);
@@ -784,7 +821,7 @@ export async function deleteEmergencyContact(contactId, _prevState) {
 
 // DOCUMENTS — upload (HR only). Store the file in private storage under a server-generated
 // object key, then record the metadata. The DB never holds a public path.
-export async function uploadDocument(employeeId, _prevState, formData) {
+export async function uploadDocument(employeeId: string, _prevState: FormState, formData: FormData) {
   const viewer = await getViewer();
   if (!viewer || !canEditEmployee(viewer)) return { error: "You are not authorized to upload." };
 
@@ -819,7 +856,7 @@ export async function uploadDocument(employeeId, _prevState, formData) {
     );
   } catch (e) {
     await storage.remove(key); // don't leave an orphaned file if the insert fails
-    return { error: e.message ?? "Upload failed." };
+    return { error: errorMessage(e) ?? "Upload failed." };
   }
 
   revalidatePath(`/employees/${employeeId}`);
@@ -827,7 +864,7 @@ export async function uploadDocument(employeeId, _prevState, formData) {
 }
 
 // DOCUMENTS — delete (HR only). Remove the row (RLS-scoped) and the underlying file.
-export async function deleteDocument(docId, _prevState) {
+export async function deleteDocument(docId: string, _prevState: FormState) {
   const viewer = await getViewer();
   if (!viewer || !canEditEmployee(viewer)) return { error: "You are not authorized." };
 
@@ -843,7 +880,7 @@ export async function deleteDocument(docId, _prevState) {
       return doc;
     });
   } catch (e) {
-    return { error: e.message ?? "Delete failed." };
+    return { error: errorMessage(e) ?? "Delete failed." };
   }
 
   await storage.remove(removed.fileUrl);
@@ -854,7 +891,7 @@ export async function deleteDocument(docId, _prevState) {
 // CREATE — the canonical new-hire flow (HR admin + generalist). Mints a User identity, the
 // Employee, its initial history version, and a CREATE audit row, all in one transaction.
 // This is the single authoritative creation path (the ATS "hire" flow will call it too).
-export async function createEmployee(_prevState, formData) {
+export async function createEmployee(_prevState: FormState, formData: FormData) {
   const viewer = await getViewer();
   if (!viewer || !canEditEmployee(viewer)) return { error: "You are not authorized to create employees." };
 
@@ -1001,7 +1038,7 @@ export async function createEmployee(_prevState, formData) {
       return { employeeId, userId: user.id };
     });
   } catch (e) {
-    const msg = /unique/i.test(e.message ?? "") ? "That email is already in use." : e.message ?? "Could not create employee.";
+    const msg = /unique/i.test(errorMessage(e) ?? "") ? "That email is already in use." : errorMessage(e) ?? "Could not create employee.";
     return { error: msg };
   }
 
@@ -1020,7 +1057,7 @@ export async function createEmployee(_prevState, formData) {
 
 // Resend (or first-send) a new hire's invite email. HR-gated. Regenerating the token
 // invalidates any earlier link. Returns { ok } / { skipped } / { error } for the button.
-export async function resendInvite(userId) {
+export async function resendInvite(userId: string) {
   const viewer = await getViewer();
   if (!viewer || !canEditEmployee(viewer)) return { error: "You are not authorized." };
   try {
@@ -1035,7 +1072,7 @@ export async function resendInvite(userId) {
 // Read-only action powering the audit page's "Load more". All authorization lives in the
 // query (RLS scopes the rows, comp redaction scrubs the payloads) — the client only holds
 // an opaque cursor, and nothing it sends is trusted.
-export async function loadMoreAuditLog(employeeId, cursor) {
+export async function loadMoreAuditLog(employeeId: string, cursor: string | null) {
   const result = await getEmployeeAuditLog(employeeId, cursor);
   if (!result) return { error: "Not available." };
   return { events: result.events, nextCursor: result.nextCursor };

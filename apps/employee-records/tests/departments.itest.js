@@ -12,8 +12,8 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@hris/auth", async () => {
-  const rls = await import("../../../packages/auth/src/rls.js");
-  const roles = await import("../../../packages/auth/src/roles.js");
+  const rls = await import("../../../packages/auth/src/rls");
+  const roles = await import("../../../packages/auth/src/roles");
   return {
     getViewer: vi.fn(),
     withViewer: rls.withViewer,

@@ -12,9 +12,9 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@hris/auth", async () => {
-  const rls = await import("../../../packages/auth/src/rls.js");
-  const roles = await import("../../../packages/auth/src/roles.js");
-  const scope = await import("../../../packages/auth/src/scope.js");
+  const rls = await import("../../../packages/auth/src/rls");
+  const roles = await import("../../../packages/auth/src/roles");
+  const scope = await import("../../../packages/auth/src/scope");
   return {
     getViewer: vi.fn(), // set per test
     withViewer: rls.withViewer,
@@ -42,7 +42,7 @@ import {
   addEmergencyContact,
   deleteEmergencyContact,
   resendInvite,
-} from "../app/employees/[id]/actions.js";
+} from "../app/employees/[id]/actions";
 import { setPassword } from "../app/set-password/actions.js";
 import { sendInvite, hashInviteToken } from "@/lib/invite.js";
 import { sendInviteEmail } from "@/lib/email.js";

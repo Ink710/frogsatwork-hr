@@ -1,7 +1,7 @@
 import { describe, it, expect, afterAll } from "vitest";
 import { prisma } from "@hris/database";
-import { withViewer } from "../../../packages/auth/src/rls.js";
-import { resolveCompAccess } from "../../../packages/auth/src/scope.js";
+import { withViewer } from "../../../packages/auth/src/rls";
+import { resolveCompAccess } from "../../../packages/auth/src/scope";
 
 // Seeded ids (see packages/database/src/seed.js).
 const ORG = "10000000-0000-0000-0000-000000000001";

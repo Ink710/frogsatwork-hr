@@ -6,7 +6,7 @@ import {
   terminationSchema,
   isWithinCorrectionWindow,
   CORRECTION_WINDOW_DAYS,
-} from "./employee.js";
+} from "./employee";
 
 const today = () => new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD, local
 

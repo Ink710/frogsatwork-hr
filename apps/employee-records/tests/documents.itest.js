@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import pg from "pg";
 import { prisma } from "@hris/database";
-import { withViewer } from "../../../packages/auth/src/rls.js";
+import { withViewer } from "../../../packages/auth/src/rls";
 
 const ORG = "10000000-0000-0000-0000-000000000001";
 const SYS = "00000000-0000-0000-0000-000000000001";
