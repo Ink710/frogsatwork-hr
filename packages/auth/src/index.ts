@@ -32,3 +32,7 @@ export {
   resolveCompAccess,
 } from "./scope.js";
 export { withViewer } from "./rls.js";
+
+// Type-only surface. `export type` is required under isolatedModules: a single-file
+// transpiler (SWC/esbuild) can't tell these are types to be erased, so we mark them.
+export type { Viewer, CompTarget, CompContext, RecordScope } from "./roles.js";

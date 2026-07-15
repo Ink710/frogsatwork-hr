@@ -5,12 +5,19 @@
 // transaction, set them LOCAL to that transaction (`set_config(..., true)`), and run all
 // the viewer's queries on that transaction's client (`tx`). When the transaction ends,
 // the settings vanish with it.
-import { prisma } from "@hris/database";
+import { prisma, Prisma } from "@hris/database";
+import type { Viewer } from "./roles.js";
 
-export async function withViewer(viewer, callback) {
+// Generic over T: withViewer returns exactly whatever the callback returns. Without the
+// <T> the return type would collapse to `any` (or `unknown`) and every caller would lose
+// its result type. `tx` is the RLS-scoped transaction client the callback runs its queries on.
+export async function withViewer<T>(
+  viewer: Viewer,
+  callback: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> {
   if (!viewer) throw new Error("withViewer requires a viewer");
 
-  return prisma.$transaction(async (tx) => {
+  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     // One round-trip sets all four. Empty string when a field is absent so
     // current_setting(..., true) yields '' (which matches nothing) rather than erroring.
     await tx.$queryRaw`SELECT
