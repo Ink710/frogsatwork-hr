@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    // --- Language / output target ---
+    // We never emit JS from tsc; Next (SWC) and Vitest (esbuild) do the actual
+    // transpiling. tsc is used ONLY as a type-checker (see "noEmit" below).
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+
+    // --- Strictness (the whole point of adopting TS) ---
+    "strict": true,
+
+    // --- Incremental migration: let .js and .ts coexist ---
+    // allowJs = TS is allowed to *see* our remaining .js files (so imports
+    // resolve). checkJs = false means it won't type-CHECK them — we opt files
+    // into checking by renaming them to .ts, one at a time.
+    "allowJs": true,
+    "checkJs": false,
+
+    // --- Correctness for single-file transpilers ---
+    // Next/esbuild compile each file in isolation, with no cross-file type info.
+    // isolatedModules makes tsc reject patterns those tools can't handle.
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+
+    // Prisma/next-auth ship huge .d.ts files; don't re-check their internals.
+    "skipLibCheck": true,
+
+    "noEmit": true
+  }
+}

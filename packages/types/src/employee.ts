@@ -2,11 +2,11 @@
 // @hris/database (we hard-code the enum literals) so this package stays lightweight.
 import { z } from "zod";
 
-export const EMPLOYMENT_TYPES = ["FULL_TIME", "PART_TIME", "CONTRACT", "INTERN"];
+export const EMPLOYMENT_TYPES = ["FULL_TIME", "PART_TIME", "CONTRACT", "INTERN"] as const;
 // Profile-revamp enums (mirror the Prisma enums; hard-coded to keep this package DB-free).
-export const FLSA_CLASSIFICATIONS = ["EXEMPT", "NON_EXEMPT"];
-export const PAY_FREQUENCIES = ["WEEKLY", "BIWEEKLY", "SEMI_MONTHLY", "MONTHLY"];
-export const PAY_BASES = ["PER_HOUR", "PER_MONTH", "PER_YEAR"];
+export const FLSA_CLASSIFICATIONS = ["EXEMPT", "NON_EXEMPT"] as const;
+export const PAY_FREQUENCIES = ["WEEKLY", "BIWEEKLY", "SEMI_MONTHLY", "MONTHLY"] as const;
+export const PAY_BASES = ["PER_HOUR", "PER_MONTH", "PER_YEAR"] as const;
 
 // Salary as a fixed-precision string (never a float) — Prisma Decimal accepts it verbatim.
 const salaryString = z.string().regex(/^\d+(\.\d{1,2})?$/, "Enter an amount like 90000 or 90000.00");
@@ -49,7 +49,7 @@ export const employeeChangeSchema = z.object({
 });
 
 // ---- New-hire creation (mints the initial history version) ----
-export const ASSIGNABLE_ROLES = ["EMPLOYEE", "MANAGER", "HR_GENERALIST", "HR_ADMIN", "PAYROLL_ADMIN"];
+export const ASSIGNABLE_ROLES = ["EMPLOYEE", "MANAGER", "HR_GENERALIST", "HR_ADMIN", "PAYROLL_ADMIN"] as const;
 
 export const employeeCreateSchema = z.object({
   firstName: z.string().min(1),
@@ -150,7 +150,7 @@ export const rehireSchema = z.object({
 });
 
 // ---- Leave / suspension (reversible status changes) ----
-export const STATUS_CHANGE_TYPES = ["LEAVE", "SUSPENSION"];
+export const STATUS_CHANGE_TYPES = ["LEAVE", "SUSPENSION"] as const;
 
 // Start a leave or suspension. expectedEnd is optional (a suspension is often open-ended);
 // when given it must land on/after the start date. Both dates arrive as Date after transform,
@@ -173,7 +173,7 @@ export const reinstateSchema = z.object({
 });
 
 // ---- Documents ----
-export const DOCUMENT_TYPES = ["CONTRACT", "IDENTIFICATION", "CERTIFICATION", "PERFORMANCE", "OTHER"];
+export const DOCUMENT_TYPES = ["CONTRACT", "IDENTIFICATION", "CERTIFICATION", "PERFORMANCE", "OTHER"] as const;
 
 export const documentUploadSchema = z.object({
   documentType: z.enum(DOCUMENT_TYPES),
@@ -201,7 +201,43 @@ export const setPasswordSchema = z
 export const CORRECTION_WINDOW_DAYS = 7;
 
 // Pure predicate: is a history row still young enough to correct in place?
-export function isWithinCorrectionWindow(createdAt) {
+export function isWithinCorrectionWindow(createdAt: Date | string | number) {
   const ageMs = Date.now() - new Date(createdAt).getTime();
   return ageMs <= CORRECTION_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 }
+
+// ---------------------------------------------------------------------------
+// Static types derived from the runtime schemas above.
+//
+// These are the payoff of adopting TypeScript here: instead of hand-writing (and
+// separately maintaining) type declarations, we DERIVE them from the single
+// source of truth — the Zod schemas and enum tuples. The validator and the
+// compile-time type can never drift apart, because one is generated from the other.
+// ---------------------------------------------------------------------------
+
+// `(typeof TUPLE)[number]` = the union of a readonly tuple's element types.
+// e.g. EmploymentType = "FULL_TIME" | "PART_TIME" | "CONTRACT" | "INTERN".
+export type EmploymentType = (typeof EMPLOYMENT_TYPES)[number];
+export type FlsaClassification = (typeof FLSA_CLASSIFICATIONS)[number];
+export type PayFrequency = (typeof PAY_FREQUENCIES)[number];
+export type PayBasis = (typeof PAY_BASES)[number];
+export type AssignableRole = (typeof ASSIGNABLE_ROLES)[number];
+export type StatusChangeType = (typeof STATUS_CHANGE_TYPES)[number];
+export type DocumentType = (typeof DOCUMENT_TYPES)[number];
+
+// `z.infer<typeof schema>` = the OUTPUT type a schema produces after parsing.
+// Because several schemas `.transform()` date strings into Date objects, these
+// types reflect the POST-parse shape a Server Action receives from `.parse()`
+// (e.g. `effectiveFrom` is a `Date`, not the "YYYY-MM-DD" string that came in).
+export type EmployeeChangeInput = z.infer<typeof employeeChangeSchema>;
+export type EmployeeCreateInput = z.infer<typeof employeeCreateSchema>;
+export type DepartmentInput = z.infer<typeof departmentSchema>;
+export type EmergencyContactInput = z.infer<typeof emergencyContactSchema>;
+export type DetailsCorrectionInput = z.infer<typeof detailsCorrectionSchema>;
+export type MaterialCorrectionInput = z.infer<typeof materialCorrectionSchema>;
+export type TerminationInput = z.infer<typeof terminationSchema>;
+export type RehireInput = z.infer<typeof rehireSchema>;
+export type StartStatusChangeInput = z.infer<typeof startStatusChangeSchema>;
+export type ReinstateInput = z.infer<typeof reinstateSchema>;
+export type DocumentUploadInput = z.infer<typeof documentUploadSchema>;
+export type SetPasswordInput = z.infer<typeof setPasswordSchema>;
