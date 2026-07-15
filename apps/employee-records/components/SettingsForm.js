@@ -12,10 +12,10 @@ export function SettingsForm({ storageDir }) {
   return (
     <form action={formAction} className="mt-6 max-w-xl space-y-3">
       {state?.error && (
-        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-400">{state.error}</p>
+        <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive  ">{state.error}</p>
       )}
       {state?.ok && (
-        <p className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-700 dark:bg-green-950/30 dark:text-green-400">{t("settings.saved")}</p>
+        <p className="rounded-md bg-success/10 px-3 py-2 text-sm text-success  ">{t("settings.saved")}</p>
       )}
       <div>
         <label className="block text-sm font-medium" htmlFor="storageDir">{t("settings.storageDir")}</label>
@@ -24,11 +24,11 @@ export function SettingsForm({ storageDir }) {
           name="storageDir"
           defaultValue={current}
           required
-          className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 font-mono text-sm dark:border-zinc-700 dark:bg-zinc-900"
+          className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
         />
-        <p className="mt-1 text-xs text-zinc-400">{t("settings.storageHint")}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{t("settings.storageHint")}</p>
       </div>
-      <button type="submit" disabled={pending} className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50">
+      <button type="submit" disabled={pending} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
         {pending ? t("settings.saving") : t("settings.save")}
       </button>
     </form>

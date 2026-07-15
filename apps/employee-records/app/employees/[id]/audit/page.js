@@ -16,7 +16,7 @@ export default async function EmployeeAuditPage({ params }) {
   return (
     <Card title={t("audit.title")} action={!data.canViewComp ? <Pill>{t("history.compHidden")}</Pill> : null}>
       {data.events.length === 0 ? (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">{t("audit.none")}</p>
+        <p className="text-sm text-muted-foreground dark:text-muted-foreground">{t("audit.none")}</p>
       ) : (
         <AuditLogList employeeId={data.employee.id} initialEvents={data.events} initialCursor={data.nextCursor} />
       )}

@@ -4,10 +4,10 @@
 export default function Loading() {
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-10">
-      <div className="mb-6 h-8 w-40 animate-pulse rounded bg-zinc-200 dark:bg-zinc-800" />
+      <div className="mb-6 h-8 w-40 animate-pulse rounded bg-muted " />
       <div className="space-y-2">
         {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="h-11 animate-pulse rounded bg-zinc-100 dark:bg-zinc-900" />
+          <div key={i} className="h-11 animate-pulse rounded bg-muted " />
         ))}
       </div>
     </main>

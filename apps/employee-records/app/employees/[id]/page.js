@@ -10,7 +10,7 @@ import { EmergencyContacts } from "@/components/EmergencyContacts";
 import { ResendInviteButton } from "@/components/ResendInviteButton";
 
 const actionBtn =
-  "rounded-md border border-zinc-300 px-2.5 py-1 text-xs font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900";
+  "rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted  ";
 
 export default async function EmployeeOverviewPage({ params }) {
   const { id } = await params;
@@ -58,7 +58,7 @@ export default async function EmployeeOverviewPage({ params }) {
           {canLifecycle && (
             <Link
               href={`/employees/${e.id}/terminate`}
-              className="rounded-md border border-red-300 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50 dark:border-red-900/60 dark:text-red-400 dark:hover:bg-red-950/30"
+              className="rounded-md border border-destructive/40 px-2.5 py-1 text-xs font-medium text-destructive hover:bg-destructive/10   "
             >
               {t("profile.terminate")}
             </Link>
@@ -69,7 +69,7 @@ export default async function EmployeeOverviewPage({ params }) {
         <div className="flex justify-end">
           <Link
             href={`/employees/${e.id}/rehire`}
-            className="rounded-md border border-green-300 px-2.5 py-1 text-xs font-medium text-green-700 hover:bg-green-50 dark:border-green-900/60 dark:text-green-400 dark:hover:bg-green-950/30"
+            className="rounded-md border border-success/40 px-2.5 py-1 text-xs font-medium text-success hover:bg-success/10   "
           >
             {t("profile.rehire")}
           </Link>
@@ -78,10 +78,10 @@ export default async function EmployeeOverviewPage({ params }) {
 
       {/* Account activation */}
       {canEdit && !isTerminated && e.user && !e.user.emailVerifiedAt && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm dark:border-amber-900/50 dark:bg-amber-950/20">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-warning/30 bg-warning/10 p-4 text-sm  ">
           <div>
-            <span className="font-medium text-amber-800 dark:text-amber-300">{t("profile.invitePending")}</span>
-            <span className="ml-2 text-amber-700 dark:text-amber-400">
+            <span className="font-medium text-warning ">{t("profile.invitePending")}</span>
+            <span className="ml-2 text-warning ">
               {e.user.invitedAt ? t("profile.inviteNotSet") : t("profile.inviteNotSent")}
             </span>
           </div>
@@ -94,8 +94,8 @@ export default async function EmployeeOverviewPage({ params }) {
         <div
           className={`rounded-md border p-4 text-sm ${
             e.currentStatusChange.type === "SUSPENSION"
-              ? "border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-950/20"
-              : "border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/20"
+              ? "border-destructive/30 bg-destructive/10  "
+              : "border-warning/30 bg-warning/10  "
           }`}
         >
           <span className="font-medium">
@@ -109,17 +109,17 @@ export default async function EmployeeOverviewPage({ params }) {
           )}
           {e.currentStatusChange.reason && <> — {e.currentStatusChange.reason}</>}
           {e.currentStatusChange.createdBy && (
-            <span className="ml-2 text-zinc-500">{t("common.by", { name: e.currentStatusChange.createdBy.name })}</span>
+            <span className="ml-2 text-muted-foreground">{t("common.by", { name: e.currentStatusChange.createdBy.name })}</span>
           )}
         </div>
       )}
 
       {isTerminated && (
-        <div className="rounded-md border border-zinc-200 bg-zinc-50 p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900/50">
+        <div className="rounded-md border border-border bg-muted p-4 text-sm  ">
           <span className="font-medium">{t("profile.terminated")}</span>
           {e.terminationDate && <> {t("profile.terminatedOn", { date: formatDate(e.terminationDate, locale) })}</>}
           {e.terminationReason && <> — {e.terminationReason}</>}
-          <span className="ml-2 text-zinc-500">
+          <span className="ml-2 text-muted-foreground">
             ({e.eligibleForRehire ? t("profile.eligibleRehire") : t("profile.notEligibleRehire")})
           </span>
         </div>
@@ -147,7 +147,7 @@ export default async function EmployeeOverviewPage({ params }) {
             <Field label={t("profile.equity")}>{e.comp.equityNote}</Field>
           </FieldGrid>
         ) : (
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">{t("profile.compHidden")}</p>
+          <p className="text-sm text-muted-foreground dark:text-muted-foreground">{t("profile.compHidden")}</p>
         )}
       </Card>
 
@@ -164,7 +164,7 @@ export default async function EmployeeOverviewPage({ params }) {
               <li key={r.id}>
                 <Link
                   href={`/employees/${r.id}`}
-                  className="rounded-full border border-zinc-200 px-3 py-1 text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
+                  className="rounded-full border border-border px-3 py-1 text-sm hover:bg-muted  "
                 >
                   {r.firstName} {r.lastName}
                 </Link>
@@ -177,15 +177,15 @@ export default async function EmployeeOverviewPage({ params }) {
       {/* Leave & suspension history */}
       {e.statusHistory.length > 0 && (
         <Card title={t("profile.leaveHistory")}>
-          <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
+          <ul className="divide-y divide-border">
             {e.statusHistory.map((s) => (
               <li key={s.id} className="py-2.5 text-sm first:pt-0 last:pb-0">
                 <span className="font-medium">{s.type === "SUSPENSION" ? t("profile.suspended") : t("profile.onLeave")}</span>
-                <span className="ml-2 text-zinc-500">
+                <span className="ml-2 text-muted-foreground">
                   {formatDate(s.startDate, locale)} — {formatDate(s.endDate, locale)}
                 </span>
-                {s.reason && <div className="mt-0.5 text-zinc-600 dark:text-zinc-300">{s.reason}</div>}
-                {s.createdBy && <span className="text-xs text-zinc-400">{t("common.by", { name: s.createdBy.name })}</span>}
+                {s.reason && <div className="mt-0.5 text-muted-foreground">{s.reason}</div>}
+                {s.createdBy && <span className="text-xs text-muted-foreground">{t("common.by", { name: s.createdBy.name })}</span>}
               </li>
             ))}
           </ul>

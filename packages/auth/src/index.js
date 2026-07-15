@@ -18,6 +18,7 @@ export {
   canTerminate,
   canRehire,
   canViewBudget,
+  canViewBudgetOverview,
   canManageSettings,
   canManageDepartments,
   isPayroll,

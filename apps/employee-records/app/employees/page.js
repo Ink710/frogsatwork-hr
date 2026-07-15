@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Plus } from "lucide-react";
 import { getViewer, canEditEmployee } from "@hris/auth";
 import { EMPLOYMENT_TYPES } from "@hris/types";
 import { getEmployees, getDepartmentOptions } from "@/lib/queries";
@@ -7,18 +8,18 @@ import { getT } from "@/lib/i18n.server";
 
 export async function generateMetadata() {
   const t = await getT();
-  return { title: `${t("employees.title")} · PeopleBase` };
+  return { title: `${t("employees.title")} · FrogsAtWorkHR` };
 }
 
 const STATUS_STYLES = {
-  ACTIVE: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
-  ON_LEAVE: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
-  SUSPENDED: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
-  TERMINATED: "bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
+  ACTIVE: "bg-success/15 text-success  ",
+  ON_LEAVE: "bg-warning/15 text-warning  ",
+  SUSPENDED: "bg-destructive/15 text-destructive  ",
+  TERMINATED: "bg-muted text-muted-foreground  dark:text-muted-foreground",
 };
 const STATUSES = ["ACTIVE", "ON_LEAVE", "SUSPENDED", "TERMINATED"];
 
-const fieldCls = "rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900";
+const fieldCls = "rounded-md border border-input bg-background px-3 py-1.5 text-sm outline-none focus:border-ring";
 
 export default async function EmployeesPage({ searchParams }) {
   // Employees don't browse the roster — they land on (and are confined to) their own profile.
@@ -68,7 +69,7 @@ export default async function EmployeesPage({ searchParams }) {
       <header className="mb-6 flex items-baseline justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{t("employees.title")}</h1>
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-muted-foreground">
             {total} {total === 1 ? t("employees.personWord") : t("employees.peopleWord")}
             {total > 0 && <> {" · "}{t("employees.showing", { from, to })}</>}
           </p>
@@ -76,8 +77,9 @@ export default async function EmployeesPage({ searchParams }) {
         {canCreate && (
           <Link
             href="/employees/new"
-            className="rounded-md bg-foreground px-3 py-1.5 text-sm font-medium text-background hover:opacity-90"
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90"
           >
+            <Plus className="h-4 w-4" aria-hidden="true" />
             {t("employees.new")}
           </Link>
         )}
@@ -111,25 +113,25 @@ export default async function EmployeesPage({ searchParams }) {
             <option key={ty} value={ty}>{t(`enum.employmentType.${ty}`)}</option>
           ))}
         </select>
-        <button type="submit" className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900">
+        <button type="submit" className="rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted  ">
           {t("employees.filter")}
         </button>
         {hasFilters && (
-          <Link href="/employees" className="px-2 py-1.5 text-sm text-zinc-500 hover:underline">
+          <Link href="/employees" className="px-2 py-1.5 text-sm text-muted-foreground hover:underline">
             {t("common.clear")}
           </Link>
         )}
       </form>
 
       {rows.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-zinc-300 p-12 text-center dark:border-zinc-700">
+        <div className="rounded-lg border border-dashed border-border p-12 text-center ">
           {hasFilters ? (
-            <p className="text-sm text-zinc-500">
+            <p className="text-sm text-muted-foreground">
               {t("employees.emptyNoMatch")}{" "}
               <Link href="/employees" className="underline">{t("common.clear")}</Link>
             </p>
           ) : (
-            <p className="text-sm text-zinc-500">
+            <p className="text-sm text-muted-foreground">
               {t("employees.emptySeed")}{" "}
               <code className="font-mono">pnpm --filter @hris/database db:seed</code>
             </p>
@@ -137,9 +139,9 @@ export default async function EmployeesPage({ searchParams }) {
         </div>
       ) : (
         <>
-          <div className="overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900">
+          <div className="overflow-hidden rounded-lg border border-border">
+            <table className="w-full text-left text-sm font-table">
+              <thead className="bg-muted text-xs uppercase tracking-wide text-muted-foreground ">
                 <tr>
                   <th className="px-4 py-3 font-medium">{t("employees.colNumber")}</th>
                   <th className="px-4 py-3 font-medium">{t("employees.colName")}</th>
@@ -150,19 +152,19 @@ export default async function EmployeesPage({ searchParams }) {
                   <th className="px-4 py-3 font-medium">{t("employees.colStatus")}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+              <tbody className="divide-y divide-border">
                 {rows.map((e) => (
-                  <tr key={e.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-900/50">
-                    <td className="px-4 py-3 font-mono text-xs text-zinc-500">{e.employeeNumber}</td>
+                  <tr key={e.id} className="hover:bg-muted/50">
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{e.employeeNumber}</td>
                     <td className="px-4 py-3 font-medium">
                       <Link href={`/employees/${e.id}`} className="hover:underline">
                         {e.name}
                       </Link>
                     </td>
-                    <td className="px-4 py-3 text-zinc-600 dark:text-zinc-300">{e.title}</td>
-                    <td className="px-4 py-3 text-zinc-600 dark:text-zinc-300">{e.department}</td>
-                    <td className="px-4 py-3 text-zinc-600 dark:text-zinc-300">{e.manager}</td>
-                    <td className="px-4 py-3 text-zinc-600 dark:text-zinc-300">{t(`enum.employmentType.${e.employmentType}`)}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{e.title}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{e.department}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{e.manager}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{t(`enum.employmentType.${e.employmentType}`)}</td>
                     <td className="px-4 py-3">
                       <span
                         className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -181,11 +183,11 @@ export default async function EmployeesPage({ searchParams }) {
           {pageCount > 1 && (
             <nav className="mt-4 flex items-center justify-between text-sm" aria-label="Pagination">
               {current > 1 ? (
-                <Link href={buildHref({ page: current - 1 })} className="rounded-md border border-zinc-300 px-3 py-1.5 font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900">
+                <Link href={buildHref({ page: current - 1 })} className="rounded-md border border-border px-3 py-1.5 font-medium hover:bg-muted  ">
                   {t("employees.prev")}
                 </Link>
               ) : (
-                <span className="rounded-md border border-zinc-200 px-3 py-1.5 text-zinc-300 dark:border-zinc-800 dark:text-zinc-600">{t("employees.prev")}</span>
+                <span className="rounded-md border border-border px-3 py-1.5 text-muted-foreground/50  dark:text-muted-foreground">{t("employees.prev")}</span>
               )}
 
               <div className="flex items-center gap-1">
@@ -196,8 +198,8 @@ export default async function EmployeesPage({ searchParams }) {
                     aria-current={p === current ? "page" : undefined}
                     className={`rounded-md px-3 py-1.5 font-medium ${
                       p === current
-                        ? "bg-foreground text-background"
-                        : "border border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                        ? "bg-primary text-primary-foreground"
+                        : "border border-border hover:bg-muted  "
                     }`}
                   >
                     {p}
@@ -206,11 +208,11 @@ export default async function EmployeesPage({ searchParams }) {
               </div>
 
               {current < pageCount ? (
-                <Link href={buildHref({ page: current + 1 })} className="rounded-md border border-zinc-300 px-3 py-1.5 font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900">
+                <Link href={buildHref({ page: current + 1 })} className="rounded-md border border-border px-3 py-1.5 font-medium hover:bg-muted  ">
                   {t("employees.next")}
                 </Link>
               ) : (
-                <span className="rounded-md border border-zinc-200 px-3 py-1.5 text-zinc-300 dark:border-zinc-800 dark:text-zinc-600">{t("employees.next")}</span>
+                <span className="rounded-md border border-border px-3 py-1.5 text-muted-foreground/50  dark:text-muted-foreground">{t("employees.next")}</span>
               )}
             </nav>
           )}

@@ -8,7 +8,7 @@ import { formatMoney } from "@/lib/format";
 
 export async function generateMetadata() {
   const t = await getT();
-  return { title: `${t("dept.title")} · PeopleBase` };
+  return { title: `${t("dept.title")} · FrogsAtWorkHR` };
 }
 
 export default async function DepartmentsPage() {
@@ -25,12 +25,12 @@ export default async function DepartmentsPage() {
       <header className="mb-8 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{t("dept.title")}</h1>
-          <p className="text-sm text-zinc-500">{t(n === 1 ? "dept.deptOne" : "dept.deptMany", { n })}</p>
+          <p className="text-sm text-muted-foreground">{t(n === 1 ? "dept.deptOne" : "dept.deptMany", { n })}</p>
         </div>
         {canManage && (
           <Link
             href="/departments/new"
-            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+            className="rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted  "
           >
             {t("dept.new")}
           </Link>
@@ -42,23 +42,23 @@ export default async function DepartmentsPage() {
           <Link
             key={d.id}
             href={`/departments/${d.id}`}
-            className="rounded-xl border border-zinc-200 p-5 transition-colors hover:border-zinc-400 dark:border-zinc-800 dark:hover:border-zinc-600"
+            className="rounded-xl border border-border p-5 transition-colors hover:border-ring"
           >
             <h2 className="text-base font-medium">{d.name}</h2>
             <dl className="mt-3 space-y-1.5 text-sm">
               <div className="flex justify-between">
-                <dt className="text-zinc-500">{t("dept.employees")}</dt>
+                <dt className="text-muted-foreground">{t("dept.employees")}</dt>
                 <dd className="font-medium tabular-nums">{d.employeeCount}</dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-zinc-500">{t("dept.colHead")}</dt>
+                <dt className="text-muted-foreground">{t("dept.colHead")}</dt>
                 <dd>{d.headName ?? "—"}</dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-zinc-500">{t("dept.colBudget")}</dt>
+                <dt className="text-muted-foreground">{t("dept.colBudget")}</dt>
                 <dd>
                   {d.budgetHidden ? (
-                    <span className="text-zinc-400">{t("dept.budgetRestricted")}</span>
+                    <span className="text-muted-foreground">{t("dept.budgetRestricted")}</span>
                   ) : (
                     <span className="font-medium">{formatMoney(d.budget, "USD", locale) ?? "—"}</span>
                   )}

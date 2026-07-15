@@ -14,11 +14,11 @@ export function DeleteDepartmentButton({ departmentId }) {
         type="submit"
         disabled={pending}
         title={state?.error ?? t("dept.deleteTitle")}
-        className="rounded-md border border-red-300 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-900/60 dark:text-red-400 dark:hover:bg-red-950/30"
+        className="rounded-md border border-destructive/40 px-2.5 py-1 text-xs font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50   "
       >
         {pending ? "…" : t("dept.delete")}
       </button>
-      {state?.error && <span className="ml-2 text-xs text-red-600 dark:text-red-400">{state.error}</span>}
+      {state?.error && <span className="ml-2 text-xs text-destructive ">{state.error}</span>}
     </form>
   );
 }

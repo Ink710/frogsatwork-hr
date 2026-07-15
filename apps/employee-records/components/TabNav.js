@@ -10,7 +10,7 @@ export function TabNav({ tabs }) {
   const pathname = usePathname();
 
   return (
-    <nav className="flex gap-6 overflow-x-auto border-b border-zinc-200 dark:border-zinc-800">
+    <nav className="flex gap-6 overflow-x-auto border-b border-border">
       {tabs.map(({ href, label }) => {
         const active = pathname === href;
         return (
@@ -20,8 +20,8 @@ export function TabNav({ tabs }) {
             aria-current={active ? "page" : undefined}
             className={`-mb-px whitespace-nowrap border-b-2 px-1 pb-3 text-sm font-medium transition-colors ${
               active
-                ? "border-blue-600 text-zinc-900 dark:border-blue-400 dark:text-zinc-100"
-                : "border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+                ? "border-primary text-foreground "
+                : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
             {label}

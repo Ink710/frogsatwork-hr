@@ -7,7 +7,7 @@ import { LanguageToggle } from "@/components/LanguageToggle";
 
 export async function generateMetadata() {
   const t = await getT();
-  return { title: `${t("prefs.title")} · PeopleBase` };
+  return { title: `${t("prefs.title")} · FrogsAtWorkHR` };
 }
 
 // Per-user preferences — available to every signed-in user (unlike /settings, which is HR-only
@@ -20,16 +20,16 @@ export default async function PreferencesPage() {
   return (
     <main className="mx-auto w-full max-w-3xl px-6 py-10">
       <h1 className="text-2xl font-semibold tracking-tight">{t("prefs.title")}</h1>
-      <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">{t("prefs.subtitle")}</p>
+      <p className="mt-1 text-sm text-muted-foreground dark:text-muted-foreground">{t("prefs.subtitle")}</p>
 
       <div className="mt-6 space-y-6">
         <Card title={t("prefs.appearance")}>
-          <p className="mb-4 text-sm text-zinc-500 dark:text-zinc-400">{t("prefs.appearanceHelp")}</p>
+          <p className="mb-4 text-sm text-muted-foreground dark:text-muted-foreground">{t("prefs.appearanceHelp")}</p>
           <ThemeToggle />
         </Card>
 
         <Card title={t("prefs.language")}>
-          <p className="mb-4 text-sm text-zinc-500 dark:text-zinc-400">{t("prefs.languageHelp")}</p>
+          <p className="mb-4 text-sm text-muted-foreground dark:text-muted-foreground">{t("prefs.languageHelp")}</p>
           <LanguageToggle />
         </Card>
       </div>

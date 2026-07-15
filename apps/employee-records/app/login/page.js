@@ -1,10 +1,11 @@
 import { redirect } from "next/navigation";
 import { signIn, AuthError } from "@hris/auth";
 import { getT } from "@/lib/i18n.server";
+import { Logo } from "@/components/Logo";
 
 export async function generateMetadata() {
   const t = await getT();
-  return { title: `${t("login.title")} · PeopleBase` };
+  return { title: `${t("login.title")} · FrogsAtWorkHR` };
 }
 
 export default async function LoginPage({ searchParams }) {
@@ -14,7 +15,7 @@ export default async function LoginPage({ searchParams }) {
   const t = await getT();
 
   // Server Action: runs on the server, calls Auth.js signIn. On success, signIn throws
-  // a NEXT_REDIRECT (to /employees) which must propagate; on bad credentials it throws
+  // a NEXT_REDIRECT (to the home dispatcher) which must propagate; on bad credentials it throws
   // an AuthError, which we convert into a friendly ?error redirect.
   async function login(formData) {
     "use server";
@@ -22,8 +23,6 @@ export default async function LoginPage({ searchParams }) {
       await signIn("credentials", {
         email: formData.get("email"),
         password: formData.get("password"),
-        // Land on the home dispatcher, which routes by role (employee → own profile,
-        // manager → their department, HR/payroll → the employee list).
         redirectTo: "/",
       });
     } catch (error) {
@@ -34,54 +33,46 @@ export default async function LoginPage({ searchParams }) {
     }
   }
 
+  const inputCls =
+    "mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30";
+
   return (
     <main className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center px-6 py-24">
-      <p className="text-sm font-medium uppercase tracking-wide text-zinc-400">PeopleBase</p>
-      <h1 className="mt-1 text-2xl font-semibold tracking-tight">{t("login.title")}</h1>
+      <Logo href="/login" size={40} wordmark={false} />
+      <h1 className="mt-4 text-2xl font-semibold tracking-tight">
+        Frogs<span className="text-primary">AtWork</span>HR
+      </h1>
+      <p className="mt-1 text-sm text-muted-foreground">{t("brand.slogan")}</p>
 
-      <form action={login} className="mt-6 space-y-4">
+      <form action={login} className="mt-8 space-y-4">
         {justActivated && !hasError && (
-          <p className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-700 dark:bg-green-950/30 dark:text-green-400">
+          <p className="rounded-md bg-success/10 px-3 py-2 text-sm text-success">
             {t("login.activated")}
           </p>
         )}
         {hasError && (
-          <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-400">
+          <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
             {t("login.invalid")}
           </p>
         )}
         <div>
           <label className="block text-sm font-medium" htmlFor="email">{t("login.email")}</label>
-          <input
-            id="email"
-            name="email"
-            type="email"
-            required
-            autoComplete="username"
-            className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-          />
+          <input id="email" name="email" type="email" required autoComplete="username" className={inputCls} />
         </div>
         <div>
           <label className="block text-sm font-medium" htmlFor="password">{t("login.password")}</label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            required
-            autoComplete="current-password"
-            className="mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-          />
+          <input id="password" name="password" type="password" required autoComplete="current-password" className={inputCls} />
         </div>
         <button
           type="submit"
-          className="w-full rounded-md bg-foreground px-3 py-2 text-sm font-medium text-background hover:opacity-90"
+          className="w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
         >
           {t("login.submit")}
         </button>
       </form>
 
       {/* Dev convenience — remove once real accounts exist. */}
-      <div className="mt-8 rounded-md border border-dashed border-zinc-300 p-3 text-xs text-zinc-500 dark:border-zinc-700">
+      <div className="mt-8 rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">
         <p className="font-medium">{t("login.seededHint")}</p>
         <ul className="mt-1 space-y-0.5">
           <li>ana.okafor@peoplebase.test — HR Admin (sees all)</li>

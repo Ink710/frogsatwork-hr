@@ -6,7 +6,7 @@ import { EditChangeForm } from "@/components/EditChangeForm";
 
 export async function generateMetadata() {
   const t = await getT();
-  return { title: `${t("edit.title")} · PeopleBase` };
+  return { title: `${t("edit.title")} · FrogsAtWorkHR` };
 }
 
 export default async function EditPage({ params }) {
@@ -19,11 +19,11 @@ export default async function EditPage({ params }) {
 
   return (
     <main className="mx-auto w-full max-w-lg px-6 py-10">
-      <Link href={`/employees/${id}`} className="text-sm text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200">
+      <Link href={`/employees/${id}`} className="text-sm text-muted-foreground hover:text-foreground">
         {t("common.backToProfile")}
       </Link>
       <h1 className="mt-4 text-2xl font-semibold tracking-tight">{t("edit.title")}</h1>
-      <p className="mt-1 text-sm text-zinc-500">{t("edit.subtitle", { name })}</p>
+      <p className="mt-1 text-sm text-muted-foreground">{t("edit.subtitle", { name })}</p>
       <EditChangeForm employeeId={id} {...data} />
     </main>
   );

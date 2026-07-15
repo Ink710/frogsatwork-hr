@@ -6,7 +6,7 @@ import { SettingsForm } from "@/components/SettingsForm";
 
 export async function generateMetadata() {
   const t = await getT();
-  return { title: `${t("settings.title")} · PeopleBase` };
+  return { title: `${t("settings.title")} · FrogsAtWorkHR` };
 }
 
 export default async function SettingsPage() {
@@ -18,7 +18,7 @@ export default async function SettingsPage() {
   return (
     <main className="mx-auto w-full max-w-3xl px-6 py-10">
       <h1 className="text-2xl font-semibold tracking-tight">{t("settings.title")}</h1>
-      <p className="mt-1 text-sm text-zinc-500">{t("settings.subtitle")}</p>
+      <p className="mt-1 text-sm text-muted-foreground">{t("settings.subtitle")}</p>
       <SettingsForm storageDir={storageDir} />
     </main>
   );

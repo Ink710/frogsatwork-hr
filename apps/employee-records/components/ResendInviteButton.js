@@ -16,12 +16,12 @@ export function ResendInviteButton({ userId, label }) {
       <button
         type="submit"
         disabled={pending}
-        className="rounded-md border border-zinc-300 px-2.5 py-1 text-xs font-medium hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+        className="rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted disabled:opacity-50  "
       >
         {pending ? t("invite.sending") : (label ?? t("profile.resendInvite"))}
       </button>
-      {state?.ok && <span className="text-xs text-green-600 dark:text-green-400">{t("invite.sent")}</span>}
-      {state?.error && <span className="text-xs text-red-600 dark:text-red-400">{state.error}</span>}
+      {state?.ok && <span className="text-xs text-success ">{t("invite.sent")}</span>}
+      {state?.error && <span className="text-xs text-destructive ">{state.error}</span>}
     </form>
   );
 }

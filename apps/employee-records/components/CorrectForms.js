@@ -10,7 +10,7 @@ import {
 } from "@/lib/enums";
 import { useT } from "./LocaleProvider";
 
-const field = "mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900";
+const field = "mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30";
 const label = "block text-sm font-medium";
 const toDateInput = (d) => (d ? new Date(d).toISOString().slice(0, 10) : "");
 
@@ -25,10 +25,10 @@ export function CorrectForms({ employeeId, employee, current, withinWindow, wind
     <div className="mt-6 space-y-10">
       {/* Details — current-state, always correctable */}
       <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">{t("correct.details")}</h2>
-        <p className="mt-1 text-xs text-zinc-400">{t("correct.detailsHelp")}</p>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{t("correct.details")}</h2>
+        <p className="mt-1 text-xs text-muted-foreground">{t("correct.detailsHelp")}</p>
         <form action={idForm} className="mt-4 space-y-4">
-          {idState?.error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-400">{idState.error}</p>}
+          {idState?.error && <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive  ">{idState.error}</p>}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className={label} htmlFor="firstName">{t("field.firstName")}</label>
@@ -65,8 +65,8 @@ export function CorrectForms({ employeeId, employee, current, withinWindow, wind
           </div>
 
           {canEditComp && (
-            <div className="grid grid-cols-2 gap-4 rounded-md border border-zinc-200 p-4 dark:border-zinc-800">
-              <p className="col-span-2 text-xs font-medium text-zinc-500">{t("correct.compDetails")}</p>
+            <div className="grid grid-cols-2 gap-4 rounded-md border border-border p-4 ">
+              <p className="col-span-2 text-xs font-medium text-muted-foreground">{t("correct.compDetails")}</p>
               <div>
                 <label className={label} htmlFor="lastReviewDate">{t("field.lastReview")}</label>
                 <input id="lastReviewDate" name="lastReviewDate" type="date" defaultValue={toDateInput(employee.lastReviewDate)} className={field} />
@@ -82,7 +82,7 @@ export function CorrectForms({ employeeId, employee, current, withinWindow, wind
             </div>
           )}
 
-          <button type="submit" disabled={idPending} className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50">
+          <button type="submit" disabled={idPending} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
             {idPending ? t("common.saving") : t("correct.saveDetails")}
           </button>
         </form>
@@ -90,12 +90,12 @@ export function CorrectForms({ employeeId, employee, current, withinWindow, wind
 
       {/* Material — only within the grace window */}
       <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">{t("correct.material")}</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{t("correct.material")}</h2>
         {withinWindow ? (
           <>
-            <p className="mt-1 text-xs text-zinc-400">{t("correct.materialHelp", { days: windowDays })}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{t("correct.materialHelp", { days: windowDays })}</p>
             <form action={mtForm} className="mt-4 space-y-4">
-              {mtState?.error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-400">{mtState.error}</p>}
+              {mtState?.error && <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive  ">{mtState.error}</p>}
               <div>
                 <label className={label} htmlFor="jobTitle">{t("field.jobTitle")}</label>
                 <input id="jobTitle" name="jobTitle" defaultValue={current?.jobTitle ?? ""} className={field} />
@@ -147,13 +147,13 @@ export function CorrectForms({ employeeId, employee, current, withinWindow, wind
                   </div>
                 </div>
               )}
-              <button type="submit" disabled={mtPending} className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50">
+              <button type="submit" disabled={mtPending} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
                 {mtPending ? t("common.saving") : t("correct.save")}
               </button>
             </form>
           </>
         ) : (
-          <p className="mt-3 rounded-md border border-dashed border-zinc-300 p-4 text-sm text-zinc-500 dark:border-zinc-700">
+          <p className="mt-3 rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground ">
             {t("correct.windowClosed", { days: windowDays })}
           </p>
         )}

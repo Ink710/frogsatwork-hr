@@ -10,7 +10,7 @@ import {
 } from "@/lib/enums";
 import { useT } from "./LocaleProvider";
 
-const field = "mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900";
+const field = "mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30";
 const label = "block text-sm font-medium";
 
 export function EditChangeForm({ employeeId, employee, current, departments, managerOptions, canEditComp }) {
@@ -22,7 +22,7 @@ export function EditChangeForm({ employeeId, employee, current, departments, man
   return (
     <form action={formAction} className="mt-6 space-y-4">
       {state?.error && (
-        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-400">
+        <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive  ">
           {state.error}
         </p>
       )}
@@ -88,7 +88,7 @@ export function EditChangeForm({ employeeId, employee, current, departments, man
       <div>
         <label className={label} htmlFor="effectiveFrom">{t("field.effectiveDate")}</label>
         <input id="effectiveFrom" name="effectiveFrom" type="date" defaultValue={today} min={today} required className={field} />
-        <p className="mt-1 text-xs text-zinc-400">{t("edit.noBackdate")}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{t("edit.noBackdate")}</p>
       </div>
 
       <div>
@@ -97,7 +97,7 @@ export function EditChangeForm({ employeeId, employee, current, departments, man
       </div>
 
       <button type="submit" disabled={pending}
-              className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50">
+              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
         {pending ? t("edit.recording") : t("edit.submit")}
       </button>
     </form>

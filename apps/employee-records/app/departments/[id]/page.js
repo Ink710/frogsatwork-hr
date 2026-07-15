@@ -11,16 +11,16 @@ import { DeleteDepartmentButton } from "@/components/DeleteDepartmentButton";
 export async function generateMetadata({ params }) {
   const { id } = await params;
   const data = await getDepartmentDetail(id);
-  return { title: data ? `${data.department.name} · PeopleBase` : "Department · PeopleBase" };
+  return { title: data ? `${data.department.name} · FrogsAtWorkHR` : "Department · FrogsAtWorkHR" };
 }
 
 function Stat({ label, value, href }) {
   const inner = <p className="mt-1 text-2xl font-semibold tracking-tight">{value}</p>;
   return (
-    <div className="rounded-xl border border-zinc-200 p-5 dark:border-zinc-800">
-      <p className="text-xs uppercase tracking-wide text-zinc-400">{label}</p>
+    <div className="rounded-xl border border-border p-5 ">
+      <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
       {href ? (
-        <Link href={href} className="text-blue-600 hover:underline dark:text-blue-400">{inner}</Link>
+        <Link href={href} className="text-primary hover:underline ">{inner}</Link>
       ) : (
         inner
       )}
@@ -40,7 +40,7 @@ export default async function DepartmentDetailPage({ params }) {
 
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-10">
-      <Link href="/departments" className="text-sm text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200">
+      <Link href="/departments" className="text-sm text-muted-foreground hover:text-foreground">
         {t("dept.backToDepartments")}
       </Link>
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
@@ -49,7 +49,7 @@ export default async function DepartmentDetailPage({ params }) {
           <div className="flex items-center gap-2">
             <Link
               href={`/departments/${department.id}/edit`}
-              className="rounded-md border border-zinc-300 px-2.5 py-1 text-xs font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+              className="rounded-md border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted  "
             >
               {t("dept.edit")}
             </Link>
@@ -71,18 +71,18 @@ export default async function DepartmentDetailPage({ params }) {
       {/* Stacks on mobile, two columns on desktop */}
       <div className="mt-10 grid grid-cols-1 gap-10 lg:grid-cols-[1fr_1.4fr]">
         <section>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             {t("dept.employeesCount", { count: employees.length })}
           </h2>
           {employees.length === 0 ? (
-            <p className="text-sm text-zinc-400">{t("dept.noneVisible")}</p>
+            <p className="text-sm text-muted-foreground">{t("dept.noneVisible")}</p>
           ) : (
-            <ul className="divide-y divide-zinc-100 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+            <ul className="divide-y divide-border rounded-lg border border-border  ">
               {employees.map((e) => (
                 <li key={e.id}>
-                  <Link href={`/employees/${e.id}`} className="flex items-center justify-between px-4 py-2.5 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-900">
+                  <Link href={`/employees/${e.id}`} className="flex items-center justify-between px-4 py-2.5 text-sm hover:bg-muted">
                     <span className="font-medium">{e.name}</span>
-                    <span className="text-zinc-500">{e.title}</span>
+                    <span className="text-muted-foreground">{e.title}</span>
                   </Link>
                 </li>
               ))}
@@ -92,7 +92,7 @@ export default async function DepartmentDetailPage({ params }) {
           {byType.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-2">
               {byType.map((bt) => (
-                <span key={bt.label} className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                <span key={bt.label} className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground  dark:text-muted-foreground/50">
                   {t(`enum.employmentType.${bt.label}`)}: {bt.count}
                 </span>
               ))}
@@ -101,11 +101,11 @@ export default async function DepartmentDetailPage({ params }) {
         </section>
 
         <section>
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             {t("dept.reportingStructure")}
           </h2>
           {tree.length === 0 ? (
-            <p className="text-sm text-zinc-400">{t("dept.noHierarchy")}</p>
+            <p className="text-sm text-muted-foreground">{t("dept.noHierarchy")}</p>
           ) : (
             <div className="overflow-x-auto pb-4">
               <ul className="orgtree inline-flex justify-center">

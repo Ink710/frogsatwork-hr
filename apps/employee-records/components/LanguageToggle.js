@@ -18,7 +18,7 @@ export function LanguageToggle() {
   }
 
   return (
-    <div role="radiogroup" aria-label={t("prefs.language")} className="inline-flex gap-1 rounded-lg border border-zinc-300 p-1 dark:border-zinc-700">
+    <div role="radiogroup" aria-label={t("prefs.language")} className="inline-flex gap-1 rounded-lg border border-border p-1 ">
       {LOCALES.map((locale) => {
         const on = locale === active;
         return (
@@ -30,8 +30,8 @@ export function LanguageToggle() {
             onClick={() => choose(locale)}
             className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
               on
-                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-muted dark:text-muted-foreground/50 "
             }`}
           >
             {LOCALE_LABELS[locale]}

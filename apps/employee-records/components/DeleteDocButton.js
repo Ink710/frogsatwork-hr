@@ -14,7 +14,7 @@ export function DeleteDocButton({ docId }) {
       <button
         type="submit"
         disabled={pending}
-        className="text-xs text-red-600 hover:underline disabled:opacity-50 dark:text-red-400"
+        className="text-xs text-destructive hover:underline disabled:opacity-50 "
         title={state?.error ?? t("documents.deleteTitle")}
       >
         {pending ? "…" : t("common.delete")}

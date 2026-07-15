@@ -75,6 +75,13 @@ export function canViewBudget(viewer, department, viewerDeptId) {
   }
 }
 
+// May see the COMPANY-WIDE budget overview — every department's budget at once (the dashboard
+// pie). Restricted to the roles that already have full budget visibility via canViewBudget, so
+// the overview never reveals a budget the viewer isn't otherwise entitled to.
+export function canViewBudgetOverview(viewer) {
+  return viewer.role === Role.HR_ADMIN || viewer.role === Role.PAYROLL_ADMIN;
+}
+
 // Whether this viewer may see the COMPENSATION of `target`. Pure: all the data-dependent
 // bits (subtree/ancestor sets, depths, department) are precomputed into `ctx` by scope.js.
 //   ctx for MANAGER/EMPLOYEE: { subtreeIds: Set }

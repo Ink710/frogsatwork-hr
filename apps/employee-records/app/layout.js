@@ -1,4 +1,4 @@
-import { Geist, Geist_Mono } from "next/font/google";
+import { Manrope, Inter, IBM_Plex_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AppHeader } from "@/components/AppHeader";
 import { ThemeWatcher } from "@/components/ThemeWatcher";
@@ -6,19 +6,15 @@ import { LocaleProvider } from "@/components/LocaleProvider";
 import { getLocale } from "@/lib/i18n.server";
 import { messagesFor } from "@/lib/messages/index.js";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+// FAW HR type stack: Manrope titles, Inter body, IBM Plex Sans tables, JetBrains Mono for IDs/money.
+const manrope = Manrope({ variable: "--font-manrope", subsets: ["latin"] });
+const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
+const plexSans = IBM_Plex_Sans({ variable: "--font-plex", subsets: ["latin"], weight: ["400", "500", "600"] });
+const jetbrainsMono = JetBrains_Mono({ variable: "--font-jetbrains", subsets: ["latin"] });
 
 export const metadata = {
-  title: "PeopleBase",
-  description: "Lightweight HRIS — employee records module",
+  title: "FrogsAtWorkHR",
+  description: "FAW HR — a modern HRIS. Let’s jump into it.",
 };
 
 // Runs synchronously in <head> BEFORE first paint, so the correct theme is applied with no
@@ -36,7 +32,7 @@ export default async function RootLayout({ children }) {
     <html
       lang={locale}
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${manrope.variable} ${inter.variable} ${plexSans.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />

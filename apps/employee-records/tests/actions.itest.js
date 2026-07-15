@@ -25,6 +25,8 @@ vi.mock("@hris/auth", async () => {
     canRehire: roles.canRehire,
   };
 });
+// Invites send mail via lib/email.js (nodemailer/Mailpit) — stub it so tests never hit SMTP.
+vi.mock("@/lib/email.js", () => ({ sendInviteEmail: vi.fn(async () => {}) }));
 
 import { getViewer } from "@hris/auth";
 import { withViewer } from "@hris/auth";
@@ -35,18 +37,36 @@ import {
   terminateEmployee,
   rehireEmployee,
   createEmployee,
+  startStatusChange,
+  reinstateEmployee,
+  addEmergencyContact,
+  deleteEmergencyContact,
+  resendInvite,
 } from "../app/employees/[id]/actions.js";
+import { setPassword } from "../app/set-password/actions.js";
+import { sendInvite, hashInviteToken } from "@/lib/invite.js";
+import { sendInviteEmail } from "@/lib/email.js";
 
 const ORG = "10000000-0000-0000-0000-000000000001";
 const V = {
   ana: { userId: "30000000-0000-0000-0000-000000000001", employeeId: "40000000-0000-0000-0000-000000000001", role: "HR_ADMIN", orgId: ORG },
   marcus: { userId: "30000000-0000-0000-0000-000000000002", employeeId: "40000000-0000-0000-0000-000000000002", role: "MANAGER", orgId: ORG },
   bianca: { userId: "30000000-0000-0000-0000-000000000003", employeeId: "40000000-0000-0000-0000-000000000003", role: "HR_GENERALIST", orgId: ORG },
+  diego: { userId: "30000000-0000-0000-0000-000000000004", employeeId: "40000000-0000-0000-0000-000000000004", role: "EMPLOYEE", orgId: ORG },
+  priya: { userId: "30000000-0000-0000-0000-000000000005", employeeId: "40000000-0000-0000-0000-000000000005", role: "EMPLOYEE", orgId: ORG },
+  nadia: { userId: "30000000-0000-0000-0000-000000000007", employeeId: "40000000-0000-0000-0000-000000000007", role: "PAYROLL_ADMIN", orgId: ORG },
 };
 const ID = {
   marcus: "40000000-0000-0000-0000-000000000002",
   diego: "40000000-0000-0000-0000-000000000004",
   priya: "40000000-0000-0000-0000-000000000005",
+  tom: "40000000-0000-0000-0000-000000000006",
+};
+// User ids (for the invite/set-password flow, which is keyed on User not Employee).
+const USER = {
+  ana: "30000000-0000-0000-0000-000000000001",
+  diego: "30000000-0000-0000-0000-000000000004",
+  priya: "30000000-0000-0000-0000-000000000005",
 };
 const DEPT_ENG = "20000000-0000-0000-0000-000000000002";
 const today = () => new Date().toLocaleDateString("en-CA");
@@ -364,5 +384,214 @@ describe("profile fields (Phase C)", () => {
     const after = await employeeRow(ID.priya);
     expect(after.firstName).toBe("Priyanka"); // name applied
     expect(after.equityNote).toBe(before.equityNote); // equity ignored
+  });
+});
+
+describe("status changes (leave / suspend / reinstate)", () => {
+  function leaveForm(overrides = {}) {
+    const fd = new FormData();
+    fd.set("type", "LEAVE");
+    fd.set("reason", "Parental leave");
+    fd.set("startDate", today());
+    for (const [k, v] of Object.entries(overrides)) fd.set(k, v);
+    return fd;
+  }
+  const openSpan = (empId) =>
+    withViewer(V.ana, (tx) =>
+      tx.employeeStatusChange.findFirst({ where: { employeeId: empId, endDate: null }, orderBy: { startDate: "desc" } }));
+
+  it("HR places an employee on leave → ON_LEAVE, open span, LEAVE audit, reason not leaked, history untouched", async () => {
+    getViewer.mockResolvedValue(V.ana);
+    const r = await invoke(startStatusChange(ID.diego, {}, leaveForm()));
+    expect(r.ok).toBe(true);
+    expect((await employeeRow(ID.diego)).employmentStatus).toBe("ON_LEAVE");
+    const span = await openSpan(ID.diego);
+    expect(span.type).toBe("LEAVE");
+    expect(span.reason).toBe("Parental leave");
+    expect(await auditCount(ID.diego, "LEAVE")).toBe(1);
+    // The reason must NOT be in the audit JSON — the subject can read their own audit rows.
+    const audit = await withViewer(V.ana, (tx) =>
+      tx.employeeAuditLog.findFirst({ where: { employeeId: ID.diego, eventType: "LEAVE" } }));
+    expect(JSON.stringify(audit.afterState ?? {})).not.toContain("Parental leave");
+    expect(await versionCount(ID.diego)).toBe(2); // status isn't versioned — history stays put
+  });
+
+  it("HR suspends an active employee → SUSPENDED + SUSPEND audit", async () => {
+    getViewer.mockResolvedValue(V.ana);
+    const r = await invoke(startStatusChange(ID.priya, {}, leaveForm({ type: "SUSPENSION", reason: "Investigation" })));
+    expect(r.ok).toBe(true);
+    expect((await employeeRow(ID.priya)).employmentStatus).toBe("SUSPENDED");
+    expect(await auditCount(ID.priya, "SUSPEND")).toBe(1);
+  });
+
+  it("cannot start a status change on a non-active employee", async () => {
+    getViewer.mockResolvedValue(V.ana);
+    await invoke(startStatusChange(ID.priya, {}, leaveForm()));
+    const r = await invoke(startStatusChange(ID.priya, {}, leaveForm())); // already on leave
+    expect(r.error).toMatch(/active/i);
+  });
+
+  it("HR_GENERALIST cannot change status", async () => {
+    getViewer.mockResolvedValue(V.bianca);
+    const r = await invoke(startStatusChange(ID.diego, {}, leaveForm()));
+    expect(r.error).toMatch(/authorized/i);
+    expect((await employeeRow(ID.diego)).employmentStatus).toBe("ACTIVE");
+  });
+
+  it("reinstate closes the open span and returns to ACTIVE + REINSTATE audit", async () => {
+    getViewer.mockResolvedValue(V.ana);
+    await invoke(startStatusChange(ID.diego, {}, leaveForm()));
+    const fd = new FormData();
+    fd.set("returnDate", today());
+    const r = await invoke(reinstateEmployee(ID.diego, {}, fd));
+    expect(r.ok).toBe(true);
+    expect((await employeeRow(ID.diego)).employmentStatus).toBe("ACTIVE");
+    expect(await openSpan(ID.diego)).toBeNull(); // span closed
+    expect(await auditCount(ID.diego, "REINSTATE")).toBe(1);
+  });
+
+  it("reinstate is rejected when the employee is already active", async () => {
+    getViewer.mockResolvedValue(V.ana);
+    const fd = new FormData();
+    fd.set("returnDate", today());
+    const r = await invoke(reinstateEmployee(ID.diego, {}, fd));
+    expect(r.error).toMatch(/leave|suspend/i);
+  });
+});
+
+describe("emergency contacts", () => {
+  function contactForm(overrides = {}) {
+    const fd = new FormData();
+    fd.set("name", "Jordan Doe");
+    fd.set("relationship", "Sibling");
+    fd.set("phone", "+1-555-0199");
+    for (const [k, v] of Object.entries(overrides)) fd.set(k, v);
+    return fd;
+  }
+  const contacts = (empId) =>
+    withViewer(V.ana, (tx) =>
+      tx.emergencyContact.findMany({ where: { employeeId: empId }, orderBy: { isPrimary: "desc" } }));
+
+  it("HR adds a contact; the first one is auto-primary", async () => {
+    getViewer.mockResolvedValue(V.ana);
+    const r = await addEmergencyContact(ID.priya, {}, contactForm()); // priya has none seeded
+    expect(r.ok).toBe(true);
+    const c = await contacts(ID.priya);
+    expect(c).toHaveLength(1);
+    expect(c[0].isPrimary).toBe(true);
+  });
+
+  it("the employee can manage their own; a manager cannot manage a report's", async () => {
+    getViewer.mockResolvedValue(V.priya); // self
+    expect((await addEmergencyContact(ID.priya, {}, contactForm())).ok).toBe(true);
+
+    getViewer.mockResolvedValue(V.marcus); // manager of diego — RLS would allow, the app-layer gate blocks
+    const denied = await addEmergencyContact(ID.diego, {}, contactForm());
+    expect(denied.error).toMatch(/authorized/i);
+  });
+
+  it("setting a new primary clears the previous one", async () => {
+    getViewer.mockResolvedValue(V.ana);
+    await addEmergencyContact(ID.priya, {}, contactForm({ name: "First" })); // auto-primary
+    await addEmergencyContact(ID.priya, {}, contactForm({ name: "Second", isPrimary: "on" }));
+    const primaries = (await contacts(ID.priya)).filter((x) => x.isPrimary);
+    expect(primaries).toHaveLength(1);
+    expect(primaries[0].name).toBe("Second");
+  });
+
+  it("cannot delete the last contact; deleting the primary auto-promotes another", async () => {
+    getViewer.mockResolvedValue(V.ana);
+    const [only] = await contacts(ID.diego); // Diego seeds with exactly one
+    expect((await deleteEmergencyContact(only.id, {})).error).toMatch(/at least one/i);
+
+    await addEmergencyContact(ID.diego, {}, contactForm({ name: "Backup" }));
+    const primary = (await contacts(ID.diego)).find((x) => x.isPrimary);
+    expect((await deleteEmergencyContact(primary.id, {})).ok).toBe(true);
+    const remaining = await contacts(ID.diego);
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].isPrimary).toBe(true); // auto-promoted
+  });
+});
+
+describe("invite / set-password", () => {
+  const makeUnactivated = (userId) =>
+    prisma.user.update({
+      where: { id: userId },
+      data: { emailVerifiedAt: null, inviteTokenHash: null, inviteTokenExpires: null },
+    });
+  const userRow = (userId) => prisma.user.findUnique({ where: { id: userId } });
+
+  it("sendInvite issues a token + emails an unactivated user; skips an activated one", async () => {
+    sendInviteEmail.mockClear();
+    await makeUnactivated(USER.diego);
+    const res = await sendInvite(USER.diego);
+    expect(res.ok).toBe(true);
+    const u = await userRow(USER.diego);
+    expect(u.inviteTokenHash).toBeTruthy();
+    expect(u.invitedAt).toBeTruthy();
+    expect(sendInviteEmail).toHaveBeenCalledTimes(1);
+
+    sendInviteEmail.mockClear();
+    const skipped = await sendInvite(USER.ana); // seeded users are already activated
+    expect(skipped.skipped).toBe(true);
+    expect(sendInviteEmail).not.toHaveBeenCalled();
+  });
+
+  it("resendInvite is HR-gated and refuses an already-active account", async () => {
+    await makeUnactivated(USER.diego);
+    getViewer.mockResolvedValue(V.marcus); // not HR
+    expect((await resendInvite(USER.diego)).error).toMatch(/authorized/i);
+
+    getViewer.mockResolvedValue(V.ana);
+    expect((await resendInvite(USER.diego)).ok).toBe(true);
+    expect((await resendInvite(USER.ana)).error).toMatch(/active/i); // ana already activated
+  });
+
+  it("setPassword redeems a valid token once, then the link is dead", async () => {
+    const raw = "test-token-abc123";
+    await prisma.user.update({
+      where: { id: USER.diego },
+      data: {
+        emailVerifiedAt: null,
+        passwordHash: null,
+        inviteTokenHash: hashInviteToken(raw),
+        inviteTokenExpires: new Date(Date.now() + 3_600_000),
+      },
+    });
+    const fd = new FormData();
+    fd.set("token", raw);
+    fd.set("password", "s3cretpw!");
+    fd.set("confirm", "s3cretpw!");
+    expect((await invoke(setPassword({}, fd))).ok).toBe(true);
+    const u = await userRow(USER.diego);
+    expect(u.passwordHash).toBeTruthy();
+    expect(u.emailVerifiedAt).toBeTruthy();
+    expect(u.inviteTokenHash).toBeNull(); // burned
+
+    const again = await setPassword({}, fd); // reusing the token now finds nothing
+    expect(again.error).toMatch(/invalid|expired/i);
+  });
+
+  it("setPassword rejects an expired token and a password mismatch", async () => {
+    const raw = "expired-token";
+    await prisma.user.update({
+      where: { id: USER.diego },
+      data: {
+        emailVerifiedAt: null,
+        inviteTokenHash: hashInviteToken(raw),
+        inviteTokenExpires: new Date(Date.now() - 1000),
+      },
+    });
+    const expired = new FormData();
+    expired.set("token", raw);
+    expired.set("password", "s3cretpw!");
+    expired.set("confirm", "s3cretpw!");
+    expect((await setPassword({}, expired)).error).toMatch(/invalid|expired/i);
+
+    const mismatch = new FormData();
+    mismatch.set("token", raw);
+    mismatch.set("password", "s3cretpw!");
+    mismatch.set("confirm", "different");
+    expect((await setPassword({}, mismatch)).error).toBeTruthy();
   });
 });

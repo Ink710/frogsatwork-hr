@@ -10,7 +10,7 @@ import { TabNav } from "@/components/TabNav";
 export async function generateMetadata({ params }) {
   const { id } = await params;
   const s = await getEmployeeSummary(id); // deduped with the layout body via cache()
-  return { title: s ? `${s.name} · PeopleBase` : "Employee · PeopleBase" };
+  return { title: s ? `${s.name} · FrogsAtWorkHR` : "Employee · FrogsAtWorkHR" };
 }
 
 // Shared shell for every employee profile tab. The sidebar + tab bar live here so they persist
@@ -42,7 +42,7 @@ export default async function EmployeeProfileLayout({ children, params }) {
     <div className="mx-auto w-full max-w-6xl px-6 py-8">
       <Link
         href="/employees"
-        className="text-sm text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
+        className="text-sm text-muted-foreground hover:text-foreground"
       >
         {t("profile.allEmployees")}
       </Link>

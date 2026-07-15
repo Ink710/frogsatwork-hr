@@ -2,33 +2,109 @@
 
 /* Class-based dark mode: `dark:` utilities activate when an ancestor (the <html>) has the
    `.dark` class, instead of following prefers-color-scheme directly. The theme controller sets
-   that class — from the saved preference, or from the OS when the preference is "system" — so a
-   manual choice can override the browser setting. */
+   that class — from the saved preference, or from the OS when the preference is "system". */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* ── FrogsAtWorkHR design tokens ────────────────────────────────────────────────────────────
+   Semantic tokens (background / card / muted / primary / border …) are the ONLY colors the app
+   references, so every screen themes from here. Light = white + gray on forest green; dark =
+   deep navy + slate on emerald. Raw brand/accent/semantic scales are exposed too (bg-brand-600,
+   text-aqua, …) for charts and one-off accents. */
 :root {
   --background: #ffffff;
-  --foreground: #171717;
-  --org-line: #d4d4d8;
+  --foreground: #101828; /* Gray 900 */
+  --card: #ffffff;
+  --card-foreground: #101828;
+  --muted: #f1f5f9; /* Gray 100 */
+  --muted-foreground: #475467; /* Gray 600 */
+  --primary: #2f6f57; /* Green 600 — forest */
+  --primary-foreground: #ffffff;
+  --secondary: #1e293b; /* Navy 800 */
+  --secondary-foreground: #ffffff;
+  --accent: #42c6d9; /* Aqua */
+  --accent-foreground: #0f172a;
+  --highlight: #f6c453; /* Yellow */
+  --border: #d0d5dd; /* Gray 300 */
+  --input: #d0d5dd;
+  --ring: #2f6f57;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --destructive: #ef4444;
+  --info: #3b82f6;
+  --org-line: #d0d5dd;
 }
 
 .dark {
-  --background: #0a0a0a;
-  --foreground: #ededed;
-  --org-line: #3f3f46;
+  --background: #0f172a; /* Navy 950 */
+  --foreground: #f8fafc; /* off-white */
+  --card: #1e293b; /* Navy 800 — slate card */
+  --card-foreground: #f8fafc;
+  --muted: #273449; /* Navy 700 */
+  --muted-foreground: #94a3b8; /* slate */
+  --primary: #4caf7a; /* Green 500 — emerald */
+  --primary-foreground: #0f172a;
+  --secondary: #273449; /* Navy 700 */
+  --secondary-foreground: #f8fafc;
+  --accent: #42c6d9;
+  --accent-foreground: #0f172a;
+  --highlight: #f6c453;
+  --border: #334155; /* Slate */
+  --input: #334155;
+  --ring: #4caf7a;
+  --success: #34d399; /* brighter for dark readability */
+  --warning: #fbbf24;
+  --destructive: #f87171;
+  --info: #60a5fa;
+  --org-line: #334155;
 }
 
 @theme inline {
+  /* Semantic color utilities: bg-background, text-foreground, bg-card, border-border,
+     bg-primary/text-primary-foreground, bg-muted/text-muted-foreground, text-accent, etc. */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-highlight: var(--highlight);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-destructive: var(--destructive);
+  --color-info: var(--info);
+
+  /* Raw brand + accent scales (charts, marketing accents). */
+  --color-brand-500: #4caf7a;
+  --color-brand-600: #2f6f57;
+  --color-brand-700: #285e4a;
+  --color-aqua: #42c6d9;
+  --color-yellow: #f6c453;
+
+  /* Type stack: Inter body, Manrope titles, IBM Plex Sans tables, JetBrains Mono for IDs/money. */
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-manrope);
+  --font-table: var(--font-plex);
+  --font-mono: var(--font-jetbrains);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+/* Titles use Manrope. */
+h1, h2, h3, h4 {
+  font-family: var(--font-display), var(--font-sans), sans-serif;
 }
 
 /* Recursive org chart — the classic pure-CSS tree connector technique.
@@ -60,12 +136,12 @@ body {
   right: 50%;
   width: 50%;
   height: 20px;
-  border-top: 1px solid var(--org-line, #d4d4d8);
+  border-top: 1px solid var(--org-line, #d0d5dd);
 }
 .orgtree li::after {
   right: auto;
   left: 50%;
-  border-left: 1px solid var(--org-line, #d4d4d8);
+  border-left: 1px solid var(--org-line, #d0d5dd);
 }
 /* a lone child needs no horizontal split */
 .orgtree li:only-child::before,
@@ -81,7 +157,7 @@ body {
   border: 0 none;
 }
 .orgtree li:last-child::before {
-  border-right: 1px solid var(--org-line, #d4d4d8);
+  border-right: 1px solid var(--org-line, #d0d5dd);
   border-radius: 0 6px 0 0;
 }
 .orgtree li:first-child::after {
@@ -95,5 +171,5 @@ body {
   left: 50%;
   width: 0;
   height: 20px;
-  border-left: 1px solid var(--org-line, #d4d4d8);
+  border-left: 1px solid var(--org-line, #d0d5dd);
 }

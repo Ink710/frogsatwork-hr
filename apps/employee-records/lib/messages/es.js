@@ -36,6 +36,7 @@ const es = {
   "home.title": "Registros de empleados",
   "home.subtitle": "La fuente de verdad sobre quién trabaja aquí, a quién le reporta y cómo cambian sus registros con el tiempo.",
   "home.cta": "Ver empleados →",
+  "brand.slogan": "Saltemos a ello.",
 
   // Auth / login
   "login.title": "Iniciar sesión",
@@ -51,7 +52,7 @@ const es = {
   "prefs.title": "Preferencias",
   "prefs.subtitle": "Configuración personal de su cuenta, guardada en este navegador.",
   "prefs.appearance": "Apariencia",
-  "prefs.appearanceHelp": "Elija cómo se ve PeopleBase. «Sistema» sigue la configuración de claro/oscuro de su dispositivo.",
+  "prefs.appearanceHelp": "Elija cómo se ve FrogsAtWorkHR. «Sistema» sigue la configuración de claro/oscuro de su dispositivo.",
   "prefs.theme.system": "Sistema",
   "prefs.theme.light": "Claro",
   "prefs.theme.dark": "Oscuro",
@@ -346,6 +347,8 @@ const es = {
   "dash.byType": "Por tipo de empleo",
   "dash.byStatus": "Por estado",
   "dash.spanOfControl": "Ámbito de control (gerentes principales)",
+  "dash.budgets": "Presupuestos por departamento",
+  "dash.budgetTotal": "Total",
   "dash.noData": "Sin datos.",
 
   // Departments

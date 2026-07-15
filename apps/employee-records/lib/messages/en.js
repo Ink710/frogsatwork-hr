@@ -36,6 +36,7 @@ const en = {
   "home.title": "Employee Records",
   "home.subtitle": "The canonical source of truth for who works here, who they report to, and how their records change over time.",
   "home.cta": "View employees →",
+  "brand.slogan": "Let’s jump into it.",
 
   // Auth / login
   "login.title": "Sign in",
@@ -51,7 +52,7 @@ const en = {
   "prefs.title": "Preferences",
   "prefs.subtitle": "Personal settings for your account, saved in this browser.",
   "prefs.appearance": "Appearance",
-  "prefs.appearanceHelp": "Choose how PeopleBase looks. System follows your device’s light/dark setting.",
+  "prefs.appearanceHelp": "Choose how FrogsAtWorkHR looks. System follows your device’s light/dark setting.",
   "prefs.theme.system": "System",
   "prefs.theme.light": "Light",
   "prefs.theme.dark": "Dark",
@@ -346,6 +347,8 @@ const en = {
   "dash.byType": "By employment type",
   "dash.byStatus": "By status",
   "dash.spanOfControl": "Span of control (top managers)",
+  "dash.budgets": "Department budgets",
+  "dash.budgetTotal": "Total",
   "dash.noData": "No data.",
 
   // Departments

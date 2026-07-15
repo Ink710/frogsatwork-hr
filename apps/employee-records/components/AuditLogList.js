@@ -7,18 +7,18 @@ import { INTL_LOCALE } from "@/lib/i18n";
 import { useT, useLocale } from "./LocaleProvider";
 
 const EVENT_STYLES = {
-  CREATE: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
-  REHIRE: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
-  UPDATE: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
-  CORRECTION: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
-  LEAVE: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
-  REINSTATE: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
-  TERMINATE: "bg-red-100 text-red-800 dark:bg-red-900/60 dark:text-red-300",
-  SUSPEND: "bg-red-100 text-red-800 dark:bg-red-900/60 dark:text-red-300",
-  PERMISSION_DENIED: "bg-red-100 text-red-800 dark:bg-red-900/60 dark:text-red-300",
-  LOGIN_FAILED: "bg-red-100 text-red-800 dark:bg-red-900/60 dark:text-red-300",
-  VIEW: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
-  EXPORT: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
+  CREATE: "bg-success/15 text-success  ",
+  REHIRE: "bg-success/15 text-success  ",
+  UPDATE: "bg-primary/15 text-primary  ",
+  CORRECTION: "bg-warning/15 text-warning  ",
+  LEAVE: "bg-warning/15 text-warning  ",
+  REINSTATE: "bg-success/15 text-success  ",
+  TERMINATE: "bg-destructive/15 text-destructive  ",
+  SUSPEND: "bg-destructive/15 text-destructive  ",
+  PERMISSION_DENIED: "bg-destructive/15 text-destructive  ",
+  LOGIN_FAILED: "bg-destructive/15 text-destructive  ",
+  VIEW: "bg-muted text-muted-foreground  dark:text-muted-foreground",
+  EXPORT: "bg-muted text-muted-foreground  dark:text-muted-foreground",
 };
 
 // beforeState/afterState keys are camelCase field names ("jobTitle"); prettify by splitting on
@@ -31,13 +31,13 @@ function labelize(key) {
 function DiffValue({ value, t }) {
   if (value === REDACTED) {
     return (
-      <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-500 dark:bg-zinc-800">
+      <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground ">
         {t("audit.hiddenValue")}
       </span>
     );
   }
   if (value === null || value === undefined || value === "") {
-    return <span className="text-zinc-400">—</span>;
+    return <span className="text-muted-foreground">—</span>;
   }
   return <span>{String(value)}</span>;
 }
@@ -49,15 +49,15 @@ function Diff({ before, after, t }) {
   const keys = [...new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})])];
   if (keys.length === 0) return null;
   return (
-    <dl className="mt-2 space-y-1 border-l-2 border-zinc-100 pl-3 dark:border-zinc-800">
+    <dl className="mt-2 space-y-1 border-l-2 border-border pl-3 ">
       {keys.map((k) => (
         <div key={k} className="flex flex-wrap items-baseline gap-x-1.5 text-sm">
-          <dt className="text-zinc-500">{labelize(k)}:</dt>
+          <dt className="text-muted-foreground">{labelize(k)}:</dt>
           <dd className="flex flex-wrap items-baseline gap-x-1.5">
             {before && k in before && (
               <>
                 <DiffValue value={before[k]} t={t} />
-                <span className="text-zinc-400">→</span>
+                <span className="text-muted-foreground">→</span>
               </>
             )}
             <DiffValue value={after?.[k]} t={t} />
@@ -91,7 +91,7 @@ export function AuditLogList({ employeeId, initialEvents, initialCursor }) {
 
   return (
     <div>
-      <ul className="divide-y divide-zinc-100 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+      <ul className="divide-y divide-border rounded-lg border border-border  ">
         {events.map((e) => (
           <li key={e.id} className="px-4 py-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -106,14 +106,14 @@ export function AuditLogList({ employeeId, initialEvents, initialCursor }) {
                 <span className="text-sm">
                   {t(`audit.summary.${e.eventType}`)}
                 </span>
-                <span className="text-sm text-zinc-500">
+                <span className="text-sm text-muted-foreground">
                   {t("common.by", { name: e.actorName })}
                   {e.actorType !== "USER" && ` (${t(`enum.actorType.${e.actorType}`)})`}
                 </span>
               </div>
               {/* The server renders this in its timezone, the browser in the user's —
                   suppress the (expected) hydration diff instead of crashing on it. */}
-              <time className="text-xs text-zinc-400" suppressHydrationWarning>
+              <time className="text-xs text-muted-foreground" suppressHydrationWarning>
                 {formatDateTime(e.occurredAt, locale)}
               </time>
             </div>
@@ -122,14 +122,14 @@ export function AuditLogList({ employeeId, initialEvents, initialCursor }) {
         ))}
       </ul>
 
-      {error && <p className="mt-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p className="mt-3 text-sm text-destructive ">{error}</p>}
 
       {cursor && (
         <button
           type="button"
           onClick={loadMore}
           disabled={pending}
-          className="mt-4 rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+          className="mt-4 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted disabled:opacity-50  "
         >
           {pending ? t("audit.loading") : t("audit.loadMore")}
         </button>

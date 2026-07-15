@@ -4,7 +4,7 @@ import { OrgNode } from "@/components/OrgNode";
 
 export async function generateMetadata() {
   const t = await getT();
-  return { title: `${t("org.title")} · PeopleBase` };
+  return { title: `${t("org.title")} · FrogsAtWorkHR` };
 }
 
 export default async function OrgChartPage() {
@@ -14,11 +14,11 @@ export default async function OrgChartPage() {
     <main className="mx-auto w-full max-w-6xl px-6 py-10">
       <header className="mb-8">
         <h1 className="text-2xl font-semibold tracking-tight">{t("org.title")}</h1>
-        <p className="text-sm text-zinc-500">{t("org.subtitle")}</p>
+        <p className="text-sm text-muted-foreground">{t("org.subtitle")}</p>
       </header>
 
       {roots.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-zinc-300 p-12 text-center text-sm text-zinc-500 dark:border-zinc-700">
+        <div className="rounded-lg border border-dashed border-border p-12 text-center text-sm text-muted-foreground ">
           {t("org.empty")}
         </div>
       ) : (

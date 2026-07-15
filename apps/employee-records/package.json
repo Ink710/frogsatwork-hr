@@ -13,6 +13,7 @@
     "@hris/database": "workspace:*",
     "@hris/types": "workspace:*",
     "bcryptjs": "^3.0.2",
+    "lucide-react": "^1.24.0",
     "next": "16.2.9",
     "nodemailer": "^6.9.16",
     "react": "19.2.4",

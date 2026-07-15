@@ -6,7 +6,7 @@ import { StatusChangeForm } from "@/components/StatusChangeForm";
 
 export async function generateMetadata() {
   const t = await getT();
-  return { title: `${t("profile.placeOnLeave")} · PeopleBase` };
+  return { title: `${t("profile.placeOnLeave")} · FrogsAtWorkHR` };
 }
 
 export default async function StatusChangePage({ params, searchParams }) {
@@ -24,13 +24,13 @@ export default async function StatusChangePage({ params, searchParams }) {
 
   return (
     <main className="mx-auto w-full max-w-lg px-6 py-10">
-      <Link href={`/employees/${id}`} className="text-sm text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200">
+      <Link href={`/employees/${id}`} className="text-sm text-muted-foreground hover:text-foreground">
         {t("common.backToProfile")}
       </Link>
       <h1 className="mt-4 text-2xl font-semibold tracking-tight">
         {isSuspension ? t("status.titleSuspend") : t("status.titleLeave")}
       </h1>
-      <p className="mt-1 text-sm text-zinc-500">{t("status.pageSubtitle", { name })}</p>
+      <p className="mt-1 text-sm text-muted-foreground">{t("status.pageSubtitle", { name })}</p>
       <StatusChangeForm employeeId={id} type={type} />
     </main>
   );

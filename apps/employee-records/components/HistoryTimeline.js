@@ -12,13 +12,13 @@ const CHANGED_FIELD_KEY = {
 
 export function HistoryTimeline({ history, t, locale = "en-US" }) {
   if (!history || history.length === 0) {
-    return <p className="text-sm text-zinc-500">{t("history.noHistory")}</p>;
+    return <p className="text-sm text-muted-foreground">{t("history.noHistory")}</p>;
   }
 
   const te = (kind, val) => (val ? t(`enum.${kind}.${val}`) : "—");
 
   return (
-    <ol className="relative border-l border-zinc-200 dark:border-zinc-800">
+    <ol className="relative border-l border-border">
       {history.map((h) => {
         const isCurrent = h.effectiveTo === null;
         const from = formatDate(h.effectiveFrom, locale);
@@ -28,52 +28,52 @@ export function HistoryTimeline({ history, t, locale = "en-US" }) {
         return (
           <li key={h.id} className="mb-8 ml-6">
             <span
-              className={`absolute -left-[7px] mt-1.5 h-3.5 w-3.5 rounded-full border-2 border-white dark:border-zinc-950 ${
-                isCurrent ? "bg-green-500" : "bg-zinc-300 dark:bg-zinc-600"
+              className={`absolute -left-[7px] mt-1.5 h-3.5 w-3.5 rounded-full border-2 border-background ${
+                isCurrent ? "bg-success/100" : "bg-border"
               }`}
             />
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-base font-semibold">{h.jobTitle}</h3>
               {isCurrent && (
-                <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">
+                <span className="rounded-full bg-success/15 px-2 py-0.5 text-xs font-medium text-success  ">
                   {t("history.current")}
                 </span>
               )}
-              <span className="text-xs text-zinc-400">v{h.version}</span>
+              <span className="text-xs text-muted-foreground">v{h.version}</span>
             </div>
 
-            <p className="mt-0.5 text-sm text-zinc-500">
+            <p className="mt-0.5 text-sm text-muted-foreground">
               {from} — {to ?? t("common.present")}
             </p>
 
             <dl className="mt-2 grid grid-cols-1 gap-x-8 gap-y-1 text-sm sm:grid-cols-2">
               <div className="flex gap-2">
-                <dt className="text-zinc-400">{t("history.type")}</dt>
+                <dt className="text-muted-foreground">{t("history.type")}</dt>
                 <dd>{te("employmentType", h.employmentType)}</dd>
               </div>
               <div className="flex gap-2">
-                <dt className="text-zinc-400">{t("profile.department")}</dt>
+                <dt className="text-muted-foreground">{t("profile.department")}</dt>
                 <dd>{h.departmentSnapshot}</dd>
               </div>
               <div className="flex gap-2">
-                <dt className="text-zinc-400">{t("history.manager")}</dt>
+                <dt className="text-muted-foreground">{t("history.manager")}</dt>
                 <dd>{h.managerSnapshot ?? "—"}</dd>
               </div>
               {h.flsaClassification && (
                 <div className="flex gap-2">
-                  <dt className="text-zinc-400">{t("history.flsa")}</dt>
+                  <dt className="text-muted-foreground">{t("history.flsa")}</dt>
                   <dd>{te("flsa", h.flsaClassification)}</dd>
                 </div>
               )}
               {h.payFrequency && (
                 <div className="flex gap-2">
-                  <dt className="text-zinc-400">{t("history.payFrequency")}</dt>
+                  <dt className="text-muted-foreground">{t("history.payFrequency")}</dt>
                   <dd>{te("payFrequency", h.payFrequency)}</dd>
                 </div>
               )}
               {h.salary != null && (
                 <div className="flex gap-2">
-                  <dt className="text-zinc-400">{t("history.salary")}</dt>
+                  <dt className="text-muted-foreground">{t("history.salary")}</dt>
                   <dd className="font-medium">
                     {formatMoney(h.salary, h.currency, locale)}
                     {formatPayBasis(h.payBasis)}
@@ -82,7 +82,7 @@ export function HistoryTimeline({ history, t, locale = "en-US" }) {
               )}
               {h.changeReason && (
                 <div className="flex gap-2">
-                  <dt className="text-zinc-400">{t("history.reason")}</dt>
+                  <dt className="text-muted-foreground">{t("history.reason")}</dt>
                   <dd>{h.changeReason}</dd>
                 </div>
               )}
@@ -93,7 +93,7 @@ export function HistoryTimeline({ history, t, locale = "en-US" }) {
                 {changed.map((f) => (
                   <span
                     key={f}
-                    className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"
+                    className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground  dark:text-muted-foreground/50"
                   >
                     {t(CHANGED_FIELD_KEY[f] ?? `field.${f}`)}
                   </span>

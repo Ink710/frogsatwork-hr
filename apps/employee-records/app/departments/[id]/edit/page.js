@@ -6,7 +6,7 @@ import { DepartmentForm } from "@/components/DepartmentForm";
 
 export async function generateMetadata() {
   const t = await getT();
-  return { title: `${t("dept.edit")} · PeopleBase` };
+  return { title: `${t("dept.edit")} · FrogsAtWorkHR` };
 }
 
 export default async function EditDepartmentPage({ params }) {
@@ -17,7 +17,7 @@ export default async function EditDepartmentPage({ params }) {
 
   return (
     <main className="mx-auto w-full max-w-2xl px-6 py-10">
-      <Link href={`/departments/${id}`} className="text-sm text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200">
+      <Link href={`/departments/${id}`} className="text-sm text-muted-foreground hover:text-foreground">
         {t("dept.backToDepartment")}
       </Link>
       <h1 className="mt-4 text-2xl font-semibold tracking-tight">{t("dept.editNamed", { name: data.department.name })}</h1>

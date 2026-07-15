@@ -4,10 +4,10 @@
 // Server Component awaits its data.
 
 function Bar({ className = "" }) {
-  return <div className={`animate-pulse rounded bg-zinc-200 dark:bg-zinc-800 ${className}`} />;
+  return <div className={`animate-pulse rounded bg-muted  ${className}`} />;
 }
 function Soft({ className = "" }) {
-  return <div className={`animate-pulse rounded bg-zinc-100 dark:bg-zinc-900 ${className}`} />;
+  return <div className={`animate-pulse rounded bg-muted  ${className}`} />;
 }
 
 function FieldRows({ count = 6 }) {

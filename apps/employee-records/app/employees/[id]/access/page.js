@@ -11,14 +11,14 @@ function CheckRow({ ok, children }) {
       <span
         className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-xs ${
           ok
-            ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300"
-            : "bg-zinc-100 text-zinc-400 dark:bg-zinc-800 dark:text-zinc-500"
+            ? "bg-success/15 text-success  "
+            : "bg-muted text-muted-foreground  dark:text-muted-foreground"
         }`}
         aria-hidden="true"
       >
         {ok ? "✓" : "✗"}
       </span>
-      <span className={ok ? "" : "text-zinc-400 dark:text-zinc-500"}>{children}</span>
+      <span className={ok ? "" : "text-muted-foreground dark:text-muted-foreground"}>{children}</span>
     </li>
   );
 }
@@ -35,11 +35,11 @@ export default async function EmployeeAccessPage({ params }) {
 
   let accountStatus;
   if (activation.emailVerifiedAt) {
-    accountStatus = <span className="text-green-700 dark:text-green-400">{t("access.activated", { date: formatDate(activation.emailVerifiedAt, locale) })}</span>;
+    accountStatus = <span className="text-success ">{t("access.activated", { date: formatDate(activation.emailVerifiedAt, locale) })}</span>;
   } else if (activation.invitedAt) {
-    accountStatus = <span className="text-amber-700 dark:text-amber-400">{t("access.invitePending", { date: formatDate(activation.invitedAt, locale) })}</span>;
+    accountStatus = <span className="text-warning ">{t("access.invitePending", { date: formatDate(activation.invitedAt, locale) })}</span>;
   } else {
-    accountStatus = <span className="text-zinc-500">{t("access.notInvited")}</span>;
+    accountStatus = <span className="text-muted-foreground">{t("access.notInvited")}</span>;
   }
 
   return (
@@ -61,7 +61,7 @@ export default async function EmployeeAccessPage({ params }) {
           <CheckRow ok={capabilities.manageDepartments}>{t("access.permDepartments")}</CheckRow>
           <CheckRow ok={capabilities.manageSettings}>{t("access.permSettings")}</CheckRow>
         </ul>
-        <p className="mt-5 text-xs text-zinc-400 dark:text-zinc-500">{t("access.footnote")}</p>
+        <p className="mt-5 text-xs text-muted-foreground dark:text-muted-foreground">{t("access.footnote")}</p>
       </Card>
     </div>
   );

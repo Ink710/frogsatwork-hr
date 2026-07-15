@@ -8,7 +8,7 @@ import { ReinstateForm } from "@/components/ReinstateForm";
 
 export async function generateMetadata() {
   const t = await getT();
-  return { title: `${t("reinstate.title")} · PeopleBase` };
+  return { title: `${t("reinstate.title")} · FrogsAtWorkHR` };
 }
 
 export default async function ReinstatePage({ params }) {
@@ -24,11 +24,11 @@ export default async function ReinstatePage({ params }) {
 
   return (
     <main className="mx-auto w-full max-w-lg px-6 py-10">
-      <Link href={`/employees/${id}`} className="text-sm text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200">
+      <Link href={`/employees/${id}`} className="text-sm text-muted-foreground hover:text-foreground">
         {t("common.backToProfile")}
       </Link>
       <h1 className="mt-4 text-2xl font-semibold tracking-tight">{t("reinstate.title")}</h1>
-      <p className="mt-1 text-sm text-zinc-500">
+      <p className="mt-1 text-sm text-muted-foreground">
         {t("reinstate.currently", { name, status: statusLabel })}
         {employee.current ? <> {t("reinstate.since", { date: formatDate(employee.current.startDate, locale) })}</> : null}{" "}
         {t("reinstate.note")}

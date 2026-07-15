@@ -11,7 +11,7 @@ import {
 } from "@/lib/enums";
 import { useT } from "./LocaleProvider";
 
-const field = "mt-1 w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900";
+const field = "mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30";
 const label = "block text-sm font-medium";
 
 export function CreateEmployeeForm({ departments, managerOptions, canEditComp }) {
@@ -22,7 +22,7 @@ export function CreateEmployeeForm({ departments, managerOptions, canEditComp })
   return (
     <form action={formAction} className="mt-6 space-y-4">
       {state?.error && (
-        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-400">{state.error}</p>
+        <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive  ">{state.error}</p>
       )}
 
       <div className="grid grid-cols-2 gap-4">
@@ -113,7 +113,7 @@ export function CreateEmployeeForm({ departments, managerOptions, canEditComp })
         )}
       </div>
 
-      <fieldset className="rounded-md border border-zinc-200 p-4 dark:border-zinc-800">
+      <fieldset className="rounded-md border border-border p-4 ">
         <legend className="px-1 text-sm font-medium">{t("create.contactSchedule")}</legend>
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -138,7 +138,7 @@ export function CreateEmployeeForm({ departments, managerOptions, canEditComp })
       </fieldset>
 
       {canEditComp && (
-        <fieldset className="rounded-md border border-zinc-200 p-4 dark:border-zinc-800">
+        <fieldset className="rounded-md border border-border p-4 ">
           <legend className="px-1 text-sm font-medium">{t("create.compDetails")}</legend>
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -157,7 +157,7 @@ export function CreateEmployeeForm({ departments, managerOptions, canEditComp })
         </fieldset>
       )}
 
-      <fieldset className="rounded-md border border-zinc-200 p-4 dark:border-zinc-800">
+      <fieldset className="rounded-md border border-border p-4 ">
         <legend className="px-1 text-sm font-medium">{t("create.emergencyContact")}</legend>
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -175,7 +175,7 @@ export function CreateEmployeeForm({ departments, managerOptions, canEditComp })
         </div>
       </fieldset>
 
-      <button type="submit" disabled={pending} className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background hover:opacity-90 disabled:opacity-50">
+      <button type="submit" disabled={pending} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50">
         {pending ? t("create.creating") : t("create.submit")}
       </button>
     </form>

@@ -11,6 +11,7 @@ import {
   canManageSettings,
   getSubtreeIds,
   canViewBudget,
+  canViewBudgetOverview,
   canManageDepartments,
 } from "@hris/auth";
 import { isWithinCorrectionWindow, CORRECTION_WINDOW_DAYS, EMPLOYMENT_TYPES } from "@hris/types";
@@ -651,6 +652,25 @@ export async function getLandingPath() {
     if (me?.departmentId) return `/departments/${me.departmentId}`;
   }
   return "/employees";
+}
+
+// Company-wide department budgets for the dashboard pie — "upper management" only
+// (HR_ADMIN + PAYROLL_ADMIN via canViewBudgetOverview). Returns null when the viewer isn't
+// entitled (the dashboard then omits the chart entirely). RLS on DepartmentBudget is a second
+// wall: even inside withViewer, only rows the viewer may see come back — for these two roles,
+// that's all of them, so the pie is complete.
+export async function getDepartmentBudgets() {
+  const viewer = await getViewer();
+  if (!viewer || !canViewBudgetOverview(viewer)) return null;
+
+  return withViewer(viewer, async (tx) => {
+    const rows = await tx.departmentBudget.findMany({
+      select: { budget: true, department: { select: { name: true } } },
+    });
+    return rows
+      .map((r) => ({ name: r.department?.name ?? "—", budget: r.budget.toString() }))
+      .sort((a, b) => Number(b.budget) - Number(a.budget));
+  });
 }
 
 // Aggregations for the HR dashboard. Every count is computed from the viewer's RLS-scoped

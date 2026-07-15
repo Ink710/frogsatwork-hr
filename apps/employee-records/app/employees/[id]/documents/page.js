@@ -29,16 +29,16 @@ export default async function EmployeeDocumentsPage({ params }) {
   return (
     <Card title={t("documents.title", { count: documents.length })}>
       {documents.length === 0 ? (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">{t("documents.none")}</p>
+        <p className="text-sm text-muted-foreground dark:text-muted-foreground">{t("documents.none")}</p>
       ) : (
-        <ul className="divide-y divide-zinc-100 rounded-lg border border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+        <ul className="divide-y divide-border rounded-lg border border-border  ">
           {documents.map((d) => (
             <li key={d.id} className="flex items-center justify-between px-4 py-2.5 text-sm">
               <div className="min-w-0">
-                <a href={d.downloadUrl} className="font-medium text-blue-600 hover:underline dark:text-blue-400">
+                <a href={d.downloadUrl} className="font-medium text-primary hover:underline ">
                   {d.fileName}
                 </a>
-                <span className="ml-2 text-xs text-zinc-400">
+                <span className="ml-2 text-xs text-muted-foreground">
                   {t(`enum.documentType.${d.documentType}`)} · {formatBytes(d.fileSizeBytes)} · {formatDate(d.createdAt, locale)} · {d.uploadedByName}
                   {d.expiresAt ? ` · ${t("documents.expires", { date: formatDate(d.expiresAt, locale) })}` : ""}
                 </span>

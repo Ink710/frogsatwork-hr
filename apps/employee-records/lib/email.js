@@ -22,17 +22,17 @@ function getTransport() {
 
 export async function sendInviteEmail({ to, name, link }) {
   await getTransport().sendMail({
-    from: process.env.SMTP_FROM ?? "PeopleBase <no-reply@peoplebase.test>",
+    from: process.env.SMTP_FROM ?? "FrogsAtWorkHR <no-reply@peoplebase.test>",
     to,
-    subject: "Set up your PeopleBase account",
+    subject: "Set up your FrogsAtWorkHR account",
     text:
       `Hi ${name},\n\n` +
-      `An account was created for you in PeopleBase. Set your password to sign in:\n` +
+      `An account was created for you in FrogsAtWorkHR. Set your password to sign in:\n` +
       `${link}\n\n` +
       `This link expires in 7 days. If it has expired, ask HR to send a new one.`,
     html:
       `<p>Hi ${name},</p>` +
-      `<p>An account was created for you in PeopleBase. Set your password to sign in:</p>` +
+      `<p>An account was created for you in FrogsAtWorkHR. Set your password to sign in:</p>` +
       `<p><a href="${link}">Set your password</a></p>` +
       `<p style="color:#71717a;font-size:13px">This link expires in 7 days. ` +
       `If it has expired, ask HR to send a new one.</p>`,
