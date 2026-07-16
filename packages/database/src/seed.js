@@ -57,7 +57,7 @@ const PEOPLE = {
     number: "E-0001",
     firstName: "Ana",
     lastName: "Okafor",
-    email: "ana.okafor@peoplebase.test",
+    email: "ana.okafor@frogsatwork.test",
     role: Role.HR_ADMIN, // top of the tree; can see everyone
     dept: "exec",
     manager: null,
@@ -72,7 +72,7 @@ const PEOPLE = {
     number: "E-0002",
     firstName: "Marcus",
     lastName: "Lee",
-    email: "marcus.lee@peoplebase.test",
+    email: "marcus.lee@frogsatwork.test",
     role: Role.MANAGER,
     dept: "eng",
     manager: "ana",
@@ -87,7 +87,7 @@ const PEOPLE = {
     number: "E-0003",
     firstName: "Bianca",
     lastName: "Ross",
-    email: "bianca.ross@peoplebase.test",
+    email: "bianca.ross@frogsatwork.test",
     role: Role.HR_GENERALIST,
     dept: "people",
     manager: "ana",
@@ -102,7 +102,7 @@ const PEOPLE = {
     number: "E-0004",
     firstName: "Diego",
     lastName: "Santos",
-    email: "diego.santos@peoplebase.test",
+    email: "diego.santos@frogsatwork.test",
     role: Role.EMPLOYEE,
     dept: "eng",
     manager: "marcus",
@@ -120,7 +120,7 @@ const PEOPLE = {
     number: "E-0005",
     firstName: "Priya",
     lastName: "Nair",
-    email: "priya.nair@peoplebase.test",
+    email: "priya.nair@frogsatwork.test",
     role: Role.EMPLOYEE,
     dept: "eng",
     manager: "marcus",
@@ -135,7 +135,7 @@ const PEOPLE = {
     number: "E-0006",
     firstName: "Tom",
     lastName: "Becker",
-    email: "tom.becker@peoplebase.test",
+    email: "tom.becker@frogsatwork.test",
     role: Role.EMPLOYEE,
     dept: "eng",
     manager: "diego", // level 4 of the tree
@@ -150,7 +150,7 @@ const PEOPLE = {
     number: "E-0007",
     firstName: "Nadia",
     lastName: "Cole",
-    email: "nadia.cole@peoplebase.test",
+    email: "nadia.cole@frogsatwork.test",
     role: Role.PAYROLL_ADMIN, // sees all comp org-wide, but every view is audited
     dept: "people",
     manager: "ana",
@@ -187,8 +187,9 @@ async function main() {
   // 1. Organization (multi-tenancy anchor).
   const org = await prisma.organization.upsert({
     where: { id: ORG_ID },
-    update: {},
-    create: { id: ORG_ID, name: "PeopleBase Inc." },
+    // Re-assert the name on every seed so a rebrand propagates to an existing dev DB.
+    update: { name: "FrogsAtWork Inc." },
+    create: { id: ORG_ID, name: "FrogsAtWork Inc." },
   });
 
   // 1b. Default storage folder (repo-root/.storage). `update: {}` so re-seeding never
@@ -203,10 +204,10 @@ async function main() {
   // 2. System user — pinned id, attributes automated writes. Not an employee.
   await prisma.user.upsert({
     where: { id: SYSTEM_USER_ID },
-    update: {},
+    update: { email: "system@frogsatwork.test" },
     create: {
       id: SYSTEM_USER_ID,
-      email: "system@peoplebase.test",
+      email: "system@frogsatwork.test",
       name: "System",
       role: Role.SYSTEM,
       isSystemUser: true,
@@ -255,7 +256,8 @@ async function main() {
       where: { id: p.userId },
       // passwordHash + emailVerifiedAt in `update` too, so re-seeding an existing DB backfills
       // logins and marks these seeded accounts as already activated (not "invite pending").
-      update: { passwordHash, emailVerifiedAt: new Date() },
+      // email + name are re-asserted so a rebrand propagates to existing rows on reseed.
+      update: { email: p.email, name: `${p.firstName} ${p.lastName}`, passwordHash, emailVerifiedAt: new Date() },
       create: {
         id: p.userId,
         email: p.email,
@@ -280,7 +282,7 @@ async function main() {
     };
     await prisma.employee.upsert({
       where: { id: p.empId },
-      update: profileFields,
+      update: { ...profileFields, email: p.email },
       create: {
         id: p.empId,
         employeeNumber: p.number,

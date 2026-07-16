@@ -179,7 +179,7 @@ describe("corrections", () => {
     const fd = new FormData();
     fd.set("firstName", "Priyanka");
     fd.set("lastName", "Nair");
-    fd.set("email", "priya.nair@peoplebase.test");
+    fd.set("email", "priya.nair@frogsatwork.test");
     const r = await invoke(correctDetails(ID.priya, {}, fd));
     expect(r.ok).toBe(true);
     expect(await versionCount(ID.priya)).toBe(1);
@@ -229,7 +229,7 @@ describe("createEmployee", () => {
     const fd = new FormData();
     fd.set("firstName", "Ada");
     fd.set("lastName", "Lovelace");
-    fd.set("email", `ada+${Math.floor(Math.random() * 1e6)}@peoplebase.test`);
+    fd.set("email", `ada+${Math.floor(Math.random() * 1e6)}@frogsatwork.test`);
     fd.set("hireDate", today());
     fd.set("departmentId", DEPT_ENG);
     fd.set("jobTitle", "Software Engineer");
@@ -285,7 +285,7 @@ describe("createEmployee", () => {
     const fd = new FormData();
     fd.set("firstName", "Ada");
     fd.set("lastName", "Lovelace");
-    fd.set("email", `ada+${Math.floor(Math.random() * 1e6)}@peoplebase.test`);
+    fd.set("email", `ada+${Math.floor(Math.random() * 1e6)}@frogsatwork.test`);
     fd.set("hireDate", today());
     fd.set("departmentId", DEPT_ENG);
     fd.set("jobTitle", "Software Engineer");

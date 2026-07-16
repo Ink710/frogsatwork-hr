@@ -22,7 +22,7 @@ function getTransport() {
 
 export async function sendInviteEmail({ to, name, link }) {
   await getTransport().sendMail({
-    from: process.env.SMTP_FROM ?? "FrogsAtWorkHR <no-reply@peoplebase.test>",
+    from: process.env.SMTP_FROM ?? "FrogsAtWorkHR <no-reply@frogsatwork.test>",
     to,
     subject: "Set up your FrogsAtWorkHR account",
     text:

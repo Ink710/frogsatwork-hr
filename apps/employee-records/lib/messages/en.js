@@ -31,11 +31,6 @@ const en = {
   "nav.preferences": "Preferences",
   "nav.signOut": "Sign out",
 
-  // Home / landing
-  "home.eyebrow": "PEOPLEBASE",
-  "home.title": "Employee Records",
-  "home.subtitle": "The canonical source of truth for who works here, who they report to, and how their records change over time.",
-  "home.cta": "View employees →",
   "brand.slogan": "Let’s jump into it.",
 
   // Auth / login

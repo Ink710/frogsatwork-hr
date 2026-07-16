@@ -31,11 +31,6 @@ const es = {
   "nav.preferences": "Preferencias",
   "nav.signOut": "Cerrar sesión",
 
-  // Home / landing
-  "home.eyebrow": "PEOPLEBASE",
-  "home.title": "Registros de empleados",
-  "home.subtitle": "La fuente de verdad sobre quién trabaja aquí, a quién le reporta y cómo cambian sus registros con el tiempo.",
-  "home.cta": "Ver empleados →",
   "brand.slogan": "Saltemos a ello.",
 
   // Auth / login

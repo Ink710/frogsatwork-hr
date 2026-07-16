@@ -33,3 +33,6 @@ pnpm-debug.log*
 *.pem
 .vscode/*
 !.vscode/settings.json
+
+# Claude Code local tooling (dev-server launch config, etc.) — keep out of the public push
+.claude/

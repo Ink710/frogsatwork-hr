@@ -41,15 +41,15 @@ export async function getCompContext(viewer: Viewer, db: Db = prisma): Promise<C
   // employee record simply resolves to an empty scope instead of a type error or a crash.
   const employeeId = viewer.employeeId ?? "";
   if (isHrRole(viewer.role)) {
-    const [ancestorIds, me] = await Promise.all([
-      getAncestorIds(employeeId, db),
-      // Reads the viewer's own row — RLS lets HR see it, but only with session vars set,
-      // so `db` must be a withViewer transaction here.
-      db.employee.findUnique({
-        where: { id: employeeId },
-        select: { departmentId: true },
-      }),
-    ]);
+    // Sequential, not Promise.all: both queries run on the same tx/connection, which can't
+    // execute them concurrently (node-postgres warns if you try; Prisma serialized them anyway).
+    const ancestorIds = await getAncestorIds(employeeId, db);
+    // Reads the viewer's own row — RLS lets HR see it, but only with session vars set,
+    // so `db` must be a withViewer transaction here.
+    const me = await db.employee.findUnique({
+      where: { id: employeeId },
+      select: { departmentId: true },
+    });
     return { ancestorIds, viewerDepth: ancestorIds.size, viewerDeptId: me?.departmentId };
   }
   // MANAGER / EMPLOYEE: downward scope.

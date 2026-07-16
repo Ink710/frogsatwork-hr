@@ -38,7 +38,7 @@ describe("employeeCreateSchema", () => {
   const base = {
     firstName: "Ada",
     lastName: "Lovelace",
-    email: "ada@peoplebase.test",
+    email: "ada@frogsatwork.test",
     hireDate: today(),
     departmentId: "d1",
     jobTitle: "Engineer",

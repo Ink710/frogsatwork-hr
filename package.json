@@ -1,16 +1,13 @@
 {
   "name": "hris-monorepo",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "private": true,
   "scripts": {
     "test": "pnpm run test:unit && pnpm run test:integration",
     "test:watch": "vitest",
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration"
   },
-  "keywords": [],
-  "author": "",
   "license": "ISC",
   "devEngines": {
     "packageManager": {

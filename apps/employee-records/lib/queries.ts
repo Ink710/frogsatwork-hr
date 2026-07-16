@@ -297,18 +297,17 @@ export const getEmployeeOverview = cache(async (id: string) => {
     } | null = null;
     if (canViewComp) {
       const currentVersionId = employee.history[0]?.id ?? null;
-      const [row, sensitive] = await Promise.all([
-        currentVersionId
-          ? tx.employeeHistory.findUnique({
-              where: { id: currentVersionId },
-              select: { salary: true, currency: true, payBasis: true },
-            })
-          : null,
-        tx.employee.findUnique({
-          where: { id },
-          select: { lastReviewDate: true, nextReviewDate: true, equityNote: true },
-        }),
-      ]);
+      // Sequential (not Promise.all): queries on one tx/connection can't run concurrently.
+      const row = currentVersionId
+        ? await tx.employeeHistory.findUnique({
+            where: { id: currentVersionId },
+            select: { salary: true, currency: true, payBasis: true },
+          })
+        : null;
+      const sensitive = await tx.employee.findUnique({
+        where: { id },
+        select: { lastReviewDate: true, nextReviewDate: true, equityNote: true },
+      });
       comp = {
         salary: row?.salary?.toString() ?? null,
         currency: row?.currency ?? null,
@@ -493,18 +492,17 @@ export async function getEmployeeForEdit(id: string) {
       },
     });
 
-    const [departments, subtree, all] = await Promise.all([
-      tx.department.findMany({
-        where: { orgId: viewer.orgId },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
-      }),
-      getSubtreeIds(id, tx),
-      tx.employee.findMany({
-        select: { id: true, firstName: true, lastName: true },
-        orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-      }),
-    ]);
+    // Sequential (not Promise.all): queries on one tx/connection can't run concurrently.
+    const departments = await tx.department.findMany({
+      where: { orgId: viewer.orgId },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    });
+    const subtree = await getSubtreeIds(id, tx);
+    const all = await tx.employee.findMany({
+      select: { id: true, firstName: true, lastName: true },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+    });
 
     const managerOptions = all
       .filter((e) => !subtree.has(e.id)) // excludes self + descendants → no cycles
@@ -566,18 +564,17 @@ export async function getEmployeeForCorrection(id: string) {
       },
     });
 
-    const [departments, subtree, all] = await Promise.all([
-      tx.department.findMany({
-        where: { orgId: viewer.orgId },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
-      }),
-      getSubtreeIds(id, tx),
-      tx.employee.findMany({
-        select: { id: true, firstName: true, lastName: true },
-        orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-      }),
-    ]);
+    // Sequential (not Promise.all): queries on one tx/connection can't run concurrently.
+    const departments = await tx.department.findMany({
+      where: { orgId: viewer.orgId },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    });
+    const subtree = await getSubtreeIds(id, tx);
+    const all = await tx.employee.findMany({
+      select: { id: true, firstName: true, lastName: true },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+    });
     const managerOptions = all
       .filter((e) => !subtree.has(e.id))
       .map((e) => ({ id: e.id, name: `${e.firstName} ${e.lastName}` }));
@@ -974,19 +971,18 @@ export async function getNewDepartmentFormData() {
   if (!viewer || !canManageDepartments(viewer)) return null;
 
   return withViewer(viewer, async (tx) => {
-    const [departments, employees] = await Promise.all([
-      tx.department.findMany({
-        where: { orgId: viewer.orgId },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
-      }),
-      // Head candidates: any employee, keyed by their userId (headUserId → User.id).
-      tx.employee.findMany({
-        where: { orgId: viewer.orgId },
-        select: { userId: true, firstName: true, lastName: true },
-        orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-      }),
-    ]);
+    // Sequential (not Promise.all): queries on one tx/connection can't run concurrently.
+    const departments = await tx.department.findMany({
+      where: { orgId: viewer.orgId },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    });
+    // Head candidates: any employee, keyed by their userId (headUserId → User.id).
+    const employees = await tx.employee.findMany({
+      where: { orgId: viewer.orgId },
+      select: { userId: true, firstName: true, lastName: true },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+    });
     return {
       parentOptions: departments,
       headOptions: employees.map((e) => ({ userId: e.userId, name: `${e.firstName} ${e.lastName}` })),
@@ -1007,20 +1003,19 @@ export async function getDepartmentForEdit(id: string) {
     });
     if (!department) return null;
 
-    const [allDepartments, employees, budgetRow] = await Promise.all([
-      tx.department.findMany({
-        where: { orgId: viewer.orgId },
-        select: { id: true, name: true, parentDepartmentId: true },
-        orderBy: { name: "asc" },
-      }),
-      tx.employee.findMany({
-        where: { orgId: viewer.orgId },
-        select: { userId: true, firstName: true, lastName: true },
-        orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-      }),
-      // HR_ADMIN passes app_can_see_budget for every dept, so this returns the row if it exists.
-      tx.departmentBudget.findUnique({ where: { departmentId: id }, select: { budget: true } }),
-    ]);
+    // Sequential (not Promise.all): queries on one tx/connection can't run concurrently.
+    const allDepartments = await tx.department.findMany({
+      where: { orgId: viewer.orgId },
+      select: { id: true, name: true, parentDepartmentId: true },
+      orderBy: { name: "asc" },
+    });
+    const employees = await tx.employee.findMany({
+      where: { orgId: viewer.orgId },
+      select: { userId: true, firstName: true, lastName: true },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+    });
+    // HR_ADMIN passes app_can_see_budget for every dept, so this returns the row if it exists.
+    const budgetRow = await tx.departmentBudget.findUnique({ where: { departmentId: id }, select: { budget: true } });
 
     const blocked = departmentDescendantIds(id, allDepartments); // self + descendants
     return {
@@ -1138,17 +1133,16 @@ export async function getNewEmployeeFormData() {
   if (!viewer || !canEditEmployee(viewer)) return null;
 
   return withViewer(viewer, async (tx) => {
-    const [departments, all] = await Promise.all([
-      tx.department.findMany({
-        where: { orgId: viewer.orgId },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
-      }),
-      tx.employee.findMany({
-        select: { id: true, firstName: true, lastName: true },
-        orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-      }),
-    ]);
+    // Sequential (not Promise.all): queries on one tx/connection can't run concurrently.
+    const departments = await tx.department.findMany({
+      where: { orgId: viewer.orgId },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    });
+    const all = await tx.employee.findMany({
+      select: { id: true, firstName: true, lastName: true },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+    });
     return {
       departments,
       managerOptions: all.map((e) => ({ id: e.id, name: `${e.firstName} ${e.lastName}` })),

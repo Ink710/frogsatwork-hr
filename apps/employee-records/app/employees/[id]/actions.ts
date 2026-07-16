@@ -68,16 +68,15 @@ export async function recordChange(employeeId: string, _prevState: FormState, fo
   try {
     await withViewer(viewer, async (tx) => {
       // Reload current state from the DB — never trust the form for what "current" is.
-      const [current, employee] = await Promise.all([
-        tx.employeeHistory.findFirst({
-          where: { employeeId, effectiveTo: null },
-          orderBy: { version: "desc" },
-        }),
-        tx.employee.findUnique({
-          where: { id: employeeId },
-          select: { departmentId: true, managerId: true },
-        }),
-      ]);
+      // Sequential (not Promise.all): queries on one tx/connection can't run concurrently.
+      const current = await tx.employeeHistory.findFirst({
+        where: { employeeId, effectiveTo: null },
+        orderBy: { version: "desc" },
+      });
+      const employee = await tx.employee.findUnique({
+        where: { id: employeeId },
+        select: { departmentId: true, managerId: true },
+      });
       if (!current || !employee) throw new Error("Employee record not found.");
 
       if (input.effectiveFrom <= current.effectiveFrom) {
@@ -322,16 +321,15 @@ export async function correctMaterial(employeeId: string, _prevState: FormState,
 
   try {
     await withViewer(viewer, async (tx) => {
-      const [current, employee] = await Promise.all([
-        tx.employeeHistory.findFirst({
-          where: { employeeId, effectiveTo: null },
-          orderBy: { version: "desc" },
-        }),
-        tx.employee.findUnique({
-          where: { id: employeeId },
-          select: { departmentId: true, managerId: true },
-        }),
-      ]);
+      // Sequential (not Promise.all): queries on one tx/connection can't run concurrently.
+      const current = await tx.employeeHistory.findFirst({
+        where: { employeeId, effectiveTo: null },
+        orderBy: { version: "desc" },
+      });
+      const employee = await tx.employee.findUnique({
+        where: { id: employeeId },
+        select: { departmentId: true, managerId: true },
+      });
       if (!current || !employee) throw new Error("Employee record not found.");
 
       // The gate that makes this "fixing a typo" and not "rewriting history".

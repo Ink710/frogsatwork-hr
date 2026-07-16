@@ -75,9 +75,9 @@ export default async function LoginPage({ searchParams }) {
       <div className="mt-8 rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">
         <p className="font-medium">{t("login.seededHint")}</p>
         <ul className="mt-1 space-y-0.5">
-          <li>ana.okafor@peoplebase.test — HR Admin (sees all)</li>
-          <li>marcus.lee@peoplebase.test — Manager (his team)</li>
-          <li>diego.santos@peoplebase.test — Employee (only self)</li>
+          <li>ana.okafor@frogsatwork.test — HR Admin (sees all)</li>
+          <li>marcus.lee@frogsatwork.test — Manager (his team)</li>
+          <li>diego.santos@frogsatwork.test — Employee (only self)</li>
         </ul>
       </div>
     </main>
