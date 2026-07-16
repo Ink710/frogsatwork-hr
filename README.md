@@ -1,12 +1,11 @@
 # FrogsAtWorkHR
 
+[![CI](https://github.com/Ink710/frogsatwork-hr/actions/workflows/ci.yml/badge.svg)](https://github.com/Ink710/frogsatwork-hr/actions/workflows/ci.yml)
+
 > A lightweight, compliance-credible **HRIS** (Human Resources Information System) for managing
 > employee records across an organization. _Let's jump into it._
 
-<!-- Fill these in when the repo is created / deployed:
-[![CI](https://github.com/<you>/frogsatwork-hr/actions/workflows/ci.yml/badge.svg)](https://github.com/<you>/frogsatwork-hr/actions/workflows/ci.yml)
-**Live demo:** https://… · **Case study / walkthrough:** …
--->
+<!-- Live demo link goes here once deployed (Vercel + hosted Postgres). -->
 
 FrogsAtWorkHR is a portfolio project built to demonstrate full-stack engineering judgment, not just
 CRUD mechanics. The domain decisions reflect how HR data actually behaves in the real world —
