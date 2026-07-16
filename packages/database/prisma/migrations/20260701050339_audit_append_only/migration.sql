@@ -10,11 +10,13 @@
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO hris_app;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO hris_app;
 
--- 2. Future tables created by the owner (postgres) are auto-granted to hris_app,
---    so we don't have to repeat step 1 after every migration.
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+-- 2. Future tables created by the migration's owner role are auto-granted to hris_app,
+--    so we don't have to repeat step 1 after every migration. Omitting `FOR ROLE` targets the
+--    CURRENT role (whoever runs the migration = the owner), so this stays portable across
+--    environments where the owner isn't named `postgres` (e.g. Neon's `neondb_owner`).
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO hris_app;
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT USAGE, SELECT ON SEQUENCES TO hris_app;
 
 -- 3. The audit log is INSERT + SELECT only. Revoke the ability to change history.
