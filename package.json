@@ -2,6 +2,7 @@
   "name": "hris-monorepo",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "pnpm@11.9.0",
   "scripts": {
     "test": "pnpm run test:unit && pnpm run test:integration",
     "test:watch": "vitest",
