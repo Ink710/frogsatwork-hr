@@ -10,6 +10,14 @@ jobs:
   lint-and-test:
     runs-on: ubuntu-latest
 
+    # Non-secret localhost URLs (identical to the committed .env.test) so the Prisma CLI can
+    # resolve the datasource in `prisma.config.ts` — `prisma generate` validates the config even
+    # though codegen never connects. There is no .env in CI (secrets aren't committed), so without
+    # this the config's env("DIRECT_URL") throws PrismaConfigEnvError. Points at the service below.
+    env:
+      DATABASE_URL: postgresql://hris_app:hris_app_pw@localhost:5433/hris_test?schema=public
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5433/hris_test?schema=public
+
     # Postgres for the integration tests. Mapped to host 5433 so it matches .env.test and
     # test/globalSetup.js (which use localhost:5433) with no changes. The test harness
     # itself creates the hris_app role, the hris_test database, migrations, and seed.
