@@ -5,7 +5,7 @@
 > A lightweight, compliance-credible **HRIS** (Human Resources Information System) for managing
 > employee records across an organization. _Let's jump into it._
 
-<!-- Live demo link goes here once deployed (Vercel + hosted Postgres). -->
+**▶ Live demo:** https://frogsatwork-hr.vercel.app — sign in with a seeded account below (password `password123`).
 
 FrogsAtWorkHR is a portfolio project built to demonstrate full-stack engineering judgment, not just
 CRUD mechanics. The domain decisions reflect how HR data actually behaves in the real world —

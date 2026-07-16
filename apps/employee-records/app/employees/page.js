@@ -139,8 +139,8 @@ export default async function EmployeesPage({ searchParams }) {
         </div>
       ) : (
         <>
-          <div className="overflow-hidden rounded-lg border border-border">
-            <table className="w-full text-left text-sm font-table">
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full min-w-[720px] text-left text-sm font-table">
               <thead className="bg-muted text-xs uppercase tracking-wide text-muted-foreground ">
                 <tr>
                   <th className="px-4 py-3 font-medium">{t("employees.colNumber")}</th>

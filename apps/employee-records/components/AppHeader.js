@@ -2,6 +2,7 @@ import Link from "next/link";
 import { auth, signOut, getViewer } from "@hris/auth";
 import { getT } from "@/lib/i18n.server";
 import { Logo } from "@/components/Logo";
+import { MobileMenu } from "@/components/MobileMenu";
 
 // Async Server Component: reads the session server-side. Renders nothing when signed
 // out (e.g. on /login), so the header only appears once authenticated.
@@ -18,31 +19,36 @@ export async function AppHeader() {
     await signOut({ redirectTo: "/login" });
   }
 
+  // Nav links, computed once and shared by the desktop nav + the mobile collapsible menu.
+  // An employee's world is just their own profile + the company org chart; everyone else gets
+  // the dashboard/employees/departments; only HR_ADMIN sees settings.
+  const navItems = [
+    isEmployee
+      ? { href: viewer?.employeeId ? `/employees/${viewer.employeeId}` : "/employees", label: t("nav.myProfile") }
+      : { href: "/dashboard", label: t("nav.dashboard") },
+    !isEmployee && { href: "/employees", label: t("nav.employees") },
+    !isEmployee && { href: "/departments", label: t("nav.departments") },
+    { href: "/org-chart", label: t("nav.orgChart") },
+    role === "HR_ADMIN" && { href: "/settings", label: t("nav.settings") },
+  ].filter(Boolean);
+
   return (
     <header className="border-b border-border bg-card/40">
-      <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-3">
+      <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
+        {/* Left: logo + (desktop) nav */}
         <div className="flex items-center gap-6">
           <Logo href="/" />
-          <nav className="flex items-center gap-4 text-sm text-muted-foreground">
-            {isEmployee ? (
-              // An employee's world is just their own profile + the company org chart.
-              <Link href={viewer?.employeeId ? `/employees/${viewer.employeeId}` : "/employees"} className="hover:text-foreground">
-                {t("nav.myProfile")}
+          <nav className="hidden items-center gap-4 text-sm text-muted-foreground md:flex">
+            {navItems.map((item) => (
+              <Link key={item.href} href={item.href} className="hover:text-foreground">
+                {item.label}
               </Link>
-            ) : (
-              <>
-                <Link href="/dashboard" className="hover:text-foreground">{t("nav.dashboard")}</Link>
-                <Link href="/employees" className="hover:text-foreground">{t("nav.employees")}</Link>
-                <Link href="/departments" className="hover:text-foreground">{t("nav.departments")}</Link>
-              </>
-            )}
-            <Link href="/org-chart" className="hover:text-foreground">{t("nav.orgChart")}</Link>
-            {role === "HR_ADMIN" && (
-              <Link href="/settings" className="hover:text-foreground">{t("nav.settings")}</Link>
-            )}
+            ))}
           </nav>
         </div>
-        <div className="flex items-center gap-4 text-sm">
+
+        {/* Right (desktop ≥ md): name + role + preferences + sign out */}
+        <div className="hidden items-center gap-4 text-sm md:flex">
           <span className="text-muted-foreground">
             {name} · <span className="text-muted-foreground/70">{t(`enum.role.${role}`)}</span>
           </span>
@@ -54,6 +60,18 @@ export async function AppHeader() {
               {t("nav.signOut")}
             </button>
           </form>
+        </div>
+
+        {/* Right (mobile < md): just the name + a collapsible menu with everything else */}
+        <div className="flex items-center gap-3 md:hidden">
+          <span className="max-w-[45vw] truncate text-sm text-muted-foreground">{name}</span>
+          <MobileMenu
+            navItems={navItems}
+            prefsHref="/preferences"
+            prefsLabel={t("nav.preferences")}
+            signOutLabel={t("nav.signOut")}
+            logout={logout}
+          />
         </div>
       </div>
     </header>
