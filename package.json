@@ -8,7 +8,7 @@
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration"
   },
-  "license": "ISC",
+  "license": "UNLICENSED",
   "devEngines": {
     "packageManager": {
       "name": "pnpm",
