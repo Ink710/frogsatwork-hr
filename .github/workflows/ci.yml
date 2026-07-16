@@ -39,10 +39,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Version comes from the root package.json "packageManager" field (pnpm@11.9.0) —
+      # single source of truth, and required now that that field exists (specifying it here too
+      # makes action-setup error on the duplicate).
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 11
 
       - name: Setup Node
         uses: actions/setup-node@v4
