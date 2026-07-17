@@ -6,7 +6,7 @@ import { auth } from "@hris/auth/middleware";
 export default auth;
 
 export const config = {
-  // Protect everything EXCEPT the auth API, Next internals, favicon, /login, and
-  // /set-password (the public invite-redemption page — a new hire has no session yet).
-  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico|login|set-password).*)"],
+  // Protect everything EXCEPT the auth API, the public health check, Next internals, favicon,
+  // /login, and /set-password (the public invite-redemption page — a new hire has no session yet).
+  matcher: ["/((?!api/auth|api/health|_next/static|_next/image|favicon.ico|login|set-password).*)"],
 };

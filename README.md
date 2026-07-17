@@ -12,6 +12,12 @@ CRUD mechanics. The domain decisions reflect how HR data actually behaves in the
 records are **never hard-deleted**, changes are **effective-dated**, and sensitive data like
 compensation is guarded **on the server**, not just hidden in the UI.
 
+## Screenshots
+
+| Employee directory (desktop) | Responsive (mobile) |
+| --- | --- |
+| ![HR Admin Dashboard](docs/screenshots/desktop.png) | ![Mobile view](docs/screenshots/mobile.png) |
+
 ---
 
 ## Why it's different

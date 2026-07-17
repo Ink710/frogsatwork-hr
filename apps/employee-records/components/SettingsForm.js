@@ -23,6 +23,7 @@ export function SettingsForm({ storageDir }) {
           id="storageDir"
           name="storageDir"
           defaultValue={current}
+          placeholder="/Users/<Your filetree goes here>"
           required
           className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
         />

@@ -192,13 +192,14 @@ async function main() {
     create: { id: ORG_ID, name: "FrogsAtWork Inc." },
   });
 
-  // 1b. Default storage folder (repo-root/.storage). `update: {}` so re-seeding never
-  //     overwrites a folder the user picked in Settings.
-  const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
+  // 1b. Default storage folder — a generic PLACEHOLDER, not a real path. The old
+  //     `${repoRoot}.storage` baked the seeding machine's absolute path into the row, which then
+  //     showed up (and leaked) in the deployed app's Settings page. HR sets a real writable path
+  //     per environment. `update: {}` so re-seeding never overwrites a folder set in Settings.
   await prisma.appSetting.upsert({
     where: { key: "storageDir" },
     update: {},
-    create: { key: "storageDir", value: `${repoRoot}.storage` },
+    create: { key: "storageDir", value: "/Users/<Your filetree goes here>" },
   });
 
   // 2. System user — pinned id, attributes automated writes. Not an employee.
