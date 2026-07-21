@@ -1,0 +1,34 @@
+{
+  "name": "time-management",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3001",
+    "prebuild": "pnpm --filter @hris/database exec prisma generate",
+    "build": "next build",
+    "start": "next start -p 3001",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@hris/auth": "workspace:*",
+    "@hris/database": "workspace:*",
+    "@hris/types": "workspace:*",
+    "@hris/workable-hours": "workspace:*",
+    "bcryptjs": "^3.0.2",
+    "lucide-react": "^1.24.0",
+    "next": "16.2.9",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^26.1.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.9",
+    "tailwindcss": "^4",
+    "typescript": "^5.9.3"
+  }
+}

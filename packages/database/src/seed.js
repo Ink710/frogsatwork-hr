@@ -374,12 +374,85 @@ async function main() {
     },
   });
 
+  // 8. Leave policies (accrual config) — one per (org, leave type). Rates read like a real US PTO
+  //    plan (VACATION ≈ 20 days/yr, SICK ≈ 10, PERSONAL ≈ 5); UNPAID never accrues. Idempotent on
+  //    the (orgId, type) unique key.
+  const LEAVE_POLICIES = [
+    { type: "VACATION", accrualHoursPerMonth: "13.34", maxBalanceHours: "240.00", accrues: true },
+    { type: "SICK",     accrualHoursPerMonth: "6.67",  maxBalanceHours: "120.00", accrues: true },
+    { type: "PERSONAL", accrualHoursPerMonth: "3.33",  maxBalanceHours: "60.00",  accrues: true },
+    { type: "UNPAID",   accrualHoursPerMonth: "0.00",  maxBalanceHours: null,     accrues: false },
+  ];
+  for (const pol of LEAVE_POLICIES) {
+    await prisma.leavePolicy.upsert({
+      where: { orgId_type: { orgId: org.id, type: pol.type } },
+      update: { accrualHoursPerMonth: pol.accrualHoursPerMonth, maxBalanceHours: pol.maxBalanceHours, accrues: pol.accrues },
+      create: { orgId: org.id, ...pol },
+    });
+  }
+
+  // 9. Opening leave balances (OPENING ledger entries) so every employee shows a real balance.
+  //    Only the three accruing types get a starting balance. Readable, stable ids (the id column
+  //    is TEXT) → upsert-on-id is idempotent even though OPENING rows have a NULL accrualPeriod.
+  const OPENING_BALANCES = { VACATION: "80.00", SICK: "40.00", PERSONAL: "16.00" };
+  const OPENING_DATE = new Date("2026-01-01");
+  for (const p of Object.values(PEOPLE)) {
+    for (const [type, hours] of Object.entries(OPENING_BALANCES)) {
+      const id = `led-open-${p.number}-${type}`;
+      await prisma.leaveLedgerEntry.upsert({
+        where: { id },
+        update: { hours },
+        create: {
+          id, employeeId: p.empId, type, hours, source: "OPENING",
+          note: "Opening balance", effectiveDate: OPENING_DATE, createdById: SYSTEM_USER_ID,
+        },
+      });
+    }
+  }
+
+  // 10. Sample requests for Diego so the queue + history aren't empty: one APPROVED (with its
+  //     matching USAGE ledger row, reviewed by his manager Marcus) and one PENDING (for Marcus to
+  //     act on in the approvals demo). Idempotent on readable ids.
+  await prisma.leaveRequest.upsert({
+    where: { id: "req-diego-approved" },
+    update: {},
+    create: {
+      id: "req-diego-approved", employeeId: PEOPLE.diego.empId, type: "VACATION",
+      startDate: new Date("2026-03-16"), endDate: new Date("2026-03-18"), hours: "24.00",
+      status: "APPROVED", reason: "Spring trip", decisionNote: "Approved — enjoy!",
+      reviewedById: PEOPLE.marcus.userId, reviewedAt: new Date("2026-03-01"),
+      createdById: PEOPLE.diego.userId,
+    },
+  });
+  await prisma.leaveLedgerEntry.upsert({
+    where: { id: "led-usage-diego-approved" },
+    update: {},
+    create: {
+      id: "led-usage-diego-approved", employeeId: PEOPLE.diego.empId, type: "VACATION",
+      hours: "-24.00", source: "USAGE", note: "Spring trip",
+      effectiveDate: new Date("2026-03-16"), leaveRequestId: "req-diego-approved",
+      createdById: PEOPLE.marcus.userId,
+    },
+  });
+  await prisma.leaveRequest.upsert({
+    where: { id: "req-diego-pending" },
+    update: {},
+    create: {
+      id: "req-diego-pending", employeeId: PEOPLE.diego.empId, type: "PERSONAL",
+      startDate: new Date("2026-08-10"), endDate: new Date("2026-08-10"), hours: "8.00",
+      status: "PENDING", reason: "Family matter", createdById: PEOPLE.diego.userId,
+    },
+  });
+
   const counts = {
     organizations: await prisma.organization.count(),
     users: await prisma.user.count(),
     departments: await prisma.department.count(),
     employees: await prisma.employee.count(),
     historyRows: await prisma.employeeHistory.count(),
+    leavePolicies: await prisma.leavePolicy.count(),
+    leaveRequests: await prisma.leaveRequest.count(),
+    leaveLedgerEntries: await prisma.leaveLedgerEntry.count(),
   };
   console.log("Seed complete:", counts);
 }
