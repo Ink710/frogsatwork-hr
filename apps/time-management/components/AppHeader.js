@@ -28,6 +28,7 @@ export async function AppHeader() {
     { href: "/", label: t("nav.home") },
     { href: "/time-off", label: t("nav.timeOff") },
     { href: "/timesheets", label: t("nav.timesheets") },
+    { href: "/schedule", label: t("nav.schedule") },
     isApprover && { href: "/approvals", label: t("nav.approvals") },
     isHr && { href: "/time-off/policies", label: t("nav.policies") },
   ].filter(Boolean);

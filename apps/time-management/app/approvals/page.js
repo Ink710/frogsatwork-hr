@@ -1,13 +1,14 @@
 import { notFound } from "next/navigation";
 import { getViewer } from "@hris/auth";
 import { formatHours } from "@hris/workable-hours";
-import { getPendingLeave, getPendingTimesheets, isApprover } from "@/lib/queries";
+import { getPendingLeave, getPendingTimesheets, getPendingSwaps, isApprover } from "@/lib/queries";
 import { getT, getLocale } from "@/lib/i18n.server";
 import { INTL_LOCALE } from "@/lib/i18n";
 import { formatDate, initials } from "@/lib/format";
 import { Avatar } from "@/components/profile-ui";
 import { ApprovalActions } from "@/components/ApprovalActions";
 import { TimesheetApprovalActions } from "@/components/TimesheetApprovalActions";
+import { ShiftSwapApprovalActions } from "@/components/ShiftSwapApprovalActions";
 
 export async function generateMetadata() {
   const t = await getT();
@@ -19,14 +20,15 @@ export default async function ApprovalsPage() {
   const viewer = await getViewer();
   if (!viewer || !isApprover(viewer)) notFound();
 
-  const [leave, timesheets, t, localeCode] = await Promise.all([
+  const [leave, timesheets, swaps, t, localeCode] = await Promise.all([
     getPendingLeave(),
     getPendingTimesheets(),
+    getPendingSwaps(),
     getT(),
     getLocale(),
   ]);
   const locale = INTL_LOCALE[localeCode];
-  const empty = leave.length === 0 && timesheets.length === 0;
+  const empty = leave.length === 0 && timesheets.length === 0 && swaps.length === 0;
 
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-10">
@@ -90,6 +92,36 @@ export default async function ApprovalsPage() {
                   </div>
                 </div>
                 <TimesheetApprovalActions timesheetId={ts.id} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {swaps.length > 0 && (
+        <section className="mt-10">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">{t("approvals.swapSection")}</h2>
+          <ul className="space-y-4">
+            {swaps.map((s) => (
+              <li key={s.id} className="flex flex-col gap-4 rounded-xl border border-border bg-card p-5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <Avatar initials={initials(s.requester.firstName, s.requester.lastName)} className="h-11 w-11 text-sm" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">
+                      {s.requester.firstName} {s.requester.lastName} <span className="text-muted-foreground">({s.requester.employeeNumber})</span>
+                    </p>
+                    <p className="text-sm">
+                      {s.targetName
+                        ? t("approvals.swapTo", { name: s.targetName })
+                        : t("approvals.swapDrop")}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatDate(s.shiftDate, locale)} · {s.startTime}–{s.endTime}
+                      {s.reason ? ` · ${s.reason}` : ""}
+                    </p>
+                  </div>
+                </div>
+                <ShiftSwapApprovalActions swapId={s.id} />
               </li>
             ))}
           </ul>

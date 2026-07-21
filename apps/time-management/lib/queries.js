@@ -1,6 +1,6 @@
 import "server-only";
 import { getViewer, withViewer, isHrRole, getSubtreeIds } from "@hris/auth";
-import { computeBalances, pendingHours, canApproveForEmployee, computeTimesheet, weekStart, LEAVE_TYPES } from "@hris/workable-hours";
+import { computeBalances, pendingHours, canApproveForEmployee, computeTimesheet, weekStart, shiftTimeLabel, hoursBetween, LEAVE_TYPES } from "@hris/workable-hours";
 
 // The employee's CURRENT FLSA classification (drives timesheet overtime eligibility), read from the
 // open EmployeeHistory row — the same "current version" lookup employee-records uses for edits.
@@ -244,6 +244,171 @@ export async function getMyTimesheets() {
       const hours = computeTimesheet(ts.entries.map((e) => ({ workDate: e.workDate, hours: Number(e.hours) })), flsa);
       return { id: ts.id, periodStart: ts.periodStart, periodEnd: ts.periodEnd, status: ts.status, total: hours.total, overtime: hours.overtime };
     });
+  });
+}
+
+// --- Scheduling -----------------------------------------------------------------------------------
+
+const dayKey = (d) => new Date(d).toISOString().slice(0, 10);
+const addDays = (d, n) => {
+  const x = new Date(d);
+  x.setUTCDate(x.getUTCDate() + n);
+  return x;
+};
+
+// The viewer's DEPARTMENT schedule for one week (default: the current week). RLS scopes the rows:
+// an employee sees the published dept schedule + their own; a manager sees all (incl. drafts) in
+// their dept; HR sees all in the dept. Returns null when the account has no employee/department.
+export async function getWeekSchedule(weekStartStr = null) {
+  const viewer = await getViewer();
+  if (!viewer?.employeeId) return null;
+  const ws = weekStart(weekStartStr ?? new Date());
+  const weStart = addDays(ws, 7); // exclusive upper bound
+
+  return withViewer(viewer, async (tx) => {
+    const me = await tx.employee.findUnique({
+      where: { id: viewer.employeeId },
+      select: { departmentId: true, department: { select: { id: true, name: true } } },
+    });
+    if (!me?.departmentId) return null;
+
+    const shifts = await tx.shift.findMany({
+      where: { departmentId: me.departmentId, startAt: { gte: ws, lt: weStart } },
+      orderBy: { startAt: "asc" },
+    });
+
+    // The posted schedule shows WHO is on — but Employee RLS hides peers from an employee, so a
+    // plain `include: employee` would blank out colleagues' names. Resolve names through the org-chart
+    // SECURITY DEFINER function (structural columns only — same primitive the org chart uses).
+    const roster = await tx.$queryRaw`SELECT id, "firstName", "lastName" FROM app_org_chart(${viewer.orgId})`;
+    const nameById = Object.fromEntries(roster.map((r) => [r.id, `${r.firstName} ${r.lastName}`]));
+
+    const byDay = {};
+    for (let i = 0; i < 7; i++) byDay[dayKey(addDays(ws, i))] = [];
+    for (const s of shifts) {
+      const key = dayKey(s.startAt);
+      (byDay[key] ??= []).push({
+        id: s.id,
+        isMine: s.employeeId === viewer.employeeId,
+        employeeName: s.employeeId ? (nameById[s.employeeId] ?? null) : null, // null = open shift
+        startTime: shiftTimeLabel(s.startAt),
+        endTime: shiftTimeLabel(s.endAt),
+        hours: hoursBetween(s.startAt, s.endAt),
+        role: s.role,
+        note: s.note,
+        published: s.published,
+      });
+    }
+
+    const canManage = isHrRole(viewer.role) || viewer.role === "MANAGER";
+    return {
+      department: me.department,
+      weekStart: dayKey(ws),
+      weekEnd: dayKey(addDays(ws, 6)),
+      prevWeek: dayKey(addDays(ws, -7)),
+      nextWeek: dayKey(addDays(ws, 7)),
+      canManage,
+      hasDrafts: shifts.some((s) => !s.published),
+      days: Array.from({ length: 7 }, (_, i) => {
+        const date = dayKey(addDays(ws, i));
+        return { date, shifts: byDay[date] ?? [] };
+      }),
+    };
+  });
+}
+
+// Data for the shift create/edit form (managers/HR only): the department's assignable employees.
+export async function getShiftFormData() {
+  const viewer = await getViewer();
+  if (!viewer?.employeeId || !(isHrRole(viewer.role) || viewer.role === "MANAGER")) return null;
+  return withViewer(viewer, async (tx) => {
+    const me = await tx.employee.findUnique({ where: { id: viewer.employeeId }, select: { departmentId: true, department: { select: { id: true, name: true } } } });
+    if (!me?.departmentId) return null;
+    const employees = await tx.employee.findMany({
+      where: { departmentId: me.departmentId, employmentStatus: "ACTIVE" },
+      select: { id: true, firstName: true, lastName: true, employeeNumber: true },
+      orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+    });
+    return { department: me.department, employees };
+  });
+}
+
+// The existing shift + the form data, for the edit page. null if not visible/manageable.
+export async function getShiftForEdit(shiftId) {
+  const form = await getShiftFormData();
+  if (!form) return null;
+  const viewer = await getViewer();
+  return withViewer(viewer, async (tx) => {
+    const s = await tx.shift.findUnique({ where: { id: shiftId } }); // RLS-scoped
+    if (!s) return null;
+    return {
+      ...form,
+      shift: {
+        id: s.id,
+        employeeId: s.employeeId,
+        date: dayKey(s.startAt),
+        start: shiftTimeLabel(s.startAt),
+        end: shiftTimeLabel(s.endAt),
+        role: s.role,
+        note: s.note,
+        published: s.published,
+      },
+    };
+  });
+}
+
+// The swap form for one of the viewer's OWN shifts: shift details + the department colleagues they
+// could swap with. Colleague names come from app_org_chart (Employee RLS hides peers). null if the
+// shift isn't the viewer's own.
+export async function getSwapForm(shiftId) {
+  const viewer = await getViewer();
+  if (!viewer?.employeeId) return null;
+  return withViewer(viewer, async (tx) => {
+    const shift = await tx.shift.findUnique({
+      where: { id: shiftId },
+      select: { id: true, employeeId: true, startAt: true, endAt: true, department: { select: { name: true } } },
+    });
+    if (!shift || shift.employeeId !== viewer.employeeId) return null;
+
+    const roster = await tx.$queryRaw`SELECT id, "firstName", "lastName", department FROM app_org_chart(${viewer.orgId})`;
+    const targets = roster
+      .filter((r) => r.department === shift.department?.name && r.id !== viewer.employeeId)
+      .map((r) => ({ id: r.id, name: `${r.firstName} ${r.lastName}` }));
+
+    return {
+      shift: { id: shift.id, date: dayKey(shift.startAt), start: shiftTimeLabel(shift.startAt), end: shiftTimeLabel(shift.endAt) },
+      targets,
+    };
+  });
+}
+
+// PENDING swap requests this viewer may act on (unified approvals inbox). Same scoping as the other
+// queues; the approver can see requester + target Employee rows (subtree/all), so include works here.
+export async function getPendingSwaps() {
+  const viewer = await getViewer();
+  if (!viewer || !isApprover(viewer)) return [];
+  return withViewer(viewer, async (tx) => {
+    const subtreeIds = viewer.role === "MANAGER" ? await getSubtreeIds(viewer.employeeId, tx) : undefined;
+    const swaps = await tx.shiftSwapRequest.findMany({
+      where: { status: "PENDING" }, // RLS limits to visible requesters
+      orderBy: { createdAt: "asc" },
+      include: {
+        shift: { select: { startAt: true, endAt: true } },
+        requestedBy: { select: { id: true, firstName: true, lastName: true, employeeNumber: true } },
+        target: { select: { firstName: true, lastName: true } },
+      },
+    });
+    return swaps
+      .filter((s) => canApproveForEmployee(viewer, s.requestedByEmployeeId, { subtreeIds }))
+      .map((s) => ({
+        id: s.id,
+        requester: s.requestedBy,
+        targetName: s.target ? `${s.target.firstName} ${s.target.lastName}` : null, // null = drop-to-open
+        reason: s.reason,
+        shiftDate: s.shift.startAt,
+        startTime: shiftTimeLabel(s.shift.startAt),
+        endTime: shiftTimeLabel(s.shift.endAt),
+      }));
   });
 }
 

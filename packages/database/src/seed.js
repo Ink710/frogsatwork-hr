@@ -473,6 +473,35 @@ async function main() {
     });
   }
 
+  // 12. A PUBLISHED week of Engineering shifts (week of Mon 2026-07-20) so employees see a posted
+  //     department schedule. Includes one OPEN (unassigned) shift. Built by Marcus (Eng manager).
+  //     Times are UTC (date + wall-clock). Idempotent on readable ids.
+  const SHIFTS = [
+    { id: "sh-eng-0720-1", emp: PEOPLE.diego.empId, date: "2026-07-20", start: "09:00", end: "17:00", role: "Engineering" },
+    { id: "sh-eng-0720-2", emp: PEOPLE.diego.empId, date: "2026-07-21", start: "09:00", end: "17:00", role: "Engineering" },
+    { id: "sh-eng-0720-3", emp: PEOPLE.diego.empId, date: "2026-07-22", start: "09:00", end: "17:00", role: "Engineering" },
+    { id: "sh-eng-0720-4", emp: PEOPLE.priya.empId, date: "2026-07-23", start: "09:00", end: "17:00", role: "Engineering" },
+    { id: "sh-eng-0720-5", emp: PEOPLE.priya.empId, date: "2026-07-24", start: "09:00", end: "17:00", role: "Engineering" },
+    { id: "sh-eng-0720-6", emp: PEOPLE.tom.empId, date: "2026-07-20", start: "10:00", end: "14:00", role: "Support" },
+    { id: "sh-eng-0720-7", emp: null, date: "2026-07-22", start: "13:00", end: "17:00", role: "On-call" }, // OPEN
+  ];
+  for (const s of SHIFTS) {
+    await prisma.shift.upsert({
+      where: { id: s.id },
+      update: {},
+      create: {
+        id: s.id,
+        departmentId: DEPT.eng,
+        employeeId: s.emp,
+        startAt: new Date(`${s.date}T${s.start}:00.000Z`),
+        endAt: new Date(`${s.date}T${s.end}:00.000Z`),
+        role: s.role,
+        published: true,
+        createdById: PEOPLE.marcus.userId,
+      },
+    });
+  }
+
   const counts = {
     organizations: await prisma.organization.count(),
     users: await prisma.user.count(),
@@ -484,6 +513,7 @@ async function main() {
     leaveLedgerEntries: await prisma.leaveLedgerEntry.count(),
     timesheets: await prisma.timesheet.count(),
     timeEntries: await prisma.timeEntry.count(),
+    shifts: await prisma.shift.count(),
   };
   console.log("Seed complete:", counts);
 }

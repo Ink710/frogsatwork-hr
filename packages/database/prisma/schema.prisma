@@ -95,6 +95,10 @@ enum AuditEventType {
   TIMESHEET_SUBMIT
   TIMESHEET_APPROVE
   TIMESHEET_REJECT
+  // Shift swap/drop decisions (schedule CRUD + publish are not employee-scoped, so not audited here).
+  SHIFT_SWAP_REQUEST
+  SHIFT_SWAP_APPROVE
+  SHIFT_SWAP_DENY
 }
 
 // A leave or a suspension — the two non-terminal, reversible status changes.
@@ -144,6 +148,14 @@ enum TimesheetStatus {
   SUBMITTED
   APPROVED
   REJECTED
+}
+
+// Lifecycle of a shift drop/swap request.
+enum ShiftSwapStatus {
+  PENDING
+  APPROVED
+  DENIED
+  CANCELLED
 }
 
 enum ActorType {
@@ -205,6 +217,8 @@ model User {
   leaveRequestsReviewed LeaveRequest[]     @relation("LeaveRequestReviewedBy")
   leaveLedgerEntries    LeaveLedgerEntry[] @relation("LeaveLedgerCreatedBy")
   timesheetsReviewed    Timesheet[]        @relation("TimesheetReviewedBy")
+  shiftsCreated         Shift[]            @relation("ShiftCreatedBy")
+  swapsReviewed         ShiftSwapRequest[] @relation("SwapReviewedBy")
 
   @@index([orgId])
 }
@@ -263,6 +277,9 @@ model Employee {
   leaveLedger       LeaveLedgerEntry[]
   timesheets        Timesheet[]
   timeEntries       TimeEntry[]
+  shifts            Shift[]
+  swapsRequested    ShiftSwapRequest[] @relation("SwapRequestedBy")
+  swapsTargeted     ShiftSwapRequest[] @relation("SwapTarget")
 
   // Employee numbers are unique within an organization, not globally.
   @@unique([orgId, employeeNumber])
@@ -462,6 +479,65 @@ model TimeEntry {
   @@index([employeeId, workDate])
 }
 
+// A scheduled shift on a department's roster. `employeeId` null = an OPEN (unfilled) shift. Visibility
+// is DEPARTMENT-scoped, not employee-scoped: a PUBLISHED shift is visible to everyone in the
+// department (the posted schedule), while drafts are only the dept's manager + HR — enforced by the
+// app_can_see_shift RLS policy (the one place the suite loosens "employee sees only self"). Times are
+// stored as UTC timestamps built from a date + wall-clock time (real per-location tz deferred).
+model Shift {
+  id        String   @id @default(uuid())
+  startAt   DateTime
+  endAt     DateTime
+  role      String? // position label, e.g. "Front desk"
+  note      String?
+  published Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+
+  // Null = open shift (a coverage gap the manager can fill).
+  employeeId String?
+  employee   Employee? @relation(fields: [employeeId], references: [id])
+
+  createdById String
+  createdBy   User   @relation("ShiftCreatedBy", fields: [createdById], references: [id])
+
+  swapRequests ShiftSwapRequest[]
+
+  @@index([departmentId, startAt])
+  @@index([employeeId])
+}
+
+// An employee's request to DROP their shift (→ open) or SWAP it with a named colleague. The manager
+// approves/denies (reassigning the shift). RLS'd by app_can_see_employee(requestedByEmployeeId), so
+// the requester's manager (subtree) + HR see it — same as leave/timesheets.
+model ShiftSwapRequest {
+  id           String          @id @default(uuid())
+  reason       String?
+  status       ShiftSwapStatus @default(PENDING)
+  decisionNote String?
+  reviewedAt   DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  shiftId String
+  shift   Shift  @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+
+  requestedByEmployeeId String
+  requestedBy           Employee @relation("SwapRequestedBy", fields: [requestedByEmployeeId], references: [id])
+
+  // Null = drop-to-open; otherwise the colleague to swap the shift to.
+  targetEmployeeId String?
+  target           Employee? @relation("SwapTarget", fields: [targetEmployeeId], references: [id])
+
+  reviewedById String?
+  reviewedBy   User?   @relation("SwapReviewedBy", fields: [reviewedById], references: [id])
+
+  @@index([requestedByEmployeeId, status])
+}
+
 model Department {
   id        String   @id @default(uuid())
   name      String
@@ -482,6 +558,7 @@ model Department {
   // Budget lives in its own RLS-protected table so it can't be read without passing the
   // access policy — see DepartmentBudget.
   budgetRow DepartmentBudget?
+  shifts    Shift[]
 
   @@index([orgId])
   @@index([parentDepartmentId])
