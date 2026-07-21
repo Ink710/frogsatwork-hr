@@ -91,6 +91,10 @@ enum AuditEventType {
   TIME_OFF_APPROVE
   TIME_OFF_DENY
   TIME_OFF_CANCEL
+  // Timesheet decisions — submit + the reviewer's approve/reject (draft edits aren't audited).
+  TIMESHEET_SUBMIT
+  TIMESHEET_APPROVE
+  TIMESHEET_REJECT
 }
 
 // A leave or a suspension — the two non-terminal, reversible status changes.
@@ -132,6 +136,14 @@ enum LeaveLedgerSource {
   USAGE
   ADJUSTMENT
   REVERSAL
+}
+
+// Lifecycle of a weekly timesheet. A REJECTED sheet becomes editable again → resubmit.
+enum TimesheetStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
 }
 
 enum ActorType {
@@ -192,6 +204,7 @@ model User {
   leaveRequestsFiled    LeaveRequest[]     @relation("LeaveRequestFiledBy")
   leaveRequestsReviewed LeaveRequest[]     @relation("LeaveRequestReviewedBy")
   leaveLedgerEntries    LeaveLedgerEntry[] @relation("LeaveLedgerCreatedBy")
+  timesheetsReviewed    Timesheet[]        @relation("TimesheetReviewedBy")
 
   @@index([orgId])
 }
@@ -248,6 +261,8 @@ model Employee {
   statusChanges     EmployeeStatusChange[]
   leaveRequests     LeaveRequest[]
   leaveLedger       LeaveLedgerEntry[]
+  timesheets        Timesheet[]
+  timeEntries       TimeEntry[]
 
   // Employee numbers are unique within an organization, not globally.
   @@unique([orgId, employeeNumber])
@@ -397,6 +412,54 @@ model LeavePolicy {
   org   Organization @relation(fields: [orgId], references: [id])
 
   @@unique([orgId, type])
+}
+
+// A weekly (Mon–Sun) timesheet — the submittable/approvable unit. One per employee per week. Same
+// RLS as the leave tables. Overtime is DERIVED from the entries at read time (never stored), so it
+// can't drift; the FLSA classification that decides OT eligibility is read from the employee's open
+// EmployeeHistory row.
+model Timesheet {
+  id           String          @id @default(uuid())
+  periodStart  DateTime // Monday (UTC midnight)
+  periodEnd    DateTime // Sunday
+  status       TimesheetStatus @default(DRAFT)
+  submittedAt  DateTime?
+  decisionNote String? // reviewer's note on approve/reject
+  reviewedAt   DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  reviewedById String?
+  reviewedBy   User?   @relation("TimesheetReviewedBy", fields: [reviewedById], references: [id])
+
+  entries TimeEntry[]
+
+  @@unique([employeeId, periodStart])
+  @@index([employeeId, status])
+}
+
+// One line of worked hours on a timesheet. employeeId is denormalized (from the parent Timesheet)
+// so the RLS policy is the same one-liner as every other employee-scoped table. The UI edits one
+// row per day; the model stays open to per-project splits (the OT math sums per day either way).
+model TimeEntry {
+  id        String   @id @default(uuid())
+  workDate  DateTime // the calendar day (UTC midnight)
+  hours     Decimal  @db.Decimal(5, 2)
+  project   String?
+  note      String?
+  createdAt DateTime @default(now())
+
+  timesheetId String
+  timesheet   Timesheet @relation(fields: [timesheetId], references: [id], onDelete: Cascade)
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([timesheetId])
+  @@index([employeeId, workDate])
 }
 
 model Department {

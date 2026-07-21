@@ -2,9 +2,10 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { getViewer, withViewer, isHrRole, getSubtreeIds } from "@hris/auth";
-import { leaveRequestSchema, decisionSchema, canApproveTimeOff } from "@hris/workable-hours";
+import { getViewer, withViewer, isHrRole } from "@hris/auth";
+import { leaveRequestSchema, decisionSchema } from "@hris/workable-hours";
 import { runAccrualForOrg } from "@/lib/accrual";
+import { viewerCanApprove } from "@/lib/approvals";
 
 // What every form action returns to useActionState: { error } on failure, or it never returns
 // (redirects) on success. Mirrors the employee-records action shape.
@@ -86,13 +87,6 @@ export async function submitTimeOff(_prevState, formData) {
   redirect("/time-off");
 }
 
-// Compute the viewer's approval authority over `subjectId` inside a withViewer tx. Managers need
-// their subtree (a SECURITY DEFINER walk); HR doesn't. Returns true/false via the pure predicate.
-async function viewerCanApprove(viewer, subjectId, tx) {
-  const subtreeIds = viewer.role === "MANAGER" ? await getSubtreeIds(viewer.employeeId, tx) : undefined;
-  return canApproveTimeOff(viewer, subjectId, { subtreeIds });
-}
-
 // Approve a pending request: mark it APPROVED, deduct the hours from the balance (a USAGE ledger
 // row), and audit it — all in one transaction. Only a manager-of-subject or HR (never self).
 export async function approveTimeOff(requestId, _prevState, formData) {
@@ -143,9 +137,9 @@ export async function approveTimeOff(requestId, _prevState, formData) {
     return { error: errorMessage(e) ?? "Could not approve the request." };
   }
 
-  revalidatePath("/time-off/approvals");
+  revalidatePath("/approvals");
   revalidatePath("/time-off");
-  redirect("/time-off/approvals");
+  redirect("/approvals");
 }
 
 // Deny a pending request: mark it DENIED + audit. No ledger change (nothing was ever deducted).
@@ -183,9 +177,9 @@ export async function denyTimeOff(requestId, _prevState, formData) {
     return { error: errorMessage(e) ?? "Could not deny the request." };
   }
 
-  revalidatePath("/time-off/approvals");
+  revalidatePath("/approvals");
   revalidatePath("/time-off");
-  redirect("/time-off/approvals");
+  redirect("/approvals");
 }
 
 // The subject (or a manager/HR) cancels a request. PENDING → CANCELLED (nothing to undo). An already
@@ -240,7 +234,7 @@ export async function cancelTimeOff(requestId, _prevState) {
   }
 
   revalidatePath("/time-off");
-  revalidatePath("/time-off/approvals");
+  revalidatePath("/approvals");
   redirect("/time-off");
 }
 

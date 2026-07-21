@@ -71,6 +71,62 @@ export function pendingHours(requests: RequestRow[]): Record<string, number> {
   return out;
 }
 
+// A weekly timesheet's overtime thresholds (US FLSA weekly + California-style daily).
+export const WORKWEEK_OT_THRESHOLD = 40;
+export const DAILY_OT_THRESHOLD = 8;
+
+// The Monday (UTC midnight) of the week containing `date`. Timesheets are keyed on this.
+export function weekStart(date: DateInput): Date {
+  const d = new Date(date);
+  const utc = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const dow = utc.getUTCDay(); // 0 Sun … 6 Sat
+  const sinceMonday = (dow + 6) % 7; // Mon→0, Sun→6
+  utc.setUTCDate(utc.getUTCDate() - sinceMonday);
+  return utc;
+}
+
+export type TimeEntryRow = { workDate: DateInput; hours: number | string };
+
+// Regular + overtime hours for a week of entries, using California's "greater-of" reconciliation so
+// daily (>8h) and weekly (>40h) overtime never double-count:
+//   dailyOT       = Σ max(0, dayHours − 8)
+//   straightDaily = Σ min(dayHours, 8)          (hours NOT already daily-OT)
+//   weeklyOT      = max(0, straightDaily − 40)   (of the straight hours, those over 40)
+//   overtime      = dailyOT + weeklyOT;  regular = total − overtime
+// EXEMPT (salaried) employees never accrue OT — all hours are regular. A missing/unknown FLSA is
+// treated as exempt (conservative: don't claim OT without an explicit NON_EXEMPT classification).
+export function computeTimesheet(entries: TimeEntryRow[], flsa: string | null | undefined) {
+  const byDay: Record<string, number> = {};
+  for (const e of entries) {
+    const h = Number(e.hours);
+    if (!Number.isFinite(h) || h <= 0) continue;
+    const key = new Date(e.workDate).toISOString().slice(0, 10);
+    byDay[key] = round2((byDay[key] ?? 0) + h);
+  }
+  const total = round2(Object.values(byDay).reduce((s, h) => s + h, 0));
+
+  if (flsa !== "NON_EXEMPT") {
+    return { total, regular: total, overtime: 0, dailyOvertime: 0, weeklyOvertime: 0, byDay };
+  }
+
+  let dailyOT = 0;
+  let straightDaily = 0;
+  for (const h of Object.values(byDay)) {
+    dailyOT += Math.max(0, h - DAILY_OT_THRESHOLD);
+    straightDaily += Math.min(h, DAILY_OT_THRESHOLD);
+  }
+  const weeklyOT = Math.max(0, straightDaily - WORKWEEK_OT_THRESHOLD);
+  const overtime = round2(dailyOT + weeklyOT);
+  return {
+    total,
+    regular: round2(total - overtime),
+    overtime,
+    dailyOvertime: round2(dailyOT),
+    weeklyOvertime: round2(weeklyOT),
+    byDay,
+  };
+}
+
 // Minimal viewer shape this rule needs (kept structural so this package doesn't depend on
 // @hris/auth). Role strings mirror the Prisma `Role` enum values.
 type ApprovalViewer = { employeeId: string | null; role: string };
@@ -82,7 +138,7 @@ type ApprovalViewer = { employeeId: string | null; role: string };
 //   - HR (HR_ADMIN / HR_GENERALIST) may approve anyone in the org.
 //   - A MANAGER may approve anyone in their reporting subtree (caller passes `subtreeIds`).
 //   - EMPLOYEE / PAYROLL_ADMIN / SYSTEM: never.
-export function canApproveTimeOff(
+export function canApproveForEmployee(
   viewer: ApprovalViewer,
   subjectId: string,
   ctx: { subtreeIds?: Set<string> } = {},

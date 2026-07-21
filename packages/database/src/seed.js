@@ -444,6 +444,35 @@ async function main() {
     },
   });
 
+  // 11. A sample SUBMITTED weekly timesheet for Tom (PART_TIME → NON_EXEMPT, so overtime applies).
+  //     Week of Mon 2026-07-13; two 10h days → daily overtime is visible in the demo. Idempotent.
+  await prisma.timesheet.upsert({
+    where: { id: "ts-tom-0713" },
+    update: {},
+    create: {
+      id: "ts-tom-0713",
+      employeeId: PEOPLE.tom.empId,
+      periodStart: new Date("2026-07-13"), // Monday
+      periodEnd: new Date("2026-07-19"), // Sunday
+      status: "SUBMITTED",
+      submittedAt: new Date("2026-07-20"),
+    },
+  });
+  const TOM_ENTRIES = [
+    ["2026-07-13", "10.00"],
+    ["2026-07-14", "10.00"],
+    ["2026-07-15", "8.00"],
+    ["2026-07-16", "8.00"],
+    ["2026-07-17", "8.00"],
+  ];
+  for (const [i, [date, hours]] of TOM_ENTRIES.entries()) {
+    await prisma.timeEntry.upsert({
+      where: { id: `te-tom-0713-${i}` },
+      update: { hours },
+      create: { id: `te-tom-0713-${i}`, timesheetId: "ts-tom-0713", employeeId: PEOPLE.tom.empId, workDate: new Date(date), hours },
+    });
+  }
+
   const counts = {
     organizations: await prisma.organization.count(),
     users: await prisma.user.count(),
@@ -453,6 +482,8 @@ async function main() {
     leavePolicies: await prisma.leavePolicy.count(),
     leaveRequests: await prisma.leaveRequest.count(),
     leaveLedgerEntries: await prisma.leaveLedgerEntry.count(),
+    timesheets: await prisma.timesheet.count(),
+    timeEntries: await prisma.timeEntry.count(),
   };
   console.log("Seed complete:", counts);
 }

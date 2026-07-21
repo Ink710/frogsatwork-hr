@@ -6,6 +6,7 @@ const en = {
   // Header nav (grows as each domain milestone lands).
   "nav.home": "My time",
   "nav.timeOff": "Time off",
+  "nav.timesheets": "Timesheets",
   "nav.approvals": "Approvals",
   "nav.policies": "Policies",
   "nav.preferences": "Preferences",
@@ -85,8 +86,11 @@ const en = {
   "approvals.empty": "Nothing to approve right now.",
   "approvals.approve": "Approve",
   "approvals.deny": "Deny",
+  "approvals.reject": "Reject",
   "approvals.notePlaceholder": "Note (optional)",
   "approvals.overdraw": "Exceeds their available balance ({available}).",
+  "approvals.leaveSection": "Time off",
+  "approvals.timesheetSection": "Timesheets",
 
   // Accrual policies.
   "policies.title": "Leave policies",
@@ -101,6 +105,29 @@ const en = {
   "policies.runHelp": "Post this month’s accrual now. Safe to run repeatedly — each month is applied once.",
   "policies.runAccrual": "Run accrual now",
   "policies.accrualDone": "Accrued {period}: {created} entries posted.",
+
+  // Timesheets.
+  "timesheets.title": "Timesheets",
+  "timesheets.subtitle": "Log your weekly hours and submit them for approval.",
+  "timesheets.weekOf": "Week of {start} – {end}",
+  "timesheets.day": "Day",
+  "timesheets.hours": "Hours",
+  "timesheets.project": "Project",
+  "timesheets.note": "Note",
+  "timesheets.totalLabel": "Total",
+  "timesheets.regularLabel": "Regular",
+  "timesheets.otLabel": "Overtime",
+  "timesheets.saveDraft": "Save draft",
+  "timesheets.submit": "Submit for approval",
+  "timesheets.locked": "This timesheet has been submitted and can’t be edited.",
+  "timesheets.rejectedNote": "Returned for changes: {note}",
+  "timesheets.history": "Recent timesheets",
+  "timesheets.noHistory": "No past timesheets yet.",
+  "timesheets.noRecord": "Your account isn’t linked to an employee record, so there are no timesheets to show.",
+  "timesheets.status.DRAFT": "Draft",
+  "timesheets.status.SUBMITTED": "Submitted",
+  "timesheets.status.APPROVED": "Approved",
+  "timesheets.status.REJECTED": "Returned",
 
   // Time off — new request.
   "timeOff.new.title": "Request time off",

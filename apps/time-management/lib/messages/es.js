@@ -4,6 +4,7 @@ const es = {
 
   "nav.home": "Mi tiempo",
   "nav.timeOff": "Ausencias",
+  "nav.timesheets": "Horas",
   "nav.approvals": "Aprobaciones",
   "nav.policies": "Políticas",
   "nav.preferences": "Preferencias",
@@ -79,8 +80,11 @@ const es = {
   "approvals.empty": "No hay nada que aprobar por ahora.",
   "approvals.approve": "Aprobar",
   "approvals.deny": "Denegar",
+  "approvals.reject": "Rechazar",
   "approvals.notePlaceholder": "Nota (opcional)",
   "approvals.overdraw": "Supera su saldo disponible ({available}).",
+  "approvals.leaveSection": "Ausencias",
+  "approvals.timesheetSection": "Hojas de horas",
 
   // Políticas de acumulación.
   "policies.title": "Políticas de ausencia",
@@ -95,6 +99,29 @@ const es = {
   "policies.runHelp": "Registra la acumulación de este mes ahora. Se puede repetir sin problema — cada mes se aplica una sola vez.",
   "policies.runAccrual": "Ejecutar acumulación",
   "policies.accrualDone": "Acumulado {period}: {created} registros creados.",
+
+  // Hojas de horas.
+  "timesheets.title": "Hojas de horas",
+  "timesheets.subtitle": "Registra tus horas semanales y envíalas para aprobación.",
+  "timesheets.weekOf": "Semana del {start} al {end}",
+  "timesheets.day": "Día",
+  "timesheets.hours": "Horas",
+  "timesheets.project": "Proyecto",
+  "timesheets.note": "Nota",
+  "timesheets.totalLabel": "Total",
+  "timesheets.regularLabel": "Normales",
+  "timesheets.otLabel": "Horas extra",
+  "timesheets.saveDraft": "Guardar borrador",
+  "timesheets.submit": "Enviar para aprobación",
+  "timesheets.locked": "Esta hoja ya fue enviada y no se puede editar.",
+  "timesheets.rejectedNote": "Devuelta para correcciones: {note}",
+  "timesheets.history": "Hojas recientes",
+  "timesheets.noHistory": "Aún no hay hojas anteriores.",
+  "timesheets.noRecord": "Tu cuenta no está vinculada a un registro de empleado, así que no hay hojas que mostrar.",
+  "timesheets.status.DRAFT": "Borrador",
+  "timesheets.status.SUBMITTED": "Enviada",
+  "timesheets.status.APPROVED": "Aprobada",
+  "timesheets.status.REJECTED": "Devuelta",
 
   // Ausencias — nueva solicitud.
   "timeOff.new.title": "Solicitar ausencia",

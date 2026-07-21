@@ -25,7 +25,7 @@ vi.mock("@hris/auth", async () => {
 
 import { getViewer, withViewer } from "@hris/auth";
 import { submitTimeOff, approveTimeOff, denyTimeOff, cancelTimeOff } from "../app/time-off/actions.js";
-import { getTimeOffOverview, getPendingApprovals } from "../lib/queries.js";
+import { getTimeOffOverview, getPendingLeave } from "../lib/queries.js";
 import { runAccrualForOrg } from "../lib/accrual.js";
 
 const ORG = "10000000-0000-0000-0000-000000000001";
@@ -137,7 +137,7 @@ describe("approve / deny / cancel", () => {
   it("a manager approves a report's request → APPROVED + USAGE ledger + balance drop + audit", async () => {
     getViewer.mockResolvedValue(V.marcus);
     const res = await approve(REQ_PENDING, "Have a good one");
-    expect(res.redirect).toBe("REDIRECT:/time-off/approvals");
+    expect(res.redirect).toBe("REDIRECT:/approvals");
 
     const req = await findReq(REQ_PENDING);
     expect(req.status).toBe("APPROVED");
@@ -172,7 +172,7 @@ describe("approve / deny / cancel", () => {
     const before = await asHr((tx) => tx.leaveLedgerEntry.count({ where: { employeeId: V.diego.employeeId } }));
     getViewer.mockResolvedValue(V.ana);
     const res = await deny(REQ_PENDING, "Coverage gap");
-    expect(res.redirect).toBe("REDIRECT:/time-off/approvals");
+    expect(res.redirect).toBe("REDIRECT:/approvals");
 
     expect((await findReq(REQ_PENDING)).status).toBe("DENIED");
     const after = await asHr((tx) => tx.leaveLedgerEntry.count({ where: { employeeId: V.diego.employeeId } }));
@@ -202,19 +202,19 @@ describe("approve / deny / cancel", () => {
   });
 });
 
-describe("getPendingApprovals", () => {
+describe("getPendingLeave", () => {
   it("a manager sees their reports' pending requests", async () => {
     getViewer.mockResolvedValue(V.marcus);
-    const ids = (await getPendingApprovals()).map((r) => r.id);
+    const ids = (await getPendingLeave()).map((r) => r.id);
     expect(ids).toContain(REQ_PENDING); // Diego is Marcus's report
   });
   it("an employee gets an empty queue", async () => {
     getViewer.mockResolvedValue(V.diego);
-    expect(await getPendingApprovals()).toEqual([]);
+    expect(await getPendingLeave()).toEqual([]);
   });
   it("HR sees pending requests across the org", async () => {
     getViewer.mockResolvedValue(V.ana);
-    expect((await getPendingApprovals()).map((r) => r.id)).toContain(REQ_PENDING);
+    expect((await getPendingLeave()).map((r) => r.id)).toContain(REQ_PENDING);
   });
 });
 

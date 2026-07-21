@@ -4,8 +4,10 @@ import {
   defaultLeaveHours,
   computeBalances,
   pendingHours,
-  canApproveTimeOff,
+  canApproveForEmployee,
   computeAccrual,
+  weekStart,
+  computeTimesheet,
   STANDARD_WORKDAY_HOURS,
 } from "./index.ts";
 
@@ -73,30 +75,30 @@ describe("pendingHours", () => {
   });
 });
 
-describe("canApproveTimeOff", () => {
+describe("canApproveForEmployee", () => {
   const manager = { employeeId: "mgr", role: "MANAGER" };
   const subtree = { subtreeIds: new Set(["mgr", "report-a", "report-b"]) };
 
   it("never lets anyone approve their own request", () => {
-    expect(canApproveTimeOff(manager, "mgr", subtree)).toBe(false);
-    expect(canApproveTimeOff({ employeeId: "hr", role: "HR_ADMIN" }, "hr")).toBe(false);
+    expect(canApproveForEmployee(manager, "mgr", subtree)).toBe(false);
+    expect(canApproveForEmployee({ employeeId: "hr", role: "HR_ADMIN" }, "hr")).toBe(false);
   });
 
   it("lets HR approve anyone else", () => {
-    expect(canApproveTimeOff({ employeeId: "hr", role: "HR_ADMIN" }, "someone")).toBe(true);
-    expect(canApproveTimeOff({ employeeId: "hr2", role: "HR_GENERALIST" }, "someone")).toBe(true);
+    expect(canApproveForEmployee({ employeeId: "hr", role: "HR_ADMIN" }, "someone")).toBe(true);
+    expect(canApproveForEmployee({ employeeId: "hr2", role: "HR_GENERALIST" }, "someone")).toBe(true);
   });
 
   it("lets a manager approve only their subtree", () => {
-    expect(canApproveTimeOff(manager, "report-a", subtree)).toBe(true);
-    expect(canApproveTimeOff(manager, "outsider", subtree)).toBe(false);
-    expect(canApproveTimeOff(manager, "report-a", {})).toBe(false); // no subtree context → deny
+    expect(canApproveForEmployee(manager, "report-a", subtree)).toBe(true);
+    expect(canApproveForEmployee(manager, "outsider", subtree)).toBe(false);
+    expect(canApproveForEmployee(manager, "report-a", {})).toBe(false); // no subtree context → deny
   });
 
   it("denies employees, payroll, and system", () => {
-    expect(canApproveTimeOff({ employeeId: "e", role: "EMPLOYEE" }, "other")).toBe(false);
-    expect(canApproveTimeOff({ employeeId: "p", role: "PAYROLL_ADMIN" }, "other")).toBe(false);
-    expect(canApproveTimeOff({ employeeId: null, role: "SYSTEM" }, "other")).toBe(false);
+    expect(canApproveForEmployee({ employeeId: "e", role: "EMPLOYEE" }, "other")).toBe(false);
+    expect(canApproveForEmployee({ employeeId: "p", role: "PAYROLL_ADMIN" }, "other")).toBe(false);
+    expect(canApproveForEmployee({ employeeId: null, role: "SYSTEM" }, "other")).toBe(false);
   });
 });
 
@@ -124,5 +126,61 @@ describe("computeAccrual", () => {
     expect(computeAccrual({ policy: vacation, hireDate: "2020-01-01", period: "2026-07", currentBalance: 235 })).toBe(5);
     // Already at the cap → 0.
     expect(computeAccrual({ policy: vacation, hireDate: "2020-01-01", period: "2026-07", currentBalance: 240 })).toBe(0);
+  });
+});
+
+describe("weekStart", () => {
+  it("returns the Monday of the week (UTC)", () => {
+    // 2026-07-15 is a Wednesday → Monday 2026-07-13.
+    expect(weekStart("2026-07-15").toISOString().slice(0, 10)).toBe("2026-07-13");
+    // A Monday maps to itself.
+    expect(weekStart("2026-07-13").toISOString().slice(0, 10)).toBe("2026-07-13");
+    // A Sunday belongs to the week that started the previous Monday.
+    expect(weekStart("2026-07-19").toISOString().slice(0, 10)).toBe("2026-07-13");
+  });
+});
+
+describe("computeTimesheet", () => {
+  const week = (hours) => hours.map((h, i) => ({ workDate: `2026-07-${13 + i}`, hours: h }));
+
+  it("has no overtime at exactly 40 straight hours", () => {
+    const r = computeTimesheet(week([8, 8, 8, 8, 8]), "NON_EXEMPT");
+    expect(r.total).toBe(40);
+    expect(r.overtime).toBe(0);
+    expect(r.regular).toBe(40);
+  });
+
+  it("counts daily overtime (>8h/day)", () => {
+    // Two 10h days + three 8h = 44h. dailyOT = 2+2 = 4; weeklyOT = 0.
+    const r = computeTimesheet(week([10, 10, 8, 8, 8]), "NON_EXEMPT");
+    expect(r.total).toBe(44);
+    expect(r.dailyOvertime).toBe(4);
+    expect(r.weeklyOvertime).toBe(0);
+    expect(r.overtime).toBe(4);
+    expect(r.regular).toBe(40);
+  });
+
+  it("counts weekly overtime (>40h across ≤8h days)", () => {
+    // Six 8h days = 48h. dailyOT = 0; weeklyOT = 8.
+    const r = computeTimesheet(week([8, 8, 8, 8, 8, 8]), "NON_EXEMPT");
+    expect(r.total).toBe(48);
+    expect(r.dailyOvertime).toBe(0);
+    expect(r.weeklyOvertime).toBe(8);
+    expect(r.overtime).toBe(8);
+  });
+
+  it("does not double-count daily + weekly (the greater-of reconciliation)", () => {
+    // 12,12,8,8 = 40h total but two long days. dailyOT = 4+4 = 8; straightDaily = 8×4 = 32 → weeklyOT 0.
+    const r = computeTimesheet(week([12, 12, 8, 8]), "NON_EXEMPT");
+    expect(r.total).toBe(40);
+    expect(r.overtime).toBe(8);
+    expect(r.regular).toBe(32);
+  });
+
+  it("gives EXEMPT employees no overtime", () => {
+    const r = computeTimesheet(week([10, 10, 8, 8, 8]), "EXEMPT");
+    expect(r.total).toBe(44);
+    expect(r.overtime).toBe(0);
+    expect(r.regular).toBe(44);
   });
 });

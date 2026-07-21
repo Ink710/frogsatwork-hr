@@ -27,7 +27,8 @@ export async function AppHeader() {
   const navItems = [
     { href: "/", label: t("nav.home") },
     { href: "/time-off", label: t("nav.timeOff") },
-    isApprover && { href: "/time-off/approvals", label: t("nav.approvals") },
+    { href: "/timesheets", label: t("nav.timesheets") },
+    isApprover && { href: "/approvals", label: t("nav.approvals") },
     isHr && { href: "/time-off/policies", label: t("nav.policies") },
   ].filter(Boolean);
 
