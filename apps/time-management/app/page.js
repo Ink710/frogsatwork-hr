@@ -63,7 +63,7 @@ export default async function HomePage() {
       </header>
 
       {/* Personal snapshot — every role. */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label={t("dash.clockStatus")}
           value={clock?.clockedIn ? t("dash.clockedIn") : t("dash.clockedOut")}
@@ -110,7 +110,7 @@ export default async function HomePage() {
       {team && (
         <>
           <Section title={t("dash.oversight")} icon={Users}>
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <StatCard
                 label={t("dash.pendingApprovals")}
                 value={team.pendingApprovals.total}

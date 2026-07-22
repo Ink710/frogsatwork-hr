@@ -6,6 +6,7 @@ import { getViewer, withViewer, isHrRole } from "@hris/auth";
 import { leaveRequestSchema, decisionSchema } from "@hris/workable-hours";
 import { runAccrualForOrg } from "@/lib/accrual";
 import { viewerCanApprove } from "@/lib/approvals";
+import { getT } from "@/lib/i18n.server";
 
 // What every form action returns to useActionState: { error } on failure, or it never returns
 // (redirects) on success. Mirrors the employee-records action shape.
@@ -17,8 +18,9 @@ function errorMessage(e) {
 // employee (the `employeeId` field). Overdraw is NOT blocked here — per policy it's a warning
 // surfaced in the UI + to the approver, not a hard stop.
 export async function submitTimeOff(_prevState, formData) {
+  const t = await getT();
   const viewer = await getViewer();
-  if (!viewer) return { error: "You must be signed in." };
+  if (!viewer) return { error: t("err.signedIn") };
 
   const parsed = leaveRequestSchema.safeParse({
     type: formData.get("type"),
@@ -28,16 +30,16 @@ export async function submitTimeOff(_prevState, formData) {
     reason: formData.get("reason") || undefined,
     employeeId: formData.get("employeeId") || undefined,
   });
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? t("err.invalidInput") };
   const input = parsed.data;
 
   // Authority: file for yourself, or — HR only — on behalf of another employee.
   let subjectId = viewer.employeeId;
   if (input.employeeId && input.employeeId !== viewer.employeeId) {
-    if (!isHrRole(viewer.role)) return { error: "Only HR can file a request for another employee." };
+    if (!isHrRole(viewer.role)) return { error: t("err.onlyHrFileForOther") };
     subjectId = input.employeeId;
   }
-  if (!subjectId) return { error: "Your account has no employee record to request time off." };
+  if (!subjectId) return { error: t("err.noEmployeeTimeOff") };
 
   try {
     await withViewer(viewer, async (tx) => {
@@ -45,7 +47,7 @@ export async function submitTimeOff(_prevState, formData) {
       // RETURNING re-applies the SELECT policy — safe here because the subject already exists and
       // is visible (unlike the brand-new-employee insert in employee-records).
       const emp = await tx.employee.findUnique({ where: { id: subjectId }, select: { id: true } });
-      if (!emp) throw new Error("That employee is not available to you.");
+      if (!emp) throw new Error(t("err.employeeNotAvailable"));
 
       const request = await tx.leaveRequest.create({
         data: {
@@ -80,7 +82,7 @@ export async function submitTimeOff(_prevState, formData) {
       });
     });
   } catch (e) {
-    return { error: errorMessage(e) ?? "Could not submit the request." };
+    return { error: errorMessage(e) ?? t("err.requestSubmitFailed") };
   }
 
   revalidatePath("/time-off");
@@ -90,19 +92,20 @@ export async function submitTimeOff(_prevState, formData) {
 // Approve a pending request: mark it APPROVED, deduct the hours from the balance (a USAGE ledger
 // row), and audit it — all in one transaction. Only a manager-of-subject or HR (never self).
 export async function approveTimeOff(requestId, _prevState, formData) {
+  const t = await getT();
   const viewer = await getViewer();
-  if (!viewer) return { error: "You must be signed in." };
+  if (!viewer) return { error: t("err.signedIn") };
   const parsed = decisionSchema.safeParse({ decisionNote: formData.get("decisionNote") || undefined });
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? t("err.invalidInput") };
 
   try {
     await withViewer(viewer, async (tx) => {
       // findUnique is RLS-scoped: a request the viewer can't see comes back null.
       const request = await tx.leaveRequest.findUnique({ where: { id: requestId } });
-      if (!request) throw new Error("Request not found.");
-      if (request.status !== "PENDING") throw new Error("Only a pending request can be approved.");
+      if (!request) throw new Error(t("err.requestNotFound"));
+      if (request.status !== "PENDING") throw new Error(t("err.onlyPendingApproved"));
       if (!(await viewerCanApprove(viewer, request.employeeId, tx))) {
-        throw new Error("You are not authorized to approve this request.");
+        throw new Error(t("err.notAuthorizedApprove"));
       }
 
       await tx.leaveRequest.update({
@@ -134,7 +137,7 @@ export async function approveTimeOff(requestId, _prevState, formData) {
       });
     });
   } catch (e) {
-    return { error: errorMessage(e) ?? "Could not approve the request." };
+    return { error: errorMessage(e) ?? t("err.requestApproveFailed") };
   }
 
   revalidatePath("/approvals");
@@ -144,18 +147,19 @@ export async function approveTimeOff(requestId, _prevState, formData) {
 
 // Deny a pending request: mark it DENIED + audit. No ledger change (nothing was ever deducted).
 export async function denyTimeOff(requestId, _prevState, formData) {
+  const t = await getT();
   const viewer = await getViewer();
-  if (!viewer) return { error: "You must be signed in." };
+  if (!viewer) return { error: t("err.signedIn") };
   const parsed = decisionSchema.safeParse({ decisionNote: formData.get("decisionNote") || undefined });
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? t("err.invalidInput") };
 
   try {
     await withViewer(viewer, async (tx) => {
       const request = await tx.leaveRequest.findUnique({ where: { id: requestId } });
-      if (!request) throw new Error("Request not found.");
-      if (request.status !== "PENDING") throw new Error("Only a pending request can be denied.");
+      if (!request) throw new Error(t("err.requestNotFound"));
+      if (request.status !== "PENDING") throw new Error(t("err.onlyPendingDenied"));
       if (!(await viewerCanApprove(viewer, request.employeeId, tx))) {
-        throw new Error("You are not authorized to deny this request.");
+        throw new Error(t("err.notAuthorizedDeny"));
       }
 
       await tx.leaveRequest.update({
@@ -174,7 +178,7 @@ export async function denyTimeOff(requestId, _prevState, formData) {
       });
     });
   } catch (e) {
-    return { error: errorMessage(e) ?? "Could not deny the request." };
+    return { error: errorMessage(e) ?? t("err.requestDenyFailed") };
   }
 
   revalidatePath("/approvals");
@@ -185,20 +189,21 @@ export async function denyTimeOff(requestId, _prevState, formData) {
 // The subject (or a manager/HR) cancels a request. PENDING → CANCELLED (nothing to undo). An already
 // APPROVED request also writes a REVERSAL ledger row (+hours) to return the balance.
 export async function cancelTimeOff(requestId, _prevState) {
+  const t = await getT();
   const viewer = await getViewer();
-  if (!viewer) return { error: "You must be signed in." };
+  if (!viewer) return { error: t("err.signedIn") };
 
   try {
     await withViewer(viewer, async (tx) => {
       const request = await tx.leaveRequest.findUnique({ where: { id: requestId } });
-      if (!request) throw new Error("Request not found.");
+      if (!request) throw new Error(t("err.requestNotFound"));
       if (request.status !== "PENDING" && request.status !== "APPROVED") {
-        throw new Error("Only a pending or approved request can be cancelled.");
+        throw new Error(t("err.onlyCancellable"));
       }
       // Authority: the subject themselves, or someone who could have approved it (manager/HR).
       const isSubject = viewer.employeeId && viewer.employeeId === request.employeeId;
       if (!isSubject && !(await viewerCanApprove(viewer, request.employeeId, tx))) {
-        throw new Error("You are not authorized to cancel this request.");
+        throw new Error(t("err.notAuthorizedCancel"));
       }
 
       const wasApproved = request.status === "APPROVED";
@@ -230,7 +235,7 @@ export async function cancelTimeOff(requestId, _prevState) {
       });
     });
   } catch (e) {
-    return { error: errorMessage(e) ?? "Could not cancel the request." };
+    return { error: errorMessage(e) ?? t("err.requestCancelFailed") };
   }
 
   revalidatePath("/time-off");
@@ -250,14 +255,15 @@ export async function decideTimeOff(requestId, prevState, formData) {
 // HR-admin trigger to run this month's accrual on demand (the local/dev stand-in for the Vercel
 // Cron). The engine itself runs as SYSTEM; this only authorizes who may press the button.
 export async function runAccrualNow(_prevState) {
+  const t = await getT();
   const viewer = await getViewer();
-  if (!viewer || viewer.role !== "HR_ADMIN") return { error: "Only HR admins can run accrual." };
+  if (!viewer || viewer.role !== "HR_ADMIN") return { error: t("err.onlyHrAccrual") };
   try {
     const result = await runAccrualForOrg(viewer.orgId);
     revalidatePath("/time-off/policies");
     revalidatePath("/time-off");
     return { ok: true, period: result.period, created: result.created };
   } catch (e) {
-    return { error: errorMessage(e) ?? "Could not run accrual." };
+    return { error: errorMessage(e) ?? t("err.accrualFailed") };
   }
 }

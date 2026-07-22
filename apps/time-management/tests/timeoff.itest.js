@@ -11,6 +11,12 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("@/lib/i18n.server", async () => {
+  const { messagesFor } = await import("../lib/messages/index.js");
+  const { createTranslator } = await import("../lib/i18n.js");
+  const t = createTranslator(messagesFor("en"));
+  return { getT: async () => t, getLocale: async () => "en" };
+});
 vi.mock("@hris/auth", async () => {
   const rls = await import("../../../packages/auth/src/rls");
   const roles = await import("../../../packages/auth/src/roles");

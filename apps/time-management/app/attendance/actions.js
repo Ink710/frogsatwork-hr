@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { getViewer, withViewer } from "@hris/auth";
 import { pairPunches, clockCorrectionSchema, toShiftInstant } from "@hris/workable-hours";
 import { viewerCanApprove } from "@/lib/approvals";
+import { getT } from "@/lib/i18n.server";
 
 function errorMessage(e) {
   return e instanceof Error ? e.message : undefined;
@@ -33,11 +34,12 @@ async function isClockedIn(tx, employeeId) {
 // Clock IN — self only. Refuses a double clock-in (you must clock out first). The punch row is the
 // viewer's own (employeeId = self), so RLS WITH CHECK admits it and plain create() works.
 export async function clockIn() {
+  const t = await getT();
   const viewer = await getViewer();
-  if (!viewer?.employeeId) return { error: "You must be signed in." };
+  if (!viewer?.employeeId) return { error: t("err.signedIn") };
   try {
     await withViewer(viewer, async (tx) => {
-      if (await isClockedIn(tx, viewer.employeeId)) throw new Error("You're already clocked in.");
+      if (await isClockedIn(tx, viewer.employeeId)) throw new Error(t("err.alreadyClockedIn"));
       const at = new Date();
       await tx.clockEvent.create({
         data: { employeeId: viewer.employeeId, createdById: viewer.userId, type: "IN", source: "WEB", at },
@@ -53,7 +55,7 @@ export async function clockIn() {
       });
     });
   } catch (e) {
-    return { error: errorMessage(e) ?? "Could not clock in." };
+    return { error: errorMessage(e) ?? t("err.clockInFailed") };
   }
   revalidatePath("/attendance");
   return { ok: true };
@@ -61,11 +63,12 @@ export async function clockIn() {
 
 // Clock OUT — self only. Refuses if there's no open punch to close.
 export async function clockOut() {
+  const t = await getT();
   const viewer = await getViewer();
-  if (!viewer?.employeeId) return { error: "You must be signed in." };
+  if (!viewer?.employeeId) return { error: t("err.signedIn") };
   try {
     await withViewer(viewer, async (tx) => {
-      if (!(await isClockedIn(tx, viewer.employeeId))) throw new Error("You're not clocked in.");
+      if (!(await isClockedIn(tx, viewer.employeeId))) throw new Error(t("err.notClockedIn"));
       const at = new Date();
       await tx.clockEvent.create({
         data: { employeeId: viewer.employeeId, createdById: viewer.userId, type: "OUT", source: "WEB", at },
@@ -81,7 +84,7 @@ export async function clockOut() {
       });
     });
   } catch (e) {
-    return { error: errorMessage(e) ?? "Could not clock out." };
+    return { error: errorMessage(e) ?? t("err.clockOutFailed") };
   }
   revalidatePath("/attendance");
   return { ok: true };
@@ -93,8 +96,9 @@ export async function clockOut() {
 // never mutate an existing row, so the ledger stays a faithful history. RLS WITH CHECK admits the
 // insert because the subject is already within the corrector's visibility scope.
 export async function correctClock(_prevState, formData) {
+  const t = await getT();
   const viewer = await getViewer();
-  if (!viewer?.employeeId) return { error: "You must be signed in." };
+  if (!viewer?.employeeId) return { error: t("err.signedIn") };
   const parsed = clockCorrectionSchema.safeParse({
     employeeId: formData.get("employeeId"),
     type: formData.get("type"),
@@ -102,13 +106,13 @@ export async function correctClock(_prevState, formData) {
     time: formData.get("time"),
     note: formData.get("note") || undefined,
   });
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? t("err.invalidInput") };
   const input = parsed.data;
 
   try {
     await withViewer(viewer, async (tx) => {
       if (!(await viewerCanApprove(viewer, input.employeeId, tx))) {
-        throw new Error("You are not authorized to correct this employee’s attendance.");
+        throw new Error(t("err.notAuthorizedCorrect"));
       }
       const at = toShiftInstant(input.date, input.time);
       await tx.clockEvent.create({
@@ -132,7 +136,7 @@ export async function correctClock(_prevState, formData) {
       });
     });
   } catch (e) {
-    return { error: errorMessage(e) ?? "Could not save the correction." };
+    return { error: errorMessage(e) ?? t("err.correctionFailed") };
   }
   revalidatePath("/attendance/team");
   redirect(`/attendance/team?date=${input.date}`);

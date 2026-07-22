@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { getViewer, withViewer } from "@hris/auth";
 import { timesheetEntriesSchema, decisionSchema, weekStart } from "@hris/workable-hours";
 import { viewerCanApprove } from "@/lib/approvals";
+import { getT } from "@/lib/i18n.server";
 
 function errorMessage(e) {
   return e instanceof Error ? e.message : undefined;
@@ -13,15 +14,15 @@ function errorMessage(e) {
 // Persist one week's grid: ensure a DRAFT timesheet exists (a REJECTED one reopens to DRAFT), then
 // replace its day rows with the non-zero entries. Returns the timesheet id. Runs inside a withViewer
 // tx so RLS admits the writes (an employee editing their own). Throws on a locked/invalid week.
-async function saveEntries(tx, subjectId, weekStartStr, formData) {
+async function saveEntries(tx, subjectId, weekStartStr, formData, t) {
   let raw;
   try {
     raw = JSON.parse(formData.get("entries") || "[]");
   } catch {
-    throw new Error("Could not read the timesheet.");
+    throw new Error(t("err.timesheetRead"));
   }
   const parsed = timesheetEntriesSchema.safeParse(raw);
-  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid entries.");
+  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? t("err.invalidEntries"));
 
   const ws = weekStart(weekStartStr);
   const we = new Date(ws);
@@ -31,7 +32,7 @@ async function saveEntries(tx, subjectId, weekStartStr, formData) {
     where: { employeeId_periodStart: { employeeId: subjectId, periodStart: ws } },
   });
   if (existing && (existing.status === "SUBMITTED" || existing.status === "APPROVED")) {
-    throw new Error("This week is already submitted and can't be edited.");
+    throw new Error(t("err.weekAlreadySubmitted"));
   }
 
   let timesheet = existing;
@@ -64,12 +65,13 @@ async function saveEntries(tx, subjectId, weekStartStr, formData) {
 
 // Save the current grid as a DRAFT (no status change, no audit).
 export async function saveTimesheetDraft(weekStartStr, _prevState, formData) {
+  const t = await getT();
   const viewer = await getViewer();
-  if (!viewer?.employeeId) return { error: "Your account has no employee record." };
+  if (!viewer?.employeeId) return { error: t("err.noEmployeeRecord") };
   try {
-    await withViewer(viewer, (tx) => saveEntries(tx, viewer.employeeId, weekStartStr, formData));
+    await withViewer(viewer, (tx) => saveEntries(tx, viewer.employeeId, weekStartStr, formData, t));
   } catch (e) {
-    return { error: errorMessage(e) ?? "Could not save the timesheet." };
+    return { error: errorMessage(e) ?? t("err.timesheetSaveFailed") };
   }
   revalidatePath("/timesheets");
   redirect("/timesheets");
@@ -77,11 +79,12 @@ export async function saveTimesheetDraft(weekStartStr, _prevState, formData) {
 
 // Save the grid AND submit it for approval (DRAFT/REJECTED → SUBMITTED + audit). You submit your own.
 export async function submitTimesheet(weekStartStr, _prevState, formData) {
+  const t = await getT();
   const viewer = await getViewer();
-  if (!viewer?.employeeId) return { error: "Your account has no employee record." };
+  if (!viewer?.employeeId) return { error: t("err.noEmployeeRecord") };
   try {
     await withViewer(viewer, async (tx) => {
-      const id = await saveEntries(tx, viewer.employeeId, weekStartStr, formData);
+      const id = await saveEntries(tx, viewer.employeeId, weekStartStr, formData, t);
       await tx.timesheet.update({ where: { id }, data: { status: "SUBMITTED", submittedAt: new Date() } });
       await tx.employeeAuditLog.create({
         data: {
@@ -94,7 +97,7 @@ export async function submitTimesheet(weekStartStr, _prevState, formData) {
       });
     });
   } catch (e) {
-    return { error: errorMessage(e) ?? "Could not submit the timesheet." };
+    return { error: errorMessage(e) ?? t("err.timesheetSubmitFailed") };
   }
   revalidatePath("/timesheets");
   redirect("/timesheets");
@@ -111,18 +114,19 @@ export async function saveOrSubmitTimesheet(weekStartStr, prevState, formData) {
 
 // Approve a submitted timesheet → APPROVED + audit. Nothing else moves (hours were already logged).
 export async function approveTimesheet(timesheetId, _prevState, formData) {
+  const t = await getT();
   const viewer = await getViewer();
-  if (!viewer) return { error: "You must be signed in." };
+  if (!viewer) return { error: t("err.signedIn") };
   const parsed = decisionSchema.safeParse({ decisionNote: formData.get("decisionNote") || undefined });
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? t("err.invalidInput") };
 
   try {
     await withViewer(viewer, async (tx) => {
       const ts = await tx.timesheet.findUnique({ where: { id: timesheetId } }); // RLS-scoped
-      if (!ts) throw new Error("Timesheet not found.");
-      if (ts.status !== "SUBMITTED") throw new Error("Only a submitted timesheet can be reviewed.");
+      if (!ts) throw new Error(t("err.timesheetNotFound"));
+      if (ts.status !== "SUBMITTED") throw new Error(t("err.onlySubmittedReviewed"));
       if (!(await viewerCanApprove(viewer, ts.employeeId, tx))) {
-        throw new Error("You are not authorized to review this timesheet.");
+        throw new Error(t("err.notAuthorizedReviewTimesheet"));
       }
       await tx.timesheet.update({
         where: { id: timesheetId },
@@ -140,7 +144,7 @@ export async function approveTimesheet(timesheetId, _prevState, formData) {
       });
     });
   } catch (e) {
-    return { error: errorMessage(e) ?? "Could not approve the timesheet." };
+    return { error: errorMessage(e) ?? t("err.timesheetApproveFailed") };
   }
   revalidatePath("/approvals");
   revalidatePath("/timesheets");
@@ -150,18 +154,19 @@ export async function approveTimesheet(timesheetId, _prevState, formData) {
 // Reject a submitted timesheet → REJECTED + note + audit. The employee can then edit + resubmit
 // (getCurrentTimesheet treats REJECTED as editable; saving reopens it to DRAFT).
 export async function rejectTimesheet(timesheetId, _prevState, formData) {
+  const t = await getT();
   const viewer = await getViewer();
-  if (!viewer) return { error: "You must be signed in." };
+  if (!viewer) return { error: t("err.signedIn") };
   const parsed = decisionSchema.safeParse({ decisionNote: formData.get("decisionNote") || undefined });
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? t("err.invalidInput") };
 
   try {
     await withViewer(viewer, async (tx) => {
       const ts = await tx.timesheet.findUnique({ where: { id: timesheetId } });
-      if (!ts) throw new Error("Timesheet not found.");
-      if (ts.status !== "SUBMITTED") throw new Error("Only a submitted timesheet can be reviewed.");
+      if (!ts) throw new Error(t("err.timesheetNotFound"));
+      if (ts.status !== "SUBMITTED") throw new Error(t("err.onlySubmittedReviewed"));
       if (!(await viewerCanApprove(viewer, ts.employeeId, tx))) {
-        throw new Error("You are not authorized to review this timesheet.");
+        throw new Error(t("err.notAuthorizedReviewTimesheet"));
       }
       await tx.timesheet.update({
         where: { id: timesheetId },
@@ -179,7 +184,7 @@ export async function rejectTimesheet(timesheetId, _prevState, formData) {
       });
     });
   } catch (e) {
-    return { error: errorMessage(e) ?? "Could not reject the timesheet." };
+    return { error: errorMessage(e) ?? t("err.timesheetRejectFailed") };
   }
   revalidatePath("/approvals");
   revalidatePath("/timesheets");
