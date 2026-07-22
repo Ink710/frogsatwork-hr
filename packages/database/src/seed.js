@@ -502,6 +502,37 @@ async function main() {
     });
   }
 
+  // 13. Attendance punches (M4). ClockEvents are the event ledger; worked hours + schedule variance
+  //     are DERIVED at read time, so we only seed raw punches. These are tied to the week-07-20
+  //     Engineering shifts above so the variance badges render:
+  //       - Diego 07-20: in 09:20 (past the grace) / out 17:05        → LATE
+  //       - Tom   07-20: in 10:00 / out 13:00 (3h of a 4h shift)      → SHORT
+  //       - Priya 07-23: in 09:00, no OUT                             → OPEN (the "forgot to clock
+  //         out" case — demoes the HR/manager correction).
+  //     Diego is deliberately left with NO punch on 2026-07-21 so a fresh self clock-in demos cleanly.
+  //     `createdById` is the employee's own user (a self / WEB punch). Idempotent on readable ids.
+  const CLOCK_EVENTS = [
+    { id: "ce-diego-0720-in", emp: PEOPLE.diego.empId, by: PEOPLE.diego.userId, type: "IN", at: "2026-07-20T09:20:00.000Z" },
+    { id: "ce-diego-0720-out", emp: PEOPLE.diego.empId, by: PEOPLE.diego.userId, type: "OUT", at: "2026-07-20T17:05:00.000Z" },
+    { id: "ce-tom-0720-in", emp: PEOPLE.tom.empId, by: PEOPLE.tom.userId, type: "IN", at: "2026-07-20T10:00:00.000Z" },
+    { id: "ce-tom-0720-out", emp: PEOPLE.tom.empId, by: PEOPLE.tom.userId, type: "OUT", at: "2026-07-20T13:00:00.000Z" },
+    { id: "ce-priya-0723-in", emp: PEOPLE.priya.empId, by: PEOPLE.priya.userId, type: "IN", at: "2026-07-23T09:00:00.000Z" },
+  ];
+  for (const c of CLOCK_EVENTS) {
+    await prisma.clockEvent.upsert({
+      where: { id: c.id },
+      update: {},
+      create: {
+        id: c.id,
+        employeeId: c.emp,
+        createdById: c.by,
+        type: c.type,
+        source: "WEB",
+        at: new Date(c.at),
+      },
+    });
+  }
+
   const counts = {
     organizations: await prisma.organization.count(),
     users: await prisma.user.count(),
@@ -514,6 +545,7 @@ async function main() {
     timesheets: await prisma.timesheet.count(),
     timeEntries: await prisma.timeEntry.count(),
     shifts: await prisma.shift.count(),
+    clockEvents: await prisma.clockEvent.count(),
   };
   console.log("Seed complete:", counts);
 }

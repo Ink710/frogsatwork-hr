@@ -99,6 +99,11 @@ enum AuditEventType {
   SHIFT_SWAP_REQUEST
   SHIFT_SWAP_APPROVE
   SHIFT_SWAP_DENY
+  // Attendance / clock — self punch in/out + a manager/HR correction of a punch (M4). Worked hours
+  // and schedule variance are DERIVED at read time, so they are never audited; only the punches are.
+  CLOCK_IN
+  CLOCK_OUT
+  CLOCK_CORRECTION
 }
 
 // A leave or a suspension — the two non-terminal, reversible status changes.
@@ -156,6 +161,20 @@ enum ShiftSwapStatus {
   APPROVED
   DENIED
   CANCELLED
+}
+
+// Attendance / clock (M4). A ClockEvent is a single punch; worked hours are derived by pairing
+// IN -> OUT within a day. An IN with no matching OUT is an "open" punch (forgot to clock out).
+enum ClockEventType {
+  IN
+  OUT
+}
+
+// How a punch was recorded. WEB = the employee's own clock button; MANUAL = an HR/manager
+// correction (e.g. closing a forgotten punch). Kiosk/geolocation sources are out of scope for M4.
+enum ClockSource {
+  WEB
+  MANUAL
 }
 
 enum ActorType {
@@ -219,6 +238,8 @@ model User {
   timesheetsReviewed    Timesheet[]        @relation("TimesheetReviewedBy")
   shiftsCreated         Shift[]            @relation("ShiftCreatedBy")
   swapsReviewed         ShiftSwapRequest[] @relation("SwapReviewedBy")
+  // Attendance: who recorded a punch (the employee for self-punches, or an HR/manager for a correction).
+  clockEventsRecorded   ClockEvent[]       @relation("ClockRecordedBy")
 
   @@index([orgId])
 }
@@ -280,6 +301,7 @@ model Employee {
   shifts            Shift[]
   swapsRequested    ShiftSwapRequest[] @relation("SwapRequestedBy")
   swapsTargeted     ShiftSwapRequest[] @relation("SwapTarget")
+  clockEvents       ClockEvent[]
 
   // Employee numbers are unique within an organization, not globally.
   @@unique([orgId, employeeNumber])
@@ -536,6 +558,30 @@ model ShiftSwapRequest {
   reviewedBy   User?   @relation("SwapReviewedBy", fields: [reviewedById], references: [id])
 
   @@index([requestedByEmployeeId, status])
+}
+
+// A single clock punch (IN or OUT) — the attendance event ledger (M4). This is the sole source of
+// truth: worked hours, sessions, and schedule variance (late / short / absent) are all DERIVED by
+// pairing punches at read time, never stored, so there is no summary row to keep in sync. Visibility
+// is the standard employee-scope (app_can_see_employee on employeeId) — own / manager-subtree / HR.
+model ClockEvent {
+  id        String         @id @default(uuid())
+  at        DateTime // the punch instant (UTC)
+  type      ClockEventType
+  source    ClockSource    @default(WEB)
+  note      String? // correction reason (MANUAL punches)
+  createdAt DateTime       @default(now())
+
+  // The subject of the punch. Denormalized owner column so the RLS policy is the same one-liner as
+  // every other employee-scoped table.
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  // Who actually recorded it: the employee for a self-punch, or an HR/manager for a MANUAL correction.
+  createdById String
+  createdBy   User   @relation("ClockRecordedBy", fields: [createdById], references: [id])
+
+  @@index([employeeId, at])
 }
 
 model Department {

@@ -5,4 +5,5 @@ export * from "./hours";
 export * from "./leave";
 export * from "./timesheet";
 export * from "./shift";
+export * from "./attendance";
 export * from "./rules";

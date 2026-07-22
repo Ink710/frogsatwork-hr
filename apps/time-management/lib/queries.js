@@ -1,6 +1,7 @@
 import "server-only";
 import { getViewer, withViewer, isHrRole, getSubtreeIds } from "@hris/auth";
-import { computeBalances, pendingHours, canApproveForEmployee, computeTimesheet, weekStart, shiftTimeLabel, hoursBetween, LEAVE_TYPES } from "@hris/workable-hours";
+import { computeBalances, pendingHours, canApproveForEmployee, computeTimesheet, weekStart, shiftTimeLabel, hoursBetween, computeAttendanceDay, LEAVE_TYPES } from "@hris/workable-hours";
+import { viewerCanApprove } from "@/lib/approvals";
 
 // The employee's CURRENT FLSA classification (drives timesheet overtime eligibility), read from the
 // open EmployeeHistory row — the same "current version" lookup employee-records uses for edits.
@@ -423,4 +424,162 @@ export async function getEmployeesForFiling() {
       orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
     }),
   );
+}
+
+// ─── Attendance / clock (M4) ────────────────────────────────────────────────────────────────────
+// The ClockEvent ledger is the only stored fact; worked hours + schedule variance are derived here
+// at read time via computeAttendanceDay (pure rule). Nothing to keep in sync.
+
+const startOfUtcDay = (d) => {
+  const x = new Date(d);
+  return new Date(Date.UTC(x.getUTCFullYear(), x.getUTCMonth(), x.getUTCDate()));
+};
+
+// Turn a computed day + its (optional) shift into a plain, client-safe shape (labels, not Dates).
+function serializeAttendanceDay(date, day, shift) {
+  return {
+    date,
+    status: day.status,
+    workedHours: day.workedHours,
+    open: day.open,
+    firstIn: day.firstIn ? shiftTimeLabel(day.firstIn) : null,
+    lastOut: day.lastOut ? shiftTimeLabel(day.lastOut) : null,
+    lateMinutes: day.lateMinutes,
+    shortHours: day.shortHours,
+    scheduled: shift ? { start: shiftTimeLabel(shift.startAt), end: shiftTimeLabel(shift.endAt) } : null,
+  };
+}
+
+// The viewer's CURRENT clock state (drives the Clock in/out button + today's card). Reads only
+// today's punches + today's own published shift, pairs them, and reports whether a session is open.
+export async function getClockStatus() {
+  const viewer = await getViewer();
+  if (!viewer?.employeeId) return null;
+  const today = startOfUtcDay(new Date());
+  const tomorrow = addDays(today, 1);
+
+  return withViewer(viewer, async (tx) => {
+    const events = await tx.clockEvent.findMany({
+      where: { employeeId: viewer.employeeId, at: { gte: today, lt: tomorrow } },
+      orderBy: { at: "asc" },
+      select: { type: true, at: true },
+    });
+    const shift = await tx.shift.findFirst({
+      where: { employeeId: viewer.employeeId, published: true, startAt: { gte: today, lt: tomorrow } },
+      orderBy: { startAt: "asc" },
+      select: { startAt: true, endAt: true },
+    });
+    const day = computeAttendanceDay(events, shift);
+    const openSession = day.open ? day.sessions[day.sessions.length - 1] : null;
+    return {
+      date: dayKey(today),
+      clockedIn: day.open,
+      since: openSession ? shiftTimeLabel(openSession.inAt) : null,
+      ...serializeAttendanceDay(dayKey(today), day, shift),
+    };
+  });
+}
+
+// The viewer's own recent attendance (last 14 days) — one row per day that has punches or a shift,
+// newest first, each with its derived status vs the scheduled shift.
+export async function getMyAttendance() {
+  const viewer = await getViewer();
+  if (!viewer?.employeeId) return null;
+  const today = startOfUtcDay(new Date());
+  const rangeStart = addDays(today, -13);
+  const rangeEnd = addDays(today, 1); // exclusive
+
+  return withViewer(viewer, async (tx) => {
+    const events = await tx.clockEvent.findMany({
+      where: { employeeId: viewer.employeeId, at: { gte: rangeStart, lt: rangeEnd } },
+      orderBy: { at: "asc" },
+      select: { type: true, at: true },
+    });
+    const shifts = await tx.shift.findMany({
+      where: { employeeId: viewer.employeeId, published: true, startAt: { gte: rangeStart, lt: rangeEnd } },
+      orderBy: { startAt: "asc" },
+      select: { startAt: true, endAt: true },
+    });
+
+    const eventsByDay = {};
+    for (const e of events) (eventsByDay[dayKey(e.at)] ??= []).push(e);
+    const shiftByDay = {};
+    for (const s of shifts) shiftByDay[dayKey(s.startAt)] = s;
+
+    const days = [];
+    for (let i = 0; i < 14; i++) {
+      const date = dayKey(addDays(today, -i));
+      const dayEvents = eventsByDay[date] ?? [];
+      const shift = shiftByDay[date] ?? null;
+      if (dayEvents.length === 0 && !shift) continue; // nothing to report this day
+      days.push(serializeAttendanceDay(date, computeAttendanceDay(dayEvents, shift), shift));
+    }
+    return { days };
+  });
+}
+
+// The team's attendance for ONE day (managers/HR). RLS scopes ClockEvent + Shift rows to what the
+// viewer may see (a manager's subtree / dept, HR everything); canApproveForEmployee then drops any
+// subject they can't act on (notably themselves). One row per subject who punched or was scheduled,
+// each with its derived variance. Names come from app_org_chart (Employee RLS hides peers). null for
+// non-approvers → the page 404s.
+export async function getTeamAttendance(dateStr = null) {
+  const viewer = await getViewer();
+  if (!viewer || !isApprover(viewer)) return null;
+  const day = startOfUtcDay(dateStr ? new Date(dateStr) : new Date());
+  const next = addDays(day, 1);
+
+  return withViewer(viewer, async (tx) => {
+    const subtreeIds = viewer.role === "MANAGER" ? await getSubtreeIds(viewer.employeeId, tx) : undefined;
+    const events = await tx.clockEvent.findMany({
+      where: { at: { gte: day, lt: next } },
+      orderBy: { at: "asc" },
+      select: { employeeId: true, type: true, at: true },
+    });
+    // Only ASSIGNED published shifts map to a person's attendance (open shifts are nobody's punch).
+    const shifts = await tx.shift.findMany({
+      where: { published: true, employeeId: { not: null }, startAt: { gte: day, lt: next } },
+      select: { employeeId: true, startAt: true, endAt: true },
+    });
+
+    const eventsByEmp = {};
+    for (const e of events) (eventsByEmp[e.employeeId] ??= []).push(e);
+    const shiftByEmp = {};
+    for (const s of shifts) shiftByEmp[s.employeeId] = s;
+
+    const subjectIds = [...new Set([...Object.keys(eventsByEmp), ...Object.keys(shiftByEmp)])].filter((id) =>
+      canApproveForEmployee(viewer, id, { subtreeIds }),
+    );
+
+    const roster = await tx.$queryRaw`SELECT id, "firstName", "lastName" FROM app_org_chart(${viewer.orgId})`;
+    const nameById = Object.fromEntries(roster.map((r) => [r.id, `${r.firstName} ${r.lastName}`]));
+
+    const rows = subjectIds
+      .map((id) => {
+        const shift = shiftByEmp[id] ?? null;
+        const computed = computeAttendanceDay(eventsByEmp[id] ?? [], shift);
+        return { employeeId: id, name: nameById[id] ?? "—", ...serializeAttendanceDay(dayKey(day), computed, shift) };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    return {
+      date: dayKey(day),
+      prevDay: dayKey(addDays(day, -1)),
+      nextDay: dayKey(addDays(day, 1)),
+      rows,
+    };
+  });
+}
+
+// The subject of a clock correction (name + id), for the correction form. Gated to an approver who
+// may act on that subject; null otherwise → the page 404s. Name via app_org_chart (structural only).
+export async function getCorrectionTarget(employeeId) {
+  const viewer = await getViewer();
+  if (!viewer || !isApprover(viewer) || !employeeId) return null;
+  return withViewer(viewer, async (tx) => {
+    if (!(await viewerCanApprove(viewer, employeeId, tx))) return null;
+    const roster = await tx.$queryRaw`SELECT id, "firstName", "lastName" FROM app_org_chart(${viewer.orgId})`;
+    const row = roster.find((r) => r.id === employeeId);
+    return row ? { id: row.id, name: `${row.firstName} ${row.lastName}` } : null;
+  });
 }
