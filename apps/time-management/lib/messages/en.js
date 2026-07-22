@@ -225,6 +225,34 @@ const en = {
   "attendance.correct.time": "Time",
   "attendance.correct.note": "Reason (optional)",
   "attendance.correct.submit": "Save correction",
+
+  // Dashboard (M5) — the role-aware "My time" home.
+  "dash.subtitle": "Your time at a glance.",
+  "dash.noRecord": "Your account isn’t linked to an employee record, so there’s nothing to show yet.",
+  // Self snapshot tiles.
+  "dash.clockStatus": "Clock",
+  "dash.clockedIn": "Clocked in",
+  "dash.clockedOut": "Clocked out",
+  "dash.thisWeek": "This week",
+  "dash.ptoAvailable": "PTO available",
+  "dash.ptoPending": "{count} pending",
+  "dash.nextShift": "Next shift",
+  "dash.noShift": "None scheduled",
+  // Oversight (managers/HR).
+  "dash.oversight": "Team oversight",
+  "dash.pendingApprovals": "Pending approvals",
+  "dash.pendingBreakdown": "{leave} leave · {timesheets} timesheets · {swaps} swaps",
+  "dash.todayExceptions": "Today’s exceptions",
+  "dash.allClear": "All clear",
+  "dash.excLate": "{n} late",
+  "dash.excAbsent": "{n} absent",
+  "dash.excShort": "{n} short",
+  "dash.excOpen": "{n} still in",
+  "dash.otFlags": "Overtime flags",
+  "dash.otFlagsHint": "Submitted timesheets with OT",
+  "dash.whosOff": "Who’s off today",
+  "dash.noOneOff": "No one is off today.",
+  "dash.through": "through {date}",
 };
 
 export default en;

@@ -583,3 +583,106 @@ export async function getCorrectionTarget(employeeId) {
     return row ? { id: row.id, name: `${row.firstName} ${row.lastName}` } : null;
   });
 }
+
+// ─── Dashboard (M5) ─────────────────────────────────────────────────────────────────────────────
+// The "My time" home is a role-aware dashboard. It's a COMPOSITION layer: every number already
+// exists as an M1–M4 query, so these functions mostly fan out to those (independent fns → their own
+// withViewer tx → Promise.all is genuinely parallel, no shared-tx pg warning) and roll the results
+// into compact tiles.
+
+// The viewer's next published shift assigned to them (from now forward). null if none.
+export async function getMyNextShift() {
+  const viewer = await getViewer();
+  if (!viewer?.employeeId) return null;
+  return withViewer(viewer, async (tx) => {
+    const s = await tx.shift.findFirst({
+      where: { employeeId: viewer.employeeId, published: true, startAt: { gte: new Date() } },
+      orderBy: { startAt: "asc" },
+      select: { startAt: true, endAt: true, role: true },
+    });
+    return s ? { date: dayKey(s.startAt), start: shiftTimeLabel(s.startAt), end: shiftTimeLabel(s.endAt), role: s.role } : null;
+  });
+}
+
+// Approved leave overlapping a day (default today), RLS-scoped (manager subtree / HR all / employee
+// self). Names resolve via `include: employee` because an approver can see the subject's Employee row
+// (unlike peers in the attendance team view — no app_org_chart needed here). Parameterized on date so
+// the integration test is deterministic against seeded leave.
+export async function getWhosOffToday(dateStr = null) {
+  const viewer = await getViewer();
+  if (!viewer) return [];
+  const day = startOfUtcDay(dateStr ? new Date(dateStr) : new Date());
+  const next = addDays(day, 1);
+  return withViewer(viewer, async (tx) => {
+    const reqs = await tx.leaveRequest.findMany({
+      where: { status: "APPROVED", startDate: { lt: next }, endDate: { gte: day } },
+      orderBy: { startDate: "asc" },
+      include: { employee: { select: { id: true, firstName: true, lastName: true } } },
+    });
+    return reqs.map((r) => ({
+      employeeId: r.employeeId,
+      name: r.employee ? `${r.employee.firstName} ${r.employee.lastName}` : "—",
+      type: r.type,
+      endDate: dayKey(r.endDate),
+    }));
+  });
+}
+
+// The personal "my time at a glance" snapshot shown to EVERY role. Composes the self queries into a
+// compact shape. null when the account has no employee record.
+export async function getMyTimeSnapshot() {
+  const viewer = await getViewer();
+  if (!viewer?.employeeId) return null;
+  const [clock, timesheet, timeOff, nextShift] = await Promise.all([
+    getClockStatus(),
+    getCurrentTimesheet(),
+    getTimeOffOverview(),
+    getMyNextShift(),
+  ]);
+  const pendingRequests = timeOff ? timeOff.requests.filter((r) => r.status === "PENDING").length : 0;
+  // Total available PTO across the paid types (UNPAID is tracked but never a balance).
+  const ptoAvailable = timeOff
+    ? Math.round(timeOff.balances.filter((b) => b.type !== "UNPAID").reduce((s, b) => s + b.available, 0) * 100) / 100
+    : 0;
+  return {
+    clock,
+    timesheet: timesheet
+      ? { weekStart: timesheet.weekStart, weekEnd: timesheet.weekEnd, status: timesheet.status, total: timesheet.hours.total, overtime: timesheet.hours.overtime }
+      : null,
+    ptoAvailable,
+    pendingRequests,
+    nextShift,
+  };
+}
+
+// The manager/HR oversight roll-up. null for non-approvers → the page hides the whole section.
+export async function getTeamTimeSnapshot() {
+  const viewer = await getViewer();
+  if (!viewer || !isApprover(viewer)) return null;
+  const [leave, timesheets, swaps, whosOff, team] = await Promise.all([
+    getPendingLeave(),
+    getPendingTimesheets(),
+    getPendingSwaps(),
+    getWhosOffToday(),
+    getTeamAttendance(), // today
+  ]);
+  const otFlags = timesheets.filter((t) => t.overtime > 0).length;
+  const todayExceptions = { late: 0, absent: 0, short: 0, open: 0 };
+  for (const r of team?.rows ?? []) {
+    if (r.status === "LATE") todayExceptions.late += 1;
+    else if (r.status === "ABSENT") todayExceptions.absent += 1;
+    else if (r.status === "SHORT") todayExceptions.short += 1;
+    else if (r.status === "OPEN") todayExceptions.open += 1;
+  }
+  return {
+    pendingApprovals: {
+      leave: leave.length,
+      timesheets: timesheets.length,
+      swaps: swaps.length,
+      total: leave.length + timesheets.length + swaps.length,
+    },
+    whosOffToday: whosOff,
+    todayExceptions,
+    otFlags,
+  };
+}

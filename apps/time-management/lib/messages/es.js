@@ -219,6 +219,34 @@ const es = {
   "attendance.correct.time": "Hora",
   "attendance.correct.note": "Motivo (opcional)",
   "attendance.correct.submit": "Guardar corrección",
+
+  // Panel (M5) — el inicio "Mi tiempo" según el rol.
+  "dash.subtitle": "Tu tiempo de un vistazo.",
+  "dash.noRecord": "Tu cuenta no está vinculada a un registro de empleado, así que aún no hay nada que mostrar.",
+  // Resumen personal.
+  "dash.clockStatus": "Reloj",
+  "dash.clockedIn": "En turno",
+  "dash.clockedOut": "Sin marcar",
+  "dash.thisWeek": "Esta semana",
+  "dash.ptoAvailable": "Tiempo disponible",
+  "dash.ptoPending": "{count} pendientes",
+  "dash.nextShift": "Próximo turno",
+  "dash.noShift": "Sin turnos",
+  // Supervisión (gerentes/RR. HH.).
+  "dash.oversight": "Supervisión del equipo",
+  "dash.pendingApprovals": "Aprobaciones pendientes",
+  "dash.pendingBreakdown": "{leave} ausencias · {timesheets} hojas · {swaps} cambios",
+  "dash.todayExceptions": "Incidencias de hoy",
+  "dash.allClear": "Todo en orden",
+  "dash.excLate": "{n} tarde",
+  "dash.excAbsent": "{n} ausentes",
+  "dash.excShort": "{n} incompletos",
+  "dash.excOpen": "{n} en turno",
+  "dash.otFlags": "Alertas de horas extra",
+  "dash.otFlagsHint": "Hojas enviadas con horas extra",
+  "dash.whosOff": "Quién está ausente hoy",
+  "dash.noOneOff": "Nadie está ausente hoy.",
+  "dash.through": "hasta {date}",
 };
 
 export default es;
