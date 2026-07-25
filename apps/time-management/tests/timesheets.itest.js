@@ -183,3 +183,18 @@ describe("getPendingTimesheets", () => {
     expect(await getPendingTimesheets()).toEqual([]);
   });
 });
+
+describe("project tagging (M8)", () => {
+  it("persists a projectId the employee is assigned to", async () => {
+    getViewer.mockResolvedValue(V.tom); // seeded: assigned to proj-mob
+    const res = await saveDraft(WEEK, [{ workDate: WEEK, hours: 8, projectId: "proj-mob" }]);
+    expect(res.redirect).toBe("REDIRECT:/timesheets");
+    const sheet = await findSheet(V.tom.employeeId);
+    expect(sheet.entries[0].projectId).toBe("proj-mob");
+  });
+
+  it("rejects a projectId the employee is NOT assigned to", async () => {
+    getViewer.mockResolvedValue(V.tom); // NOT assigned to proj-plat (Diego/Priya are)
+    expect((await saveDraft(WEEK, [{ workDate: WEEK, hours: 8, projectId: "proj-plat" }])).error).toBeTruthy();
+  });
+});

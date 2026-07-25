@@ -6,4 +6,5 @@ export * from "./leave";
 export * from "./timesheet";
 export * from "./shift";
 export * from "./attendance";
+export * from "./project";
 export * from "./rules";

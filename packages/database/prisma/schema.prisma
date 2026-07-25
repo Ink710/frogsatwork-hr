@@ -177,6 +177,13 @@ enum ClockSource {
   MANUAL
 }
 
+// Lifecycle of a project (M8). Never hard-deleted — archived so historical timesheet entries keep
+// their reference; an ARCHIVED project just drops out of the employee's picker.
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+}
+
 enum ActorType {
   USER
   SYSTEM
@@ -196,6 +203,7 @@ model Organization {
   employees     Employee[]
   departments   Department[]
   leavePolicies LeavePolicy[]
+  projects      Project[]
 }
 
 model User {
@@ -240,6 +248,9 @@ model User {
   swapsReviewed         ShiftSwapRequest[] @relation("SwapReviewedBy")
   // Attendance: who recorded a punch (the employee for self-punches, or an HR/manager for a correction).
   clockEventsRecorded   ClockEvent[]       @relation("ClockRecordedBy")
+  // Projects: who created a project, and who made an assignment.
+  projectsCreated        Project[]           @relation("ProjectCreatedBy")
+  projectAssignmentsMade ProjectAssignment[] @relation("ProjectAssignedBy")
 
   @@index([orgId])
 }
@@ -302,6 +313,7 @@ model Employee {
   swapsRequested    ShiftSwapRequest[] @relation("SwapRequestedBy")
   swapsTargeted     ShiftSwapRequest[] @relation("SwapTarget")
   clockEvents       ClockEvent[]
+  projectAssignments ProjectAssignment[]
 
   // Employee numbers are unique within an organization, not globally.
   @@unique([orgId, employeeNumber])
@@ -487,7 +499,6 @@ model TimeEntry {
   id        String   @id @default(uuid())
   workDate  DateTime // the calendar day (UTC midnight)
   hours     Decimal  @db.Decimal(5, 2)
-  project   String?
   note      String?
   createdAt DateTime @default(now())
 
@@ -497,8 +508,14 @@ model TimeEntry {
   employeeId String
   employee   Employee @relation(fields: [employeeId], references: [id])
 
+  // Optional project tag (assignment-based — the employee picks from projects they're assigned to).
+  // SetNull so archiving/removing a project never destroys the hours logged against it.
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
   @@index([timesheetId])
   @@index([employeeId, workDate])
+  @@index([projectId])
 }
 
 // A scheduled shift on a department's roster. `employeeId` null = an OPEN (unfilled) shift. Visibility
@@ -582,6 +599,50 @@ model ClockEvent {
   createdBy   User   @relation("ClockRecordedBy", fields: [createdById], references: [id])
 
   @@index([employeeId, at])
+}
+
+// A project employees can log time against (M8). Assignment-based: a manager (or HR) creates a project
+// and assigns specific employees to it via ProjectAssignment; an employee only sees projects they're
+// assigned to. Org-scoped config (NO RLS — like Department/LeavePolicy); visibility for the picker is
+// enforced through the RLS'd assignment join, and management is app-gated (creator + HR).
+model Project {
+  id        String        @id @default(uuid())
+  name      String
+  code      String? // optional short code, e.g. "PLAT" (displayed monospaced)
+  status    ProjectStatus @default(ACTIVE)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  orgId String
+  org   Organization @relation(fields: [orgId], references: [id])
+
+  createdById String
+  createdBy   User   @relation("ProjectCreatedBy", fields: [createdById], references: [id])
+
+  assignments ProjectAssignment[]
+  entries     TimeEntry[]
+
+  @@index([orgId, status])
+}
+
+// Which employees may log time to which project. RLS'd by app_can_see_employee(employeeId) — an
+// employee sees their own assignments, a manager their subtree's, HR all — so the picker and the
+// manager's assignment editor are both scoped for free.
+model ProjectAssignment {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  assignedById String
+  assignedBy   User   @relation("ProjectAssignedBy", fields: [assignedById], references: [id])
+
+  @@unique([projectId, employeeId])
+  @@index([employeeId])
 }
 
 model Department {

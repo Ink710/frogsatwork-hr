@@ -24,14 +24,14 @@ const cellInput =
 // The weekly grid. Overtime is computed live with the SAME pure rule the server uses, so what the
 // employee sees matches what's stored. One <form>, two submit buttons (Save draft / Submit) routed
 // through saveOrSubmitTimesheet via useActionState so errors surface inline.
-export function TimesheetGrid({ week, initialEntries, flsa, editable }) {
+export function TimesheetGrid({ week, initialEntries, flsa, editable, projects = [] }) {
   const t = useT();
   const locale = INTL_LOCALE[useLocale()];
   const [state, action, pending] = useActionState(saveOrSubmitTimesheet.bind(null, week.start), undefined);
 
   const [rows, setRows] = useState(() => {
     const m = {};
-    for (const e of initialEntries) m[e.workDate] = { hours: String(e.hours), project: e.project ?? "", note: e.note ?? "" };
+    for (const e of initialEntries) m[e.workDate] = { hours: String(e.hours), projectId: e.projectId ?? "", note: e.note ?? "" };
     return m;
   });
 
@@ -39,7 +39,7 @@ export function TimesheetGrid({ week, initialEntries, flsa, editable }) {
   const entries = days.map((d) => ({
     workDate: d,
     hours: Number(rows[d]?.hours || 0),
-    project: rows[d]?.project || undefined,
+    projectId: rows[d]?.projectId || undefined,
     note: rows[d]?.note || undefined,
   }));
   // Cheap pure computation — fine to run each render (no memo needed).
@@ -80,7 +80,17 @@ export function TimesheetGrid({ week, initialEntries, flsa, editable }) {
                     />
                   </td>
                   <td className="px-3 py-2">
-                    <input disabled={!editable} value={rows[d]?.project ?? ""} onChange={(e) => setDay(d, "project", e.target.value)} className={cellInput} />
+                    <select
+                      disabled={!editable || projects.length === 0}
+                      value={rows[d]?.projectId ?? ""}
+                      onChange={(e) => setDay(d, "projectId", e.target.value)}
+                      className={cellInput}
+                    >
+                      <option value="">{t("timesheets.noProject")}</option>
+                      {projects.map((p) => (
+                        <option key={p.id} value={p.id}>{p.code ? `${p.code} · ${p.name}` : p.name}</option>
+                      ))}
+                    </select>
                   </td>
                   <td className="px-3 py-2">
                     <input disabled={!editable} value={rows[d]?.note ?? ""} onChange={(e) => setDay(d, "note", e.target.value)} className={cellInput} />

@@ -210,7 +210,7 @@ export async function getCurrentTimesheet(weekStartStr = null) {
     const entries = (timesheet?.entries ?? []).map((e) => ({
       workDate: e.workDate.toISOString().slice(0, 10),
       hours: Number(e.hours),
-      project: e.project,
+      projectId: e.projectId,
       note: e.note,
     }));
     const status = timesheet?.status ?? "DRAFT";
@@ -653,6 +653,96 @@ export async function getMyTimeSnapshot() {
     pendingRequests,
     nextShift,
   };
+}
+
+// ─── Projects (M8) ──────────────────────────────────────────────────────────────────────────────
+// Assignment-based: a manager/HR creates projects and assigns employees; an employee's picker only
+// shows projects they're assigned to (the assignment join is RLS'd, so scoping is free). Project rows
+// themselves are org-scoped config with no RLS; management is gated here in the app layer.
+
+// Managers + HR manage projects (mirrors canManageSchedule).
+export function canManageProjects(viewer) {
+  return Boolean(viewer?.employeeId) && (isHrRole(viewer.role) || viewer.role === "MANAGER");
+}
+
+// The viewer's ACTIVE assigned projects — feeds the timesheet picker. RLS scopes the assignment join.
+export async function getMyProjects() {
+  const viewer = await getViewer();
+  if (!viewer?.employeeId) return [];
+  return withViewer(viewer, async (tx) => {
+    const rows = await tx.projectAssignment.findMany({
+      where: { employeeId: viewer.employeeId, project: { status: "ACTIVE" } },
+      select: { project: { select: { id: true, name: true, code: true } } },
+      orderBy: { project: { name: "asc" } },
+    });
+    return rows.map((r) => r.project);
+  });
+}
+
+// Projects the viewer manages (their own; HR sees all in the org) + assignee counts. For /projects.
+// null for non-managers → the page 404s. The assignee _count is RLS-scoped to visible assignments,
+// which for a manager's own project is exactly its (subtree) assignees.
+export async function getManagedProjects() {
+  const viewer = await getViewer();
+  if (!viewer || !canManageProjects(viewer)) return null;
+  return withViewer(viewer, async (tx) => {
+    const where = isHrRole(viewer.role)
+      ? { orgId: viewer.orgId }
+      : { orgId: viewer.orgId, createdById: viewer.userId };
+    const projects = await tx.project.findMany({
+      where,
+      orderBy: [{ status: "asc" }, { name: "asc" }],
+      include: { _count: { select: { assignments: true } } },
+    });
+    return projects.map((p) => ({
+      id: p.id,
+      name: p.name,
+      code: p.code,
+      status: p.status,
+      assigneeCount: p._count.assignments,
+    }));
+  });
+}
+
+// One project's detail + its assignees + the employees the viewer may still assign (RLS-scoped active
+// employees, manager→subtree / HR→all, minus those already assigned). null if not manageable → 404.
+export async function getProjectForManage(projectId) {
+  const viewer = await getViewer();
+  if (!viewer || !canManageProjects(viewer) || !projectId) return null;
+  return withViewer(viewer, async (tx) => {
+    const project = await tx.project.findUnique({
+      where: { id: projectId },
+      select: { id: true, name: true, code: true, status: true, createdById: true, orgId: true },
+    });
+    if (!project || project.orgId !== viewer.orgId) return null;
+    if (!isHrRole(viewer.role) && project.createdById !== viewer.userId) return null; // manager: own only
+
+    const assignments = await tx.projectAssignment.findMany({
+      where: { projectId },
+      include: { employee: { select: { id: true, firstName: true, lastName: true, employeeNumber: true } } },
+      orderBy: { createdAt: "asc" },
+    });
+    const assignedIds = assignments.map((a) => a.employeeId);
+    const candidates = await tx.employee.findMany({
+      where: { employmentStatus: "ACTIVE", id: { notIn: assignedIds } },
+      select: { id: true, firstName: true, lastName: true, employeeNumber: true },
+      orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+    });
+    return {
+      project: { id: project.id, name: project.name, code: project.code, status: project.status },
+      assignees: assignments.map((a) => ({
+        assignmentId: a.id,
+        employeeId: a.employeeId,
+        name: `${a.employee.firstName} ${a.employee.lastName}`,
+        employeeNumber: a.employee.employeeNumber,
+      })),
+      candidates: candidates.map((e) => ({
+        id: e.id,
+        name: `${e.firstName} ${e.lastName}`,
+        employeeNumber: e.employeeNumber,
+      })),
+    };
+  });
 }
 
 // The manager/HR oversight roll-up. null for non-approvers → the page hides the whole section.

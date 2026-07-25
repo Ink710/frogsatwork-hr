@@ -9,7 +9,9 @@ export type TimesheetStatus = (typeof TIMESHEET_STATUSES)[number];
 export const timeEntrySchema = z.object({
   workDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a YYYY-MM-DD date."),
   hours: z.coerce.number().min(0, "Hours can't be negative.").max(24, "A day can't exceed 24 hours."),
-  project: z.string().trim().max(120).optional(),
+  // A project the employee is assigned to (M8). Absent = untagged time. The save action validates the
+  // id belongs to the employee's assignments before persisting.
+  projectId: z.string().min(1).optional(),
   note: z.string().trim().max(300).optional(),
 });
 

@@ -24,6 +24,18 @@ async function saveEntries(tx, subjectId, weekStartStr, formData, t) {
   const parsed = timesheetEntriesSchema.safeParse(raw);
   if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? t("err.invalidEntries"));
 
+  // Don't trust the client's projectIds: every tagged project must be one the employee is actively
+  // assigned to (the picker only offers those, but the action is the real gate).
+  const projectIds = [...new Set(parsed.data.map((e) => e.projectId).filter(Boolean))];
+  if (projectIds.length) {
+    const assigned = await tx.projectAssignment.findMany({
+      where: { employeeId: subjectId, projectId: { in: projectIds }, project: { status: "ACTIVE" } },
+      select: { projectId: true },
+    });
+    const ok = new Set(assigned.map((a) => a.projectId));
+    if (projectIds.some((id) => !ok.has(id))) throw new Error(t("err.notAssignedToProject"));
+  }
+
   const ws = weekStart(weekStartStr);
   const we = new Date(ws);
   we.setUTCDate(we.getUTCDate() + 6);
@@ -56,7 +68,7 @@ async function saveEntries(tx, subjectId, weekStartStr, formData, t) {
       employeeId: subjectId,
       workDate: new Date(`${e.workDate}T00:00:00.000Z`),
       hours: e.hours.toFixed(2),
-      project: e.project ?? null,
+      projectId: e.projectId ?? null,
       note: e.note ?? null,
     }));
   if (rows.length) await tx.timeEntry.createMany({ data: rows });

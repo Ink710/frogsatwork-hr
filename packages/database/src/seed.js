@@ -533,6 +533,39 @@ async function main() {
     });
   }
 
+  // 14. Projects (M8) — assignment-based. Marcus (Eng manager) creates two projects and assigns his
+  //     reports; an employee's timesheet picker only shows projects they're assigned to. Tom's seeded
+  //     timesheet entries are tagged to "Mobile App" so the picker + reports have real data.
+  const PROJECTS = [
+    { id: "proj-plat", name: "Platform Rewrite", code: "PLAT" },
+    { id: "proj-mob", name: "Mobile App", code: "MOB" },
+  ];
+  for (const p of PROJECTS) {
+    await prisma.project.upsert({
+      where: { id: p.id },
+      update: { name: p.name, code: p.code },
+      create: { id: p.id, name: p.name, code: p.code, status: "ACTIVE", orgId: ORG_ID, createdById: PEOPLE.marcus.userId },
+    });
+  }
+  const ASSIGNMENTS = [
+    { id: "pa-plat-diego", project: "proj-plat", emp: PEOPLE.diego.empId },
+    { id: "pa-plat-priya", project: "proj-plat", emp: PEOPLE.priya.empId },
+    { id: "pa-mob-diego", project: "proj-mob", emp: PEOPLE.diego.empId },
+    { id: "pa-mob-tom", project: "proj-mob", emp: PEOPLE.tom.empId },
+  ];
+  for (const a of ASSIGNMENTS) {
+    await prisma.projectAssignment.upsert({
+      where: { id: a.id },
+      update: {},
+      create: { id: a.id, projectId: a.project, employeeId: a.emp, assignedById: PEOPLE.marcus.userId },
+    });
+  }
+  // Tag Tom's submitted-week entries to the Mobile App project (he's assigned to it).
+  await prisma.timeEntry.updateMany({
+    where: { timesheetId: "ts-tom-0713" },
+    data: { projectId: "proj-mob" },
+  });
+
   const counts = {
     organizations: await prisma.organization.count(),
     users: await prisma.user.count(),
@@ -546,6 +579,8 @@ async function main() {
     timeEntries: await prisma.timeEntry.count(),
     shifts: await prisma.shift.count(),
     clockEvents: await prisma.clockEvent.count(),
+    projects: await prisma.project.count(),
+    projectAssignments: await prisma.projectAssignment.count(),
   };
   console.log("Seed complete:", counts);
 }
