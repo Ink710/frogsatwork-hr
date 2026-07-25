@@ -76,7 +76,7 @@ export default async function TimesheetsPage() {
                     {formatDate(ts.periodStart, locale)} – {formatDate(ts.periodEnd, locale)}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {t("timesheets.totalLabel")}: <span className="tabular-nums">{formatHours(ts.total)}</span>
+                    {t("timesheets.totalLabel")}: <span className="font-mono tabular-nums">{formatHours(ts.total)}</span>
                     {ts.overtime > 0 ? <> · <span className="text-warning">{t("timesheets.otLabel")}: {formatHours(ts.overtime)}</span></> : null}
                   </p>
                 </div>

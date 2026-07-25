@@ -51,23 +51,23 @@ export default async function TimeOffPage() {
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {overview.balances.map((b) => (
           <Card key={b.type} title={t(`enum.leaveType.${b.type}`)}>
-            <p className="text-3xl font-semibold tracking-tight tabular-nums">{formatHours(b.available)}</p>
+            <p className="text-3xl font-semibold tracking-tight font-mono tabular-nums">{formatHours(b.available)}</p>
             <p className="mt-1 text-xs text-muted-foreground">{t("timeOff.available")}</p>
             <dl className="mt-4 space-y-1 text-xs text-muted-foreground">
               {b.pending > 0 && (
                 <div className="flex justify-between">
                   <dt>{t("timeOff.pending")}</dt>
-                  <dd className="tabular-nums text-warning">{formatHours(b.pending)}</dd>
+                  <dd className="font-mono tabular-nums text-warning">{formatHours(b.pending)}</dd>
                 </div>
               )}
               <div className="flex justify-between">
                 <dt>{t("timeOff.used")}</dt>
-                <dd className="tabular-nums">{formatHours(b.used)}</dd>
+                <dd className="font-mono tabular-nums">{formatHours(b.used)}</dd>
               </div>
               {b.accrues && (
                 <div className="flex justify-between">
                   <dt>{t("timeOff.perMonth")}</dt>
-                  <dd className="tabular-nums">{formatHours(b.accrualHoursPerMonth)}</dd>
+                  <dd className="font-mono tabular-nums">{formatHours(b.accrualHoursPerMonth)}</dd>
                 </div>
               )}
             </dl>
@@ -91,7 +91,7 @@ export default async function TimeOffPage() {
                 <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                   <div className="min-w-0">
                     <p className="text-sm font-medium">
-                      {t(`enum.leaveType.${r.type}`)} · <span className="tabular-nums">{formatHours(r.hours)}</span>
+                      {t(`enum.leaveType.${r.type}`)} · <span className="font-mono tabular-nums">{formatHours(r.hours)}</span>
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {formatDate(r.startDate, locale)} – {formatDate(r.endDate, locale)}

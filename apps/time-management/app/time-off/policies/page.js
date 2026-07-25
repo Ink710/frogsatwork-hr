@@ -37,10 +37,10 @@ export default async function PoliciesPage() {
             {policies.map((p) => (
               <tr key={p.id} className="border-b border-border/60 last:border-0">
                 <td className="py-2.5">{t(`enum.leaveType.${p.type}`)}</td>
-                <td className="py-2.5 text-right tabular-nums">
+                <td className="py-2.5 text-right font-mono tabular-nums">
                   {p.accrues ? formatHours(p.accrualHoursPerMonth) : <span className="text-muted-foreground">{t("policies.noAccrual")}</span>}
                 </td>
-                <td className="py-2.5 text-right tabular-nums">
+                <td className="py-2.5 text-right font-mono tabular-nums">
                   {p.maxBalanceHours != null ? formatHours(p.maxBalanceHours) : <span className="text-muted-foreground">{t("policies.uncapped")}</span>}
                 </td>
               </tr>

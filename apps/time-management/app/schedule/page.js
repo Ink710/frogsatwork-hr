@@ -78,7 +78,7 @@ export default async function SchedulePage({ searchParams }) {
             <section key={day.date} className={`rounded-xl border border-border p-3 ${weekend ? "bg-muted/30" : "bg-card"}`}>
               <div className="mb-2 flex items-baseline justify-between">
                 <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{weekday}</span>
-                <span className="text-sm font-medium tabular-nums">{num}</span>
+                <span className="text-sm font-medium font-mono tabular-nums">{num}</span>
               </div>
               {day.shifts.length === 0 ? (
                 <p className="py-2 text-xs text-muted-foreground/60">—</p>
@@ -90,7 +90,7 @@ export default async function SchedulePage({ searchParams }) {
                       className={`rounded-lg border p-2 text-xs ${s.published ? "border-border bg-background" : "border-dashed border-warning/50 bg-warning/5"} ${s.isMine ? "ring-1 ring-primary/40" : ""}`}
                     >
                       <div className="flex items-start justify-between gap-1">
-                        <span className="font-medium tabular-nums">{s.startTime}–{s.endTime}</span>
+                        <span className="font-medium font-mono tabular-nums">{s.startTime}–{s.endTime}</span>
                         {schedule.canManage && (
                           <Link href={`/schedule/shift/${s.id}/edit`} className="shrink-0 text-muted-foreground hover:text-foreground" aria-label={t("schedule.edit")}>
                             <Pencil className="h-3 w-3" />

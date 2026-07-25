@@ -76,7 +76,7 @@ export function TimesheetGrid({ week, initialEntries, flsa, editable }) {
                       disabled={!editable}
                       value={rows[d]?.hours ?? ""}
                       onChange={(e) => setDay(d, "hours", e.target.value)}
-                      className={`${cellInput} w-24 tabular-nums`}
+                      className={`${cellInput} w-24 font-mono tabular-nums`}
                     />
                   </td>
                   <td className="px-3 py-2">
@@ -93,10 +93,10 @@ export function TimesheetGrid({ week, initialEntries, flsa, editable }) {
       </div>
 
       <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
-        <span>{t("timesheets.totalLabel")}: <span className="font-semibold tabular-nums">{formatHours(hours.total)}</span></span>
-        <span className="text-muted-foreground">{t("timesheets.regularLabel")}: <span className="tabular-nums">{formatHours(hours.regular)}</span></span>
+        <span>{t("timesheets.totalLabel")}: <span className="font-semibold font-mono tabular-nums">{formatHours(hours.total)}</span></span>
+        <span className="text-muted-foreground">{t("timesheets.regularLabel")}: <span className="font-mono tabular-nums">{formatHours(hours.regular)}</span></span>
         {hours.overtime > 0 && (
-          <span className="text-warning">{t("timesheets.otLabel")}: <span className="tabular-nums">{formatHours(hours.overtime)}</span></span>
+          <span className="text-warning">{t("timesheets.otLabel")}: <span className="font-mono tabular-nums">{formatHours(hours.overtime)}</span></span>
         )}
       </div>
 

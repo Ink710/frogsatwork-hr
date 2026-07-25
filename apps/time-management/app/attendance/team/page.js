@@ -61,12 +61,13 @@ export default async function TeamAttendancePage({ searchParams }) {
                 <p className="text-xs text-muted-foreground">
                   {r.firstIn ? (
                     <>
-                      {r.firstIn}–{r.lastOut ?? "…"} · <span className="tabular-nums">{formatHours(r.workedHours)}</span>
+                      <span className="font-mono">{r.firstIn}–{r.lastOut ?? "…"}</span> ·{" "}
+                      <span className="font-mono tabular-nums">{formatHours(r.workedHours)}</span>
                     </>
                   ) : (
                     t("attendance.noPunches")
                   )}
-                  {r.scheduled ? <> · {t("attendance.scheduledShort")} {r.scheduled.start}–{r.scheduled.end}</> : null}
+                  {r.scheduled ? <> · {t("attendance.scheduledShort")} <span className="font-mono">{r.scheduled.start}–{r.scheduled.end}</span></> : null}
                   {r.status === "LATE" ? <> · <span className="text-warning">{t("attendance.team.late", { minutes: String(r.lateMinutes) })}</span></> : null}
                   {r.status === "SHORT" ? <> · <span className="text-warning">{t("attendance.team.short", { hours: formatHours(r.shortHours) })}</span></> : null}
                 </p>

@@ -54,9 +54,9 @@ export default async function AttendancePage() {
               )}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {t("attendance.workedToday")}: <span className="tabular-nums">{formatHours(status.workedHours)}</span>
+              {t("attendance.workedToday")}: <span className="font-mono tabular-nums">{formatHours(status.workedHours)}</span>
               {status.scheduled ? (
-                <> · {t("attendance.scheduled")}: {status.scheduled.start}–{status.scheduled.end}</>
+                <> · {t("attendance.scheduled")}: <span className="font-mono">{status.scheduled.start}–{status.scheduled.end}</span></>
               ) : null}
             </p>
           </div>
@@ -80,13 +80,14 @@ export default async function AttendancePage() {
                   <p className="text-xs text-muted-foreground">
                     {d.firstIn ? (
                       <>
-                        {d.firstIn}–{d.lastOut ?? "…"} · <span className="tabular-nums">{formatHours(d.workedHours)}</span>
+                        <span className="font-mono">{d.firstIn}–{d.lastOut ?? "…"}</span> ·{" "}
+                        <span className="font-mono tabular-nums">{formatHours(d.workedHours)}</span>
                       </>
                     ) : (
                       t("attendance.noPunches")
                     )}
                     {d.scheduled ? (
-                      <> · {t("attendance.scheduledShort")} {d.scheduled.start}–{d.scheduled.end}</>
+                      <> · {t("attendance.scheduledShort")} <span className="font-mono">{d.scheduled.start}–{d.scheduled.end}</span></>
                     ) : null}
                   </p>
                 </div>

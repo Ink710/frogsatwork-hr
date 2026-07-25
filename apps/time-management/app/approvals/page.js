@@ -49,10 +49,10 @@ export default async function ApprovalsPage() {
                   <Avatar initials={initials(r.employee.firstName, r.employee.lastName)} className="h-11 w-11 text-sm" />
                   <div className="min-w-0">
                     <p className="text-sm font-medium">
-                      {r.employee.firstName} {r.employee.lastName} <span className="text-muted-foreground">({r.employee.employeeNumber})</span>
+                      {r.employee.firstName} {r.employee.lastName} <span className="font-mono text-muted-foreground">({r.employee.employeeNumber})</span>
                     </p>
                     <p className="text-sm">
-                      {t(`enum.leaveType.${r.type}`)} · <span className="tabular-nums">{formatHours(r.hours)}</span>
+                      {t(`enum.leaveType.${r.type}`)} · <span className="font-mono tabular-nums">{formatHours(r.hours)}</span>
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {formatDate(r.startDate, locale)} – {formatDate(r.endDate, locale)}
@@ -80,13 +80,13 @@ export default async function ApprovalsPage() {
                   <Avatar initials={initials(ts.employee.firstName, ts.employee.lastName)} className="h-11 w-11 text-sm" />
                   <div className="min-w-0">
                     <p className="text-sm font-medium">
-                      {ts.employee.firstName} {ts.employee.lastName} <span className="text-muted-foreground">({ts.employee.employeeNumber})</span>
+                      {ts.employee.firstName} {ts.employee.lastName} <span className="font-mono text-muted-foreground">({ts.employee.employeeNumber})</span>
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {formatDate(ts.periodStart, locale)} – {formatDate(ts.periodEnd, locale)}
                     </p>
                     <p className="text-sm">
-                      {t("timesheets.totalLabel")}: <span className="tabular-nums">{formatHours(ts.total)}</span>
+                      {t("timesheets.totalLabel")}: <span className="font-mono tabular-nums">{formatHours(ts.total)}</span>
                       {ts.overtime > 0 ? <> · <span className="text-warning">{t("timesheets.otLabel")}: {formatHours(ts.overtime)}</span></> : null}
                     </p>
                   </div>
@@ -108,7 +108,7 @@ export default async function ApprovalsPage() {
                   <Avatar initials={initials(s.requester.firstName, s.requester.lastName)} className="h-11 w-11 text-sm" />
                   <div className="min-w-0">
                     <p className="text-sm font-medium">
-                      {s.requester.firstName} {s.requester.lastName} <span className="text-muted-foreground">({s.requester.employeeNumber})</span>
+                      {s.requester.firstName} {s.requester.lastName} <span className="font-mono text-muted-foreground">({s.requester.employeeNumber})</span>
                     </p>
                     <p className="text-sm">
                       {s.targetName
