@@ -74,6 +74,8 @@ export function pendingHours(requests: RequestRow[]): Record<string, number> {
 // A weekly timesheet's overtime thresholds (US FLSA weekly + California-style daily).
 export const WORKWEEK_OT_THRESHOLD = 40;
 export const DAILY_OT_THRESHOLD = 8;
+// California daily double-time: hours over 12 in a single day pay at 2×. Hours 8–12 are 1.5× overtime.
+export const DAILY_DOUBLETIME_THRESHOLD = 12;
 
 // The Monday (UTC midnight) of the week containing `date`. Timesheets are keyed on this.
 export function weekStart(date: DateInput): Date {
@@ -87,14 +89,15 @@ export function weekStart(date: DateInput): Date {
 
 export type TimeEntryRow = { workDate: DateInput; hours: number | string };
 
-// Regular + overtime hours for a week of entries, using California's "greater-of" reconciliation so
-// daily (>8h) and weekly (>40h) overtime never double-count:
-//   dailyOT       = Σ max(0, dayHours − 8)
-//   straightDaily = Σ min(dayHours, 8)          (hours NOT already daily-OT)
-//   weeklyOT      = max(0, straightDaily − 40)   (of the straight hours, those over 40)
-//   overtime      = dailyOT + weeklyOT;  regular = total − overtime
-// EXEMPT (salaried) employees never accrue OT — all hours are regular. A missing/unknown FLSA is
-// treated as exempt (conservative: don't claim OT without an explicit NON_EXEMPT classification).
+// Regular + overtime + double-time hours for a week, using California's "greater-of" reconciliation so
+// daily and weekly overtime never double-count. Per day the hours split three ways:
+//   straight   = min(dayHours, 8)                       (0–8h → regular candidate)
+//   dailyOT    = min(dayHours,12) − min(dayHours,8)     (8–12h → 1.5×)
+//   doubletime = max(0, dayHours − 12)                  (>12h → 2×)
+// then  weeklyOT   = max(0, Σstraight − 40)   (of the ≤8h/day hours, those over 40)
+//       overtime   = ΣdailyOT + weeklyOT;  doubletime = Σdoubletime;  regular = total − overtime − DT
+// EXEMPT (salaried) employees never accrue OT/DT — all hours are regular. A missing/unknown FLSA is
+// treated as exempt (conservative: don't claim premium pay without an explicit NON_EXEMPT class).
 export function computeTimesheet(entries: TimeEntryRow[], flsa: string | null | undefined) {
   const byDay: Record<string, number> = {};
   for (const e of entries) {
@@ -106,21 +109,25 @@ export function computeTimesheet(entries: TimeEntryRow[], flsa: string | null | 
   const total = round2(Object.values(byDay).reduce((s, h) => s + h, 0));
 
   if (flsa !== "NON_EXEMPT") {
-    return { total, regular: total, overtime: 0, dailyOvertime: 0, weeklyOvertime: 0, byDay };
+    return { total, regular: total, overtime: 0, doubletime: 0, dailyOvertime: 0, weeklyOvertime: 0, byDay };
   }
 
-  let dailyOT = 0;
-  let straightDaily = 0;
+  let dailyOT = 0; // 1.5× — hours 8..12
+  let dailyDT = 0; // 2×   — hours over 12
+  let straightDaily = 0; // hours 0..8
   for (const h of Object.values(byDay)) {
-    dailyOT += Math.max(0, h - DAILY_OT_THRESHOLD);
     straightDaily += Math.min(h, DAILY_OT_THRESHOLD);
+    dailyOT += Math.max(0, Math.min(h, DAILY_DOUBLETIME_THRESHOLD) - DAILY_OT_THRESHOLD);
+    dailyDT += Math.max(0, h - DAILY_DOUBLETIME_THRESHOLD);
   }
   const weeklyOT = Math.max(0, straightDaily - WORKWEEK_OT_THRESHOLD);
   const overtime = round2(dailyOT + weeklyOT);
+  const doubletime = round2(dailyDT);
   return {
     total,
-    regular: round2(total - overtime),
+    regular: round2(total - overtime - doubletime),
     overtime,
+    doubletime,
     dailyOvertime: round2(dailyOT),
     weeklyOvertime: round2(weeklyOT),
     byDay,

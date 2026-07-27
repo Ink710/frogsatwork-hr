@@ -209,3 +209,77 @@ export async function decideTimesheet(timesheetId, prevState, formData) {
     ? rejectTimesheet(timesheetId, prevState, formData)
     : approveTimesheet(timesheetId, prevState, formData);
 }
+
+// Manager/HR adjustment of a report's SUBMITTED timesheet during review (M9). Gated viewerCanApprove;
+// only a SUBMITTED sheet may be edited (not the employee's DRAFT, not an APPROVED/locked one); status
+// is left SUBMITTED (approve/reject stay separate). projectIds must belong to the TARGET's active
+// assignments. Audited as TIMESHEET_ADJUST (before/after totals) — someone else altering your hours.
+export async function adjustTimesheet(employeeId, weekStartStr, _prevState, formData) {
+  const t = await getT();
+  const viewer = await getViewer();
+  if (!viewer) return { error: t("err.signedIn") };
+  let raw;
+  try {
+    raw = JSON.parse(formData.get("entries") || "[]");
+  } catch {
+    return { error: t("err.timesheetRead") };
+  }
+  const parsed = timesheetEntriesSchema.safeParse(raw);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? t("err.invalidEntries") };
+  const round2 = (n) => Math.round(n * 100) / 100;
+
+  try {
+    await withViewer(viewer, async (tx) => {
+      if (!(await viewerCanApprove(viewer, employeeId, tx))) throw new Error(t("err.notAuthorizedReviewTimesheet"));
+      const ws = weekStart(weekStartStr);
+      const sheet = await tx.timesheet.findUnique({
+        where: { employeeId_periodStart: { employeeId, periodStart: ws } },
+        include: { entries: { select: { hours: true } } },
+      });
+      if (!sheet) throw new Error(t("err.timesheetNotFound"));
+      if (sheet.status !== "SUBMITTED") throw new Error(t("err.onlySubmittedAdjust"));
+
+      // projectIds must be ones the TARGET is actively assigned to.
+      const projectIds = [...new Set(parsed.data.map((e) => e.projectId).filter(Boolean))];
+      if (projectIds.length) {
+        const assigned = await tx.projectAssignment.findMany({
+          where: { employeeId, projectId: { in: projectIds }, project: { status: "ACTIVE" } },
+          select: { projectId: true },
+        });
+        const ok = new Set(assigned.map((a) => a.projectId));
+        if (projectIds.some((id) => !ok.has(id))) throw new Error(t("err.notAssignedToProject"));
+      }
+
+      const beforeTotal = round2(sheet.entries.reduce((s, e) => s + Number(e.hours), 0));
+      await tx.timeEntry.deleteMany({ where: { timesheetId: sheet.id } });
+      const rows = parsed.data
+        .filter((e) => e.hours > 0)
+        .map((e) => ({
+          timesheetId: sheet.id,
+          employeeId,
+          workDate: new Date(`${e.workDate}T00:00:00.000Z`),
+          hours: e.hours.toFixed(2),
+          projectId: e.projectId ?? null,
+          note: e.note ?? null,
+        }));
+      if (rows.length) await tx.timeEntry.createMany({ data: rows });
+      const afterTotal = round2(rows.reduce((s, e) => s + Number(e.hours), 0));
+
+      await tx.employeeAuditLog.create({
+        data: {
+          employeeId,
+          eventType: "TIMESHEET_ADJUST",
+          actorType: "USER",
+          actorId: viewer.userId,
+          beforeState: { timesheetId: sheet.id, total: beforeTotal },
+          afterState: { timesheetId: sheet.id, total: afterTotal },
+        },
+      });
+    });
+  } catch (e) {
+    return { error: errorMessage(e) ?? t("err.adjustFailed") };
+  }
+  revalidatePath(`/my-team/${employeeId}`);
+  revalidatePath("/approvals");
+  return { ok: true };
+}

@@ -170,6 +170,7 @@ export async function getPendingTimesheets() {
         periodEnd: s.periodEnd,
         total: hours.total,
         overtime: hours.overtime,
+        doubletime: hours.doubletime,
       };
     });
   });
@@ -243,7 +244,7 @@ export async function getMyTimesheets() {
     });
     return sheets.map((ts) => {
       const hours = computeTimesheet(ts.entries.map((e) => ({ workDate: e.workDate, hours: Number(e.hours) })), flsa);
-      return { id: ts.id, periodStart: ts.periodStart, periodEnd: ts.periodEnd, status: ts.status, total: hours.total, overtime: hours.overtime };
+      return { id: ts.id, periodStart: ts.periodStart, periodEnd: ts.periodEnd, status: ts.status, total: hours.total, overtime: hours.overtime, doubletime: hours.doubletime };
     });
   });
 }
@@ -756,7 +757,7 @@ export async function getTeamTimeSnapshot() {
     getWhosOffToday(),
     getTeamAttendance(), // today
   ]);
-  const otFlags = timesheets.filter((t) => t.overtime > 0).length;
+  const otFlags = timesheets.filter((t) => t.overtime > 0 || t.doubletime > 0).length;
   const todayExceptions = { late: 0, absent: 0, short: 0, open: 0 };
   for (const r of team?.rows ?? []) {
     if (r.status === "LATE") todayExceptions.late += 1;
@@ -775,4 +776,131 @@ export async function getTeamTimeSnapshot() {
     todayExceptions,
     otFlags,
   };
+}
+
+// ─── My Team — timesheet review + adjust (M9) ────────────────────────────────────────────────────
+// Managers/HR review their reports' timesheets and adjust a SUBMITTED sheet before approving. RLS
+// scopes the underlying rows (subtree/all); canApproveForEmployee/viewerCanApprove gate the verb.
+
+// A target employee's ACTIVE assigned projects — for the manager's adjust picker (RLS-scoped, so a
+// manager only sees their subtree's assignments). Generalizes getMyProjects to any employee.
+export async function getEmployeeProjects(employeeId) {
+  const viewer = await getViewer();
+  if (!viewer?.employeeId || !employeeId) return [];
+  return withViewer(viewer, async (tx) => {
+    const rows = await tx.projectAssignment.findMany({
+      where: { employeeId, project: { status: "ACTIVE" } },
+      select: { project: { select: { id: true, name: true, code: true } } },
+      orderBy: { project: { name: "asc" } },
+    });
+    return rows.map((r) => r.project);
+  });
+}
+
+// The manager/HR roster for one week: each report + that week's timesheet status + derived hours.
+// null for non-approvers → the page 404s.
+export async function getTeamTimesheets(weekStr = null) {
+  const viewer = await getViewer();
+  if (!viewer || !isApprover(viewer)) return null;
+  const ws = weekStart(weekStr ?? new Date());
+  const we = addDays(ws, 6);
+
+  return withViewer(viewer, async (tx) => {
+    const subtreeIds = viewer.role === "MANAGER" ? await getSubtreeIds(viewer.employeeId, tx) : undefined;
+    // RLS scopes the base set (subtree/all); drop anyone the viewer can't act on (notably themselves).
+    const employees = await tx.employee.findMany({
+      where: { employmentStatus: "ACTIVE" },
+      select: { id: true, firstName: true, lastName: true, employeeNumber: true },
+      orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+    });
+    const reports = employees.filter((e) => canApproveForEmployee(viewer, e.id, { subtreeIds }));
+    const empIds = reports.map((e) => e.id);
+
+    const sheets = empIds.length
+      ? await tx.timesheet.findMany({
+          where: { periodStart: ws, employeeId: { in: empIds } },
+          include: { entries: { select: { workDate: true, hours: true } } },
+        })
+      : [];
+    const sheetByEmp = Object.fromEntries(sheets.map((s) => [s.employeeId, s]));
+    const histories = empIds.length
+      ? await tx.employeeHistory.findMany({ where: { employeeId: { in: empIds }, effectiveTo: null }, select: { employeeId: true, flsaClassification: true } })
+      : [];
+    const flsaByEmp = Object.fromEntries(histories.map((h) => [h.employeeId, h.flsaClassification]));
+
+    const rows = reports.map((e) => {
+      const sheet = sheetByEmp[e.id];
+      const hours = sheet
+        ? computeTimesheet(sheet.entries.map((x) => ({ workDate: x.workDate, hours: Number(x.hours) })), flsaByEmp[e.id])
+        : null;
+      return {
+        employeeId: e.id,
+        name: `${e.firstName} ${e.lastName}`,
+        employeeNumber: e.employeeNumber,
+        status: sheet?.status ?? null, // null = nothing logged for the week
+        total: hours?.total ?? 0,
+        overtime: hours?.overtime ?? 0,
+        doubletime: hours?.doubletime ?? 0,
+      };
+    });
+    return {
+      weekStart: dayKey(ws),
+      weekEnd: dayKey(we),
+      prevWeek: dayKey(addDays(ws, -7)),
+      nextWeek: dayKey(addDays(ws, 7)),
+      rows,
+    };
+  });
+}
+
+// One report's timesheet for a week (gated viewerCanApprove) + their assigned projects for the picker.
+// `adjustable` = the sheet is SUBMITTED (the only state a manager may edit). null → 404.
+export async function getTeamMemberTimesheet(employeeId, weekStr = null) {
+  const viewer = await getViewer();
+  if (!viewer || !isApprover(viewer) || !employeeId) return null;
+  const ws = weekStart(weekStr ?? new Date());
+  const we = new Date(ws);
+  we.setUTCDate(we.getUTCDate() + 6);
+
+  return withViewer(viewer, async (tx) => {
+    if (!(await viewerCanApprove(viewer, employeeId, tx))) return null;
+    const employee = await tx.employee.findUnique({ where: { id: employeeId }, select: { firstName: true, lastName: true, employeeNumber: true } });
+    if (!employee) return null;
+
+    const flsa = await currentFlsa(tx, employeeId);
+    const timesheet = await tx.timesheet.findUnique({
+      where: { employeeId_periodStart: { employeeId, periodStart: ws } },
+      include: { entries: { orderBy: { workDate: "asc" } } },
+    });
+    const entries = (timesheet?.entries ?? []).map((e) => ({
+      workDate: e.workDate.toISOString().slice(0, 10),
+      hours: Number(e.hours),
+      projectId: e.projectId,
+      note: e.note,
+    }));
+    const status = timesheet?.status ?? "DRAFT";
+    const projRows = await tx.projectAssignment.findMany({
+      where: { employeeId, project: { status: "ACTIVE" } },
+      select: { project: { select: { id: true, name: true, code: true } } },
+      orderBy: { project: { name: "asc" } },
+    });
+
+    return {
+      employee: { id: employeeId, name: `${employee.firstName} ${employee.lastName}`, employeeNumber: employee.employeeNumber },
+      timesheet: {
+        id: timesheet?.id ?? null,
+        weekStart: ws.toISOString().slice(0, 10),
+        weekEnd: we.toISOString().slice(0, 10),
+        status,
+        adjustable: status === "SUBMITTED", // managers adjust only a submitted sheet
+        flsa,
+        decisionNote: timesheet?.decisionNote ?? null,
+        entries,
+        hours: computeTimesheet(entries, flsa),
+      },
+      projects: projRows.map((r) => r.project),
+      prevWeek: dayKey(addDays(ws, -7)),
+      nextWeek: dayKey(addDays(ws, 7)),
+    };
+  });
 }

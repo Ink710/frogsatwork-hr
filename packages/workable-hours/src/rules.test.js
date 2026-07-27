@@ -171,16 +171,28 @@ describe("computeTimesheet", () => {
 
   it("does not double-count daily + weekly (the greater-of reconciliation)", () => {
     // 12,12,8,8 = 40h total but two long days. dailyOT = 4+4 = 8; straightDaily = 8×4 = 32 → weeklyOT 0.
+    // Exactly 12h is the double-time boundary — none over it yet.
     const r = computeTimesheet(week([12, 12, 8, 8]), "NON_EXEMPT");
     expect(r.total).toBe(40);
     expect(r.overtime).toBe(8);
+    expect(r.doubletime).toBe(0);
     expect(r.regular).toBe(32);
   });
 
-  it("gives EXEMPT employees no overtime", () => {
-    const r = computeTimesheet(week([10, 10, 8, 8, 8]), "EXEMPT");
-    expect(r.total).toBe(44);
+  it("counts California double-time (>12h/day at 2×)", () => {
+    // A 13h day: 8 straight + 4 overtime (8–12) + 1 double-time (>12). Rest 8h × 4 = 40 straight → weeklyOT 0.
+    const r = computeTimesheet(week([13, 8, 8, 8, 8]), "NON_EXEMPT");
+    expect(r.total).toBe(45);
+    expect(r.overtime).toBe(4);
+    expect(r.doubletime).toBe(1);
+    expect(r.regular).toBe(40);
+  });
+
+  it("gives EXEMPT employees no overtime or double-time", () => {
+    const r = computeTimesheet(week([13, 10, 8, 8, 8]), "EXEMPT");
+    expect(r.total).toBe(47);
     expect(r.overtime).toBe(0);
-    expect(r.regular).toBe(44);
+    expect(r.doubletime).toBe(0);
+    expect(r.regular).toBe(47);
   });
 });

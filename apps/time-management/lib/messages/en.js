@@ -9,6 +9,7 @@ const en = {
   "nav.timesheets": "Timesheets",
   "nav.schedule": "Schedule",
   "nav.attendance": "Attendance",
+  "nav.myTeam": "My team",
   "nav.teamAttendance": "Team attendance",
   "nav.projects": "Projects",
   "nav.approvals": "Approvals",
@@ -125,6 +126,7 @@ const en = {
   "timesheets.totalLabel": "Total",
   "timesheets.regularLabel": "Regular",
   "timesheets.otLabel": "Overtime",
+  "timesheets.dtLabel": "Double-time",
   "timesheets.saveDraft": "Save draft",
   "timesheets.submit": "Submit for approval",
   "timesheets.locked": "This timesheet has been submitted and can’t be edited.",
@@ -280,6 +282,21 @@ const en = {
   "projects.form.create": "Create project",
   "projects.form.save": "Save",
 
+  // My team — manager timesheet review + adjust (M9).
+  "myTeam.title": "My team",
+  "myTeam.subtitle": "Review your reports’ timesheets, adjust if needed, then approve or reject.",
+  "myTeam.prevWeek": "Previous week",
+  "myTeam.nextWeek": "Next week",
+  "myTeam.empty": "You don’t have any reports.",
+  "myTeam.notStarted": "Not started",
+  "myTeam.back": "My team",
+  "myTeam.forEmployee": "{name}’s timesheet",
+  "myTeam.adjustHint": "This sheet is submitted — you can adjust the hours, project, or note, then approve or reject below.",
+  "myTeam.notAdjustable": "Only a submitted timesheet can be adjusted. This one is {status}.",
+  "myTeam.saveAdjustments": "Save adjustments",
+  "myTeam.adjusted": "Adjustments saved.",
+  "myTeam.decision": "Decision",
+
   // Error boundary + 404 (M6).
   "error.title": "Something went wrong",
   "error.generic": "An unexpected error occurred.",
@@ -356,6 +373,8 @@ const en = {
   "err.assignFailed": "Could not assign the employee.",
   "err.unassignFailed": "Could not remove the assignment.",
   "err.notAssignedToProject": "You’re not assigned to one of those projects.",
+  "err.onlySubmittedAdjust": "Only a submitted timesheet can be adjusted.",
+  "err.adjustFailed": "Could not save the adjustments.",
 };
 
 export default en;

@@ -7,6 +7,7 @@ const es = {
   "nav.timesheets": "Horas",
   "nav.schedule": "Horario",
   "nav.attendance": "Asistencia",
+  "nav.myTeam": "Mi equipo",
   "nav.teamAttendance": "Asistencia del equipo",
   "nav.projects": "Proyectos",
   "nav.approvals": "Aprobaciones",
@@ -119,6 +120,7 @@ const es = {
   "timesheets.totalLabel": "Total",
   "timesheets.regularLabel": "Normales",
   "timesheets.otLabel": "Horas extra",
+  "timesheets.dtLabel": "Tiempo doble",
   "timesheets.saveDraft": "Guardar borrador",
   "timesheets.submit": "Enviar para aprobación",
   "timesheets.locked": "Esta hoja ya fue enviada y no se puede editar.",
@@ -274,6 +276,21 @@ const es = {
   "projects.form.create": "Crear proyecto",
   "projects.form.save": "Guardar",
 
+  // Mi equipo — revisión y ajuste de hojas de horas (M9).
+  "myTeam.title": "Mi equipo",
+  "myTeam.subtitle": "Revisa las hojas de horas de tu equipo, ajústalas si hace falta y aprueba o rechaza.",
+  "myTeam.prevWeek": "Semana anterior",
+  "myTeam.nextWeek": "Semana siguiente",
+  "myTeam.empty": "No tienes personas a cargo.",
+  "myTeam.notStarted": "Sin empezar",
+  "myTeam.back": "Mi equipo",
+  "myTeam.forEmployee": "Hoja de horas de {name}",
+  "myTeam.adjustHint": "Esta hoja está enviada — puedes ajustar las horas, el proyecto o la nota, y luego aprobar o rechazar abajo.",
+  "myTeam.notAdjustable": "Solo se puede ajustar una hoja enviada. Esta está {status}.",
+  "myTeam.saveAdjustments": "Guardar ajustes",
+  "myTeam.adjusted": "Ajustes guardados.",
+  "myTeam.decision": "Decisión",
+
   // Límite de error + 404 (M6).
   "error.title": "Algo salió mal",
   "error.generic": "Ocurrió un error inesperado.",
@@ -349,6 +366,8 @@ const es = {
   "err.assignFailed": "No se pudo asignar al empleado.",
   "err.unassignFailed": "No se pudo quitar la asignación.",
   "err.notAssignedToProject": "No estás asignado a uno de esos proyectos.",
+  "err.onlySubmittedAdjust": "Solo se puede ajustar una hoja de horas enviada.",
+  "err.adjustFailed": "No se pudieron guardar los ajustes.",
 };
 
 export default es;

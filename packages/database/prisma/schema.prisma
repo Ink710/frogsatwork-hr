@@ -95,6 +95,8 @@ enum AuditEventType {
   TIMESHEET_SUBMIT
   TIMESHEET_APPROVE
   TIMESHEET_REJECT
+  // A manager/HR editing a report's SUBMITTED timesheet during review (someone else altering your hours).
+  TIMESHEET_ADJUST
   // Shift swap/drop decisions (schedule CRUD + publish are not employee-scoped, so not audited here).
   SHIFT_SWAP_REQUEST
   SHIFT_SWAP_APPROVE

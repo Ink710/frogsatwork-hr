@@ -87,7 +87,8 @@ export default async function ApprovalsPage() {
                     </p>
                     <p className="text-sm">
                       {t("timesheets.totalLabel")}: <span className="font-mono tabular-nums">{formatHours(ts.total)}</span>
-                      {ts.overtime > 0 ? <> · <span className="text-warning">{t("timesheets.otLabel")}: {formatHours(ts.overtime)}</span></> : null}
+                      {ts.overtime > 0 ? <> · <span className="text-warning">{t("timesheets.otLabel")}: <span className="font-mono tabular-nums">{formatHours(ts.overtime)}</span></span></> : null}
+                      {ts.doubletime > 0 ? <> · <span className="text-destructive">{t("timesheets.dtLabel")}: <span className="font-mono tabular-nums">{formatHours(ts.doubletime)}</span></span></> : null}
                     </p>
                   </div>
                 </div>

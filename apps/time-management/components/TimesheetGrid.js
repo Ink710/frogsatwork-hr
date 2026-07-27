@@ -24,10 +24,12 @@ const cellInput =
 // The weekly grid. Overtime is computed live with the SAME pure rule the server uses, so what the
 // employee sees matches what's stored. One <form>, two submit buttons (Save draft / Submit) routed
 // through saveOrSubmitTimesheet via useActionState so errors surface inline.
-export function TimesheetGrid({ week, initialEntries, flsa, editable, projects = [] }) {
+// `mode`: "self" = the employee's own grid (Save draft / Submit). "adjust" = a manager editing a
+// report's submitted sheet (a single Save-adjustments button); pass the bound `action` for that.
+export function TimesheetGrid({ week, initialEntries, flsa, editable, projects = [], mode = "self", action: injectedAction }) {
   const t = useT();
   const locale = INTL_LOCALE[useLocale()];
-  const [state, action, pending] = useActionState(saveOrSubmitTimesheet.bind(null, week.start), undefined);
+  const [state, action, pending] = useActionState(injectedAction ?? saveOrSubmitTimesheet.bind(null, week.start), undefined);
 
   const [rows, setRows] = useState(() => {
     const m = {};
@@ -108,17 +110,29 @@ export function TimesheetGrid({ week, initialEntries, flsa, editable, projects =
         {hours.overtime > 0 && (
           <span className="text-warning">{t("timesheets.otLabel")}: <span className="font-mono tabular-nums">{formatHours(hours.overtime)}</span></span>
         )}
+        {hours.doubletime > 0 && (
+          <span className="text-destructive">{t("timesheets.dtLabel")}: <span className="font-mono tabular-nums">{formatHours(hours.doubletime)}</span></span>
+        )}
       </div>
 
       {editable ? (
-        <div className="flex gap-2">
-          <button type="submit" name="intent" value="save" disabled={pending} className="rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-60">
-            {t("timesheets.saveDraft")}
-          </button>
-          <button type="submit" name="intent" value="submit" disabled={pending} className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60">
-            {t("timesheets.submit")}
-          </button>
-        </div>
+        mode === "adjust" ? (
+          <div className="flex items-center gap-3">
+            <button type="submit" disabled={pending} className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60">
+              {t("myTeam.saveAdjustments")}
+            </button>
+            {state?.ok && <span className="text-sm text-success">{t("myTeam.adjusted")}</span>}
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <button type="submit" name="intent" value="save" disabled={pending} className="rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-60">
+              {t("timesheets.saveDraft")}
+            </button>
+            <button type="submit" name="intent" value="submit" disabled={pending} className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-60">
+              {t("timesheets.submit")}
+            </button>
+          </div>
+        )
       ) : (
         <p className="text-xs text-muted-foreground">{t("timesheets.locked")}</p>
       )}
