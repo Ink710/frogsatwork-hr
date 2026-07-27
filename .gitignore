@@ -36,3 +36,6 @@ pnpm-debug.log*
 
 # Claude Code local tooling (dev-server launch config, etc.) — keep out of the public push
 .claude/
+
+# codebase-memory-mcp knowledge-graph index (regenerable local cache; re-index with the MCP tool)
+.codebase-memory/
