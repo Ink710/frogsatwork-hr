@@ -24,7 +24,7 @@ export default async function MemberTimesheetPage({ params, searchParams }) {
   const [data, t, localeCode] = await Promise.all([getTeamMemberTimesheet(id, sp?.week ?? null), getT(), getLocale()]);
   if (!data) notFound(); // not a report / not an approver
   const locale = INTL_LOCALE[localeCode];
-  const { employee, timesheet, projects } = data;
+  const { employee, timesheet, projects, meetings } = data;
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-10">
@@ -62,6 +62,7 @@ export default async function MemberTimesheetPage({ params, searchParams }) {
         flsa={timesheet.flsa}
         editable={timesheet.adjustable}
         projects={projects}
+        meetings={meetings}
         mode="adjust"
         action={adjustTimesheet.bind(null, employee.id, timesheet.weekStart)}
       />

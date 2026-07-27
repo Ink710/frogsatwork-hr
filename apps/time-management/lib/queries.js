@@ -1,6 +1,6 @@
 import "server-only";
 import { getViewer, withViewer, isHrRole, getSubtreeIds } from "@hris/auth";
-import { computeBalances, pendingHours, canApproveForEmployee, computeTimesheet, weekStart, shiftTimeLabel, hoursBetween, computeAttendanceDay, LEAVE_TYPES } from "@hris/workable-hours";
+import { computeBalances, pendingHours, canApproveForEmployee, computeTimesheet, weekStart, shiftTimeLabel, hoursBetween, computeAttendanceDay, meetingDurationHours, LEAVE_TYPES } from "@hris/workable-hours";
 import { viewerCanApprove } from "@/lib/approvals";
 
 // The employee's CURRENT FLSA classification (drives timesheet overtime eligibility), read from the
@@ -212,6 +212,7 @@ export async function getCurrentTimesheet(weekStartStr = null) {
       workDate: e.workDate.toISOString().slice(0, 10),
       hours: Number(e.hours),
       projectId: e.projectId,
+      meetingId: e.meetingId,
       note: e.note,
     }));
     const status = timesheet?.status ?? "DRAFT";
@@ -876,6 +877,7 @@ export async function getTeamMemberTimesheet(employeeId, weekStr = null) {
       workDate: e.workDate.toISOString().slice(0, 10),
       hours: Number(e.hours),
       projectId: e.projectId,
+      meetingId: e.meetingId,
       note: e.note,
     }));
     const status = timesheet?.status ?? "DRAFT";
@@ -884,6 +886,12 @@ export async function getTeamMemberTimesheet(employeeId, weekStr = null) {
       select: { project: { select: { id: true, name: true, code: true } } },
       orderBy: { project: { name: "asc" } },
     });
+    const mtgRows = await tx.meetingAssignment.findMany({
+      where: { employeeId, meeting: { status: "ACTIVE" } },
+      select: { meeting: { select: { id: true, name: true, dayOfWeek: true, startTime: true, endTime: true } } },
+      orderBy: { meeting: { name: "asc" } },
+    });
+    const meetings = mtgRows.map((r) => r.meeting);
 
     return {
       employee: { id: employeeId, name: `${employee.firstName} ${employee.lastName}`, employeeNumber: employee.employeeNumber },
@@ -899,8 +907,148 @@ export async function getTeamMemberTimesheet(employeeId, weekStr = null) {
         hours: computeTimesheet(entries, flsa),
       },
       projects: projRows.map((r) => r.project),
+      meetings,
+      suggestions: meetingSuggestionsForWeek(meetings, ws),
       prevWeek: dayKey(addDays(ws, -7)),
       nextWeek: dayKey(addDays(ws, 7)),
     };
+  });
+}
+
+// ─── Meetings (M10) ───────────────────────────────────────────────────────────────────────────────
+// Recurring weekly activities, assignment-based exactly like projects: a manager/HR creates a meeting
+// and assigns employees; an employee's timesheet activity picker only shows meetings they're assigned
+// to (the assignment join is RLS'd, so scoping is free). Meeting rows themselves are org-scoped config
+// with no RLS; management is gated here in the app layer. Mirrors the Projects block above.
+
+// Managers + HR manage meetings (mirrors canManageProjects/canManageSchedule).
+export function canManageMeetings(viewer) {
+  return Boolean(viewer?.employeeId) && (isHrRole(viewer.role) || viewer.role === "MANAGER");
+}
+
+// Map assigned meetings onto concrete dates within a week (Monday `ws`). Each meeting recurs on its
+// dayOfWeek (0=Sun…6=Sat); the suggested timesheet contribution is its duration. Pure — no I/O.
+// Returns [{ meetingId, name, workDate, suggestedHours }], one per meeting, for the grid to pre-fill.
+function meetingSuggestionsForWeek(meetings, ws) {
+  return meetings.map((m) => {
+    const offset = m.dayOfWeek === 0 ? 6 : m.dayOfWeek - 1; // days from Monday to the meeting's weekday
+    return {
+      meetingId: m.id,
+      name: m.name,
+      workDate: dayKey(addDays(ws, offset)),
+      suggestedHours: meetingDurationHours(m.startTime, m.endTime),
+    };
+  });
+}
+
+// The viewer's assigned ACTIVE meetings mapped onto one week (default: current) as suggested activity
+// lines. Feeds the timesheet grid's pre-fill: each meeting shows up on its weekday with its duration.
+export async function getWeekMeetings(weekStartStr = null) {
+  const viewer = await getViewer();
+  if (!viewer?.employeeId) return [];
+  const ws = weekStart(weekStartStr ?? new Date());
+  return withViewer(viewer, async (tx) => {
+    const rows = await tx.meetingAssignment.findMany({
+      where: { employeeId: viewer.employeeId, meeting: { status: "ACTIVE" } },
+      select: { meeting: { select: { id: true, name: true, dayOfWeek: true, startTime: true, endTime: true } } },
+      orderBy: { meeting: { name: "asc" } },
+    });
+    return meetingSuggestionsForWeek(rows.map((r) => r.meeting), ws);
+  });
+}
+
+// The viewer's ACTIVE assigned meetings — feeds the timesheet activity picker. RLS scopes the join.
+export async function getMyMeetings() {
+  const viewer = await getViewer();
+  if (!viewer?.employeeId) return [];
+  return withViewer(viewer, async (tx) => {
+    const rows = await tx.meetingAssignment.findMany({
+      where: { employeeId: viewer.employeeId, meeting: { status: "ACTIVE" } },
+      select: { meeting: { select: { id: true, name: true, dayOfWeek: true, startTime: true, endTime: true } } },
+      orderBy: { meeting: { name: "asc" } },
+    });
+    return rows.map((r) => r.meeting);
+  });
+}
+
+// Meetings the viewer manages (their own; HR sees all in the org) + assignee counts. For /meetings.
+// null for non-managers → the page 404s. The assignee _count is RLS-scoped to visible assignments.
+export async function getManagedMeetings() {
+  const viewer = await getViewer();
+  if (!viewer || !canManageMeetings(viewer)) return null;
+  return withViewer(viewer, async (tx) => {
+    const where = isHrRole(viewer.role)
+      ? { orgId: viewer.orgId }
+      : { orgId: viewer.orgId, createdById: viewer.userId };
+    const meetings = await tx.meeting.findMany({
+      where,
+      orderBy: [{ status: "asc" }, { dayOfWeek: "asc" }, { startTime: "asc" }],
+      include: { _count: { select: { assignments: true } } },
+    });
+    return meetings.map((m) => ({
+      id: m.id,
+      name: m.name,
+      dayOfWeek: m.dayOfWeek,
+      startTime: m.startTime,
+      endTime: m.endTime,
+      status: m.status,
+      assigneeCount: m._count.assignments,
+    }));
+  });
+}
+
+// One meeting's detail + its assignees + the employees the viewer may still assign (RLS-scoped active
+// employees, manager→subtree / HR→all, minus those already assigned). null if not manageable → 404.
+export async function getMeetingForManage(meetingId) {
+  const viewer = await getViewer();
+  if (!viewer || !canManageMeetings(viewer) || !meetingId) return null;
+  return withViewer(viewer, async (tx) => {
+    const meeting = await tx.meeting.findUnique({
+      where: { id: meetingId },
+      select: { id: true, name: true, dayOfWeek: true, startTime: true, endTime: true, status: true, createdById: true, orgId: true },
+    });
+    if (!meeting || meeting.orgId !== viewer.orgId) return null;
+    if (!isHrRole(viewer.role) && meeting.createdById !== viewer.userId) return null; // manager: own only
+
+    const assignments = await tx.meetingAssignment.findMany({
+      where: { meetingId },
+      include: { employee: { select: { id: true, firstName: true, lastName: true, employeeNumber: true } } },
+      orderBy: { createdAt: "asc" },
+    });
+    const assignedIds = assignments.map((a) => a.employeeId);
+    const candidates = await tx.employee.findMany({
+      where: { employmentStatus: "ACTIVE", id: { notIn: assignedIds } },
+      select: { id: true, firstName: true, lastName: true, employeeNumber: true },
+      orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+    });
+    return {
+      meeting: { id: meeting.id, name: meeting.name, dayOfWeek: meeting.dayOfWeek, startTime: meeting.startTime, endTime: meeting.endTime, status: meeting.status },
+      assignees: assignments.map((a) => ({
+        assignmentId: a.id,
+        employeeId: a.employeeId,
+        name: `${a.employee.firstName} ${a.employee.lastName}`,
+        employeeNumber: a.employee.employeeNumber,
+      })),
+      candidates: candidates.map((e) => ({
+        id: e.id,
+        name: `${e.firstName} ${e.lastName}`,
+        employeeNumber: e.employeeNumber,
+      })),
+    };
+  });
+}
+
+// A target employee's ACTIVE assigned meetings — for the manager's adjust picker (RLS-scoped, so a
+// manager only sees their subtree's assignments). Generalizes getMyMeetings to any employee.
+export async function getEmployeeMeetings(employeeId) {
+  const viewer = await getViewer();
+  if (!viewer?.employeeId || !employeeId) return [];
+  return withViewer(viewer, async (tx) => {
+    const rows = await tx.meetingAssignment.findMany({
+      where: { employeeId, meeting: { status: "ACTIVE" } },
+      select: { meeting: { select: { id: true, name: true, dayOfWeek: true, startTime: true, endTime: true } } },
+      orderBy: { meeting: { name: "asc" } },
+    });
+    return rows.map((r) => r.meeting);
   });
 }

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getViewer } from "@hris/auth";
 import { formatHours } from "@hris/workable-hours";
-import { getCurrentTimesheet, getMyTimesheets, getMyProjects } from "@/lib/queries";
+import { getCurrentTimesheet, getMyTimesheets, getMyProjects, getMyMeetings, getWeekMeetings } from "@/lib/queries";
 import { getT, getLocale } from "@/lib/i18n.server";
 import { INTL_LOCALE } from "@/lib/i18n";
 import { formatDate } from "@/lib/format";
@@ -16,10 +16,12 @@ export async function generateMetadata() {
 export default async function TimesheetsPage() {
   const viewer = await getViewer();
   if (!viewer) redirect("/login");
-  const [current, history, projects, t, localeCode] = await Promise.all([
+  const [current, history, projects, meetings, suggestions, t, localeCode] = await Promise.all([
     getCurrentTimesheet(),
     getMyTimesheets(),
     getMyProjects(),
+    getMyMeetings(),
+    getWeekMeetings(),
     getT(),
     getLocale(),
   ]);
@@ -62,6 +64,8 @@ export default async function TimesheetsPage() {
           flsa={current.flsa}
           editable={current.editable}
           projects={projects}
+          meetings={meetings}
+          suggestions={suggestions}
         />
       </section>
 

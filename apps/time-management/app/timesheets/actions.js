@@ -36,6 +36,17 @@ async function saveEntries(tx, subjectId, weekStartStr, formData, t) {
     if (projectIds.some((id) => !ok.has(id))) throw new Error(t("err.notAssignedToProject"));
   }
 
+  // Same gate for meeting tags (M10): every tagged meeting must be one the employee is actively assigned to.
+  const meetingIds = [...new Set(parsed.data.map((e) => e.meetingId).filter(Boolean))];
+  if (meetingIds.length) {
+    const assigned = await tx.meetingAssignment.findMany({
+      where: { employeeId: subjectId, meetingId: { in: meetingIds }, meeting: { status: "ACTIVE" } },
+      select: { meetingId: true },
+    });
+    const ok = new Set(assigned.map((a) => a.meetingId));
+    if (meetingIds.some((id) => !ok.has(id))) throw new Error(t("err.notAssignedToMeeting"));
+  }
+
   const ws = weekStart(weekStartStr);
   const we = new Date(ws);
   we.setUTCDate(we.getUTCDate() + 6);
@@ -69,6 +80,7 @@ async function saveEntries(tx, subjectId, weekStartStr, formData, t) {
       workDate: new Date(`${e.workDate}T00:00:00.000Z`),
       hours: e.hours.toFixed(2),
       projectId: e.projectId ?? null,
+      meetingId: e.meetingId ?? null,
       note: e.note ?? null,
     }));
   if (rows.length) await tx.timeEntry.createMany({ data: rows });
@@ -249,6 +261,16 @@ export async function adjustTimesheet(employeeId, weekStartStr, _prevState, form
         const ok = new Set(assigned.map((a) => a.projectId));
         if (projectIds.some((id) => !ok.has(id))) throw new Error(t("err.notAssignedToProject"));
       }
+      // meetingIds must be ones the TARGET is actively assigned to.
+      const meetingIds = [...new Set(parsed.data.map((e) => e.meetingId).filter(Boolean))];
+      if (meetingIds.length) {
+        const assigned = await tx.meetingAssignment.findMany({
+          where: { employeeId, meetingId: { in: meetingIds }, meeting: { status: "ACTIVE" } },
+          select: { meetingId: true },
+        });
+        const ok = new Set(assigned.map((a) => a.meetingId));
+        if (meetingIds.some((id) => !ok.has(id))) throw new Error(t("err.notAssignedToMeeting"));
+      }
 
       const beforeTotal = round2(sheet.entries.reduce((s, e) => s + Number(e.hours), 0));
       await tx.timeEntry.deleteMany({ where: { timesheetId: sheet.id } });
@@ -260,6 +282,7 @@ export async function adjustTimesheet(employeeId, weekStartStr, _prevState, form
           workDate: new Date(`${e.workDate}T00:00:00.000Z`),
           hours: e.hours.toFixed(2),
           projectId: e.projectId ?? null,
+          meetingId: e.meetingId ?? null,
           note: e.note ?? null,
         }));
       if (rows.length) await tx.timeEntry.createMany({ data: rows });

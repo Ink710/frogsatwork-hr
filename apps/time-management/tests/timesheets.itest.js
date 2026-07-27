@@ -198,3 +198,40 @@ describe("project tagging (M8)", () => {
     expect((await saveDraft(WEEK, [{ workDate: WEEK, hours: 8, projectId: "proj-plat" }])).error).toBeTruthy();
   });
 });
+
+describe("meeting tagging (M10)", () => {
+  it("persists a meetingId the employee is assigned to", async () => {
+    getViewer.mockResolvedValue(V.tom); // seeded: assigned to mtg-kickstart
+    const res = await saveDraft(WEEK, [{ workDate: WEEK, hours: 0.5, meetingId: "mtg-kickstart" }]);
+    expect(res.redirect).toBe("REDIRECT:/timesheets");
+    const sheet = await findSheet(V.tom.employeeId);
+    expect(sheet.entries[0].meetingId).toBe("mtg-kickstart");
+    expect(sheet.entries[0].projectId).toBeNull();
+  });
+
+  it("rejects a meetingId the employee is NOT assigned to", async () => {
+    getViewer.mockResolvedValue(V.tom); // NOT assigned to mtg-eng-sync (Diego/Priya are)
+    expect((await saveDraft(WEEK, [{ workDate: WEEK, hours: 1, meetingId: "mtg-eng-sync" }])).error).toBeTruthy();
+  });
+
+  it("rejects a line tagged to both a project and a meeting", async () => {
+    getViewer.mockResolvedValue(V.tom);
+    expect((await saveDraft(WEEK, [{ workDate: WEEK, hours: 8, projectId: "proj-mob", meetingId: "mtg-kickstart" }])).error).toBeTruthy();
+  });
+
+  it("sums a project line + a meeting line on the same day for daily overtime (line-items)", async () => {
+    getViewer.mockResolvedValue(V.tom); // NON_EXEMPT
+    // Monday: 9h project work + 0.5h meeting = 9.5h that day → 1.5h daily OT.
+    const res = await saveDraft(WEEK, [
+      { workDate: WEEK, hours: 9, projectId: "proj-mob" },
+      { workDate: WEEK, hours: 0.5, meetingId: "mtg-kickstart" },
+    ]);
+    expect(res.redirect).toBe("REDIRECT:/timesheets");
+    const sheet = await findSheet(V.tom.employeeId);
+    expect(sheet.entries).toHaveLength(2); // two lines on the same day, both persisted
+
+    const current = await getCurrentTimesheet(WEEK);
+    expect(current.hours.total).toBe(9.5);
+    expect(current.hours.overtime).toBe(1.5);
+  });
+});

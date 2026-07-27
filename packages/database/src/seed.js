@@ -566,6 +566,35 @@ async function main() {
     data: { projectId: "proj-mob" },
   });
 
+  // 15. Meetings (M10) — recurring weekly activities, assignment-based like projects. Marcus programs
+  //     two meetings for his Engineering reports; each surfaces on their timesheet as a selectable
+  //     activity with a suggested duration on its weekday. dayOfWeek: 0=Sun … 6=Sat (getUTCDay).
+  const MEETINGS = [
+    { id: "mtg-kickstart", name: "Week Kickstart", dayOfWeek: 1, startTime: "09:00", endTime: "09:30" }, // Mon
+    { id: "mtg-eng-sync", name: "Engineering Sync", dayOfWeek: 3, startTime: "14:00", endTime: "15:00" }, // Wed
+  ];
+  for (const m of MEETINGS) {
+    await prisma.meeting.upsert({
+      where: { id: m.id },
+      update: { name: m.name, dayOfWeek: m.dayOfWeek, startTime: m.startTime, endTime: m.endTime },
+      create: { id: m.id, ...m, status: "ACTIVE", orgId: ORG_ID, createdById: PEOPLE.marcus.userId },
+    });
+  }
+  const MEETING_ASSIGNMENTS = [
+    { id: "ma-kickstart-diego", meeting: "mtg-kickstart", emp: PEOPLE.diego.empId },
+    { id: "ma-kickstart-priya", meeting: "mtg-kickstart", emp: PEOPLE.priya.empId },
+    { id: "ma-kickstart-tom", meeting: "mtg-kickstart", emp: PEOPLE.tom.empId },
+    { id: "ma-sync-diego", meeting: "mtg-eng-sync", emp: PEOPLE.diego.empId },
+    { id: "ma-sync-priya", meeting: "mtg-eng-sync", emp: PEOPLE.priya.empId },
+  ];
+  for (const a of MEETING_ASSIGNMENTS) {
+    await prisma.meetingAssignment.upsert({
+      where: { id: a.id },
+      update: {},
+      create: { id: a.id, meetingId: a.meeting, employeeId: a.emp, assignedById: PEOPLE.marcus.userId },
+    });
+  }
+
   const counts = {
     organizations: await prisma.organization.count(),
     users: await prisma.user.count(),
@@ -581,6 +610,8 @@ async function main() {
     clockEvents: await prisma.clockEvent.count(),
     projects: await prisma.project.count(),
     projectAssignments: await prisma.projectAssignment.count(),
+    meetings: await prisma.meeting.count(),
+    meetingAssignments: await prisma.meetingAssignment.count(),
   };
   console.log("Seed complete:", counts);
 }
