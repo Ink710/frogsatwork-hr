@@ -29,7 +29,7 @@ vi.mock("@hris/auth", async () => {
 
 import { getViewer, withViewer } from "@hris/auth";
 import { clockIn, clockOut, correctClock } from "../app/attendance/actions.js";
-import { getClockStatus, getMyAttendance, getTeamAttendance, getCorrectionTarget } from "../lib/queries.js";
+import { getClockStatus, getMyAttendance, getTeamAttendance, getTeamAttendanceWeek, getCorrectionTarget } from "../lib/queries.js";
 
 const ORG = "10000000-0000-0000-0000-000000000001";
 const V = {
@@ -111,6 +111,52 @@ describe("RLS scoping (getMyAttendance / getTeamAttendance)", () => {
     expect(rowFor(team, V.diego.employeeId).status).toBe("LATE");
     expect(rowFor(team, V.tom.employeeId).status).toBe("SHORT");
     expect(rowFor(team, V.marcus.employeeId)).toBeUndefined(); // never acts on self
+  });
+});
+
+describe("weekly roster (getTeamAttendanceWeek, M11)", () => {
+  const cellFor = (row, date) => row.cells.find((c) => c.date === date);
+
+  it("an EMPLOYEE gets null", async () => {
+    getViewer.mockResolvedValue(V.diego);
+    expect(await getTeamAttendanceWeek("2026-07-20")).toBeNull();
+  });
+
+  it("a manager sees a 7-day grid for their reports (not themselves) with per-cell variance", async () => {
+    getViewer.mockResolvedValue(V.marcus);
+    const week = await getTeamAttendanceWeek("2026-07-20");
+    expect(week.days).toHaveLength(7);
+    expect(week.days[0]).toBe("2026-07-20"); // Monday
+    expect(rowFor(week, V.marcus.employeeId)).toBeUndefined(); // never acts on self
+
+    const diego = rowFor(week, V.diego.employeeId);
+    expect(diego.cells).toHaveLength(7);
+    expect(cellFor(diego, "2026-07-20").status).toBe("LATE"); // seeded late punch Mon
+    expect(cellFor(diego, "2026-07-22").status).toBe("ABSENT"); // scheduled Wed, no punch
+    expect(cellFor(rowFor(week, V.tom.employeeId), "2026-07-20").status).toBe("SHORT");
+    expect(cellFor(rowFor(week, V.priya.employeeId), "2026-07-23").status).toBe("OPEN"); // open IN Thu
+  });
+
+  it("overlays an APPROVED leave as ON_LEAVE (overriding ABSENT)", async () => {
+    // Diego is scheduled Wed 2026-07-22 with no punch → ABSENT. Approve a leave covering that day.
+    await asHr((tx) =>
+      tx.leaveRequest.create({
+        data: {
+          employeeId: V.diego.employeeId,
+          type: "VACATION",
+          startDate: new Date("2026-07-22T00:00:00.000Z"),
+          endDate: new Date("2026-07-22T00:00:00.000Z"),
+          hours: "8.00",
+          status: "APPROVED",
+          createdById: V.ana.userId,
+        },
+      }),
+    );
+
+    getViewer.mockResolvedValue(V.marcus);
+    const diego = rowFor(await getTeamAttendanceWeek("2026-07-20"), V.diego.employeeId);
+    expect(cellFor(diego, "2026-07-22").status).toBe("ON_LEAVE"); // overlay wins over ABSENT
+    expect(cellFor(diego, "2026-07-20").status).toBe("LATE"); // other days unaffected
   });
 });
 

@@ -9,7 +9,10 @@ export const CLOCK_EVENT_TYPES = ["IN", "OUT"] as const;
 export type ClockEventType = (typeof CLOCK_EVENT_TYPES)[number];
 
 // The derived per-day verdicts. NONE = nothing to show (no punches, no scheduled shift).
-export const ATTENDANCE_STATUSES = ["ON_TIME", "LATE", "SHORT", "ABSENT", "NO_SCHEDULE", "OPEN", "NONE"] as const;
+// ON_LEAVE is NOT produced by computeAttendanceDay (which is leave-unaware) — it's part of the
+// vocabulary so a roster view can OVERRIDE a cell when an approved leave covers the day (a planned
+// absence, not an exception). See getTeamAttendanceWeek (M11).
+export const ATTENDANCE_STATUSES = ["ON_TIME", "LATE", "SHORT", "ABSENT", "NO_SCHEDULE", "OPEN", "ON_LEAVE", "NONE"] as const;
 export type AttendanceStatus = (typeof ATTENDANCE_STATUSES)[number];
 
 // Minutes an arrival may trail the scheduled start before it counts as LATE (clock rounding + a

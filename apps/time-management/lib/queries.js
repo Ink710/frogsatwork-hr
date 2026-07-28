@@ -573,6 +573,91 @@ export async function getTeamAttendance(dateStr = null) {
   });
 }
 
+// The team's attendance for a WHOLE WEEK (managers/HR) — the roster grid (M11). Same scoping as
+// getTeamAttendance (RLS + canApproveForEmployee + app_org_chart names), aggregated across the 7 days
+// of the week. Each cell is the derived per-day verdict; a day covered by an APPROVED leave is
+// OVERRIDDEN to ON_LEAVE (a planned absence, not an ABSENT exception). null for non-approvers → 404.
+export async function getTeamAttendanceWeek(weekStr = null) {
+  const viewer = await getViewer();
+  if (!viewer || !isApprover(viewer)) return null;
+  const ws = weekStart(weekStr ?? new Date());
+  const weEnd = addDays(ws, 7); // exclusive upper bound
+  const dayDates = Array.from({ length: 7 }, (_, i) => addDays(ws, i));
+  const days = dayDates.map(dayKey);
+
+  return withViewer(viewer, async (tx) => {
+    const subtreeIds = viewer.role === "MANAGER" ? await getSubtreeIds(viewer.employeeId, tx) : undefined;
+    const events = await tx.clockEvent.findMany({
+      where: { at: { gte: ws, lt: weEnd } },
+      orderBy: { at: "asc" },
+      select: { employeeId: true, type: true, at: true },
+    });
+    // Only ASSIGNED published shifts map to a person's attendance (open shifts are nobody's punch).
+    const shifts = await tx.shift.findMany({
+      where: { published: true, employeeId: { not: null }, startAt: { gte: ws, lt: weEnd } },
+      select: { employeeId: true, startAt: true, endAt: true },
+    });
+    // Approved leave overlapping the week → the ON_LEAVE overlay.
+    const leaves = await tx.leaveRequest.findMany({
+      where: { status: "APPROVED", startDate: { lt: weEnd }, endDate: { gte: ws } },
+      select: { employeeId: true, startDate: true, endDate: true },
+    });
+
+    // Index events + shifts by "employeeId|dayKey"; leave by the same key across its covered days.
+    const eventsByKey = {};
+    for (const e of events) (eventsByKey[`${e.employeeId}|${dayKey(e.at)}`] ??= []).push(e);
+    const shiftByKey = {};
+    for (const s of shifts) shiftByKey[`${s.employeeId}|${dayKey(s.startAt)}`] = s;
+    const onLeaveKeys = new Set();
+    for (const l of leaves) {
+      const from = startOfUtcDay(l.startDate).getTime();
+      const to = startOfUtcDay(l.endDate).getTime();
+      for (const d of dayDates) {
+        if (d.getTime() >= from && d.getTime() <= to) onLeaveKeys.add(`${l.employeeId}|${dayKey(d)}`);
+      }
+    }
+
+    // Roster population: anyone who punched, was scheduled, or is on leave this week — in approver
+    // scope, self excluded.
+    const subjectIds = [
+      ...new Set([
+        ...events.map((e) => e.employeeId),
+        ...shifts.map((s) => s.employeeId),
+        ...leaves.map((l) => l.employeeId),
+      ]),
+    ].filter((id) => canApproveForEmployee(viewer, id, { subtreeIds }));
+
+    const roster = await tx.$queryRaw`SELECT id, "firstName", "lastName" FROM app_org_chart(${viewer.orgId})`;
+    const nameById = Object.fromEntries(roster.map((r) => [r.id, `${r.firstName} ${r.lastName}`]));
+
+    const rows = subjectIds
+      .map((id) => {
+        let totalWorked = 0;
+        const cells = days.map((d) => {
+          const key = `${id}|${d}`;
+          const shift = shiftByKey[key] ?? null;
+          const computed = computeAttendanceDay(eventsByKey[key] ?? [], shift);
+          const cell = serializeAttendanceDay(d, computed, shift);
+          if (onLeaveKeys.has(key)) cell.status = "ON_LEAVE"; // planned absence overrides the verdict
+          totalWorked += cell.workedHours;
+          return cell;
+        });
+        return { employeeId: id, name: nameById[id] ?? "—", cells, totalWorked: Math.round(totalWorked * 100) / 100 };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    return {
+      weekStart: dayKey(ws),
+      weekEnd: dayKey(addDays(ws, 6)),
+      prevWeek: dayKey(addDays(ws, -7)),
+      nextWeek: dayKey(addDays(ws, 7)),
+      days,
+      today: dayKey(startOfUtcDay(new Date())),
+      rows,
+    };
+  });
+}
+
 // The subject of a clock correction (name + id), for the correction form. Gated to an approver who
 // may act on that subject; null otherwise → the page 404s. Name via app_org_chart (structural only).
 export async function getCorrectionTarget(employeeId) {

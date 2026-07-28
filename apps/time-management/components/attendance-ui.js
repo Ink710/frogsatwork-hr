@@ -12,6 +12,7 @@ const STATUS_STYLES = {
   SHORT: "bg-warning/10 text-warning",
   ABSENT: "bg-destructive/10 text-destructive",
   OPEN: "bg-info/10 text-info",
+  ON_LEAVE: "bg-primary/10 text-primary", // planned absence — a calm accent, not an exception color
   NO_SCHEDULE: "bg-muted text-muted-foreground",
   NONE: "bg-muted text-muted-foreground",
 };
