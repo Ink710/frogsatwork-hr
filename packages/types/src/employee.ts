@@ -54,7 +54,7 @@ export const ASSIGNABLE_ROLES = ["EMPLOYEE", "MANAGER", "HR_GENERALIST", "HR_ADM
 export const employeeCreateSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
-  email: z.string().email(),
+  email: z.string().trim().toLowerCase().email(),
   // Any date — this establishes the record (a hire can be backdated for existing staff).
   hireDate: z
     .string()
@@ -114,7 +114,7 @@ export const emergencyContactSchema = z.object({
 export const detailsCorrectionSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
-  email: z.string().email(),
+  email: z.string().trim().toLowerCase().email(),
   phone: z.string().max(30).optional(),
   location: z.string().max(120).optional(),
   workSchedule: z.string().max(120).optional(),

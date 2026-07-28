@@ -8,6 +8,8 @@ import { viewerCanApprove } from "@/lib/approvals";
 import { getT } from "@/lib/i18n.server";
 
 function errorMessage(e) {
+  // Never surface internal DB errors (Prisma throws PrismaClient* errors) — only intentional messages.
+  if (e instanceof Error && e.name.startsWith("PrismaClient")) return undefined;
   return e instanceof Error ? e.message : undefined;
 }
 
@@ -213,12 +215,15 @@ export async function approveSwap(swapId, _prevState, formData) {
         if (!target) throw new Error(t("err.colleagueNotInDept"));
         newEmployeeId = target.id;
       }
-      // RLS shift_write (app_can_manage_shift) admits the reassignment for the dept manager/HR.
-      await tx.shift.update({ where: { id: swap.shiftId }, data: { employeeId: newEmployeeId } });
-      await tx.shiftSwapRequest.update({
-        where: { id: swapId },
+      // Claim the swap atomically FIRST (PENDING→APPROVED) so only one concurrent approver proceeds to
+      // reassign the shift — no double reassignment / double audit under a race.
+      const { count } = await tx.shiftSwapRequest.updateMany({
+        where: { id: swapId, status: "PENDING" },
         data: { status: "APPROVED", reviewedById: viewer.userId, reviewedAt: new Date(), decisionNote: parsed.data.decisionNote ?? null },
       });
+      if (count === 0) throw new Error(t("err.onlyPendingReviewed"));
+      // RLS shift_write (app_can_manage_shift) admits the reassignment for the dept manager/HR.
+      await tx.shift.update({ where: { id: swap.shiftId }, data: { employeeId: newEmployeeId } });
       await tx.employeeAuditLog.create({
         data: {
           employeeId: swap.requestedByEmployeeId,
@@ -254,10 +259,12 @@ export async function denySwap(swapId, _prevState, formData) {
       if (!(await viewerCanApprove(viewer, swap.requestedByEmployeeId, tx))) {
         throw new Error(t("err.notAuthorizedReview"));
       }
-      await tx.shiftSwapRequest.update({
-        where: { id: swapId },
+      // Atomic PENDING→DENIED so concurrent decisions can't both land.
+      const { count } = await tx.shiftSwapRequest.updateMany({
+        where: { id: swapId, status: "PENDING" },
         data: { status: "DENIED", reviewedById: viewer.userId, reviewedAt: new Date(), decisionNote: parsed.data.decisionNote ?? null },
       });
+      if (count === 0) throw new Error(t("err.onlyPendingReviewed"));
       await tx.employeeAuditLog.create({
         data: {
           employeeId: swap.requestedByEmployeeId,

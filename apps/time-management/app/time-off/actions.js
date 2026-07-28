@@ -11,6 +11,8 @@ import { getT } from "@/lib/i18n.server";
 // What every form action returns to useActionState: { error } on failure, or it never returns
 // (redirects) on success. Mirrors the employee-records action shape.
 function errorMessage(e) {
+  // Never surface internal DB errors (Prisma throws PrismaClient* errors) — only intentional messages.
+  if (e instanceof Error && e.name.startsWith("PrismaClient")) return undefined;
   return e instanceof Error ? e.message : undefined;
 }
 
@@ -108,10 +110,14 @@ export async function approveTimeOff(requestId, _prevState, formData) {
         throw new Error(t("err.notAuthorizedApprove"));
       }
 
-      await tx.leaveRequest.update({
-        where: { id: requestId },
+      // Atomic PENDING→APPROVED: the pre-check above catches the common sequential double-click; this
+      // conditional update closes the true race (two approvers reading PENDING at once) — only one wins,
+      // so the USAGE ledger below is written exactly once.
+      const { count } = await tx.leaveRequest.updateMany({
+        where: { id: requestId, status: "PENDING" },
         data: { status: "APPROVED", reviewedById: viewer.userId, reviewedAt: new Date(), decisionNote: parsed.data.decisionNote ?? null },
       });
+      if (count === 0) throw new Error(t("err.onlyPendingApproved"));
       // USAGE ledger row: negative hours, linked to the request. This is what moves the balance.
       await tx.leaveLedgerEntry.create({
         data: {
@@ -162,10 +168,12 @@ export async function denyTimeOff(requestId, _prevState, formData) {
         throw new Error(t("err.notAuthorizedDeny"));
       }
 
-      await tx.leaveRequest.update({
-        where: { id: requestId },
+      // Atomic PENDING→DENIED so concurrent decisions can't both land.
+      const { count } = await tx.leaveRequest.updateMany({
+        where: { id: requestId, status: "PENDING" },
         data: { status: "DENIED", reviewedById: viewer.userId, reviewedAt: new Date(), decisionNote: parsed.data.decisionNote ?? null },
       });
+      if (count === 0) throw new Error(t("err.onlyPendingDenied"));
       await tx.employeeAuditLog.create({
         data: {
           employeeId: request.employeeId,
@@ -207,7 +215,12 @@ export async function cancelTimeOff(requestId, _prevState) {
       }
 
       const wasApproved = request.status === "APPROVED";
-      await tx.leaveRequest.update({ where: { id: requestId }, data: { status: "CANCELLED" } });
+      // Atomic cancel from PENDING or APPROVED so two concurrent cancels can't both write a REVERSAL.
+      const { count } = await tx.leaveRequest.updateMany({
+        where: { id: requestId, status: { in: ["PENDING", "APPROVED"] } },
+        data: { status: "CANCELLED" },
+      });
+      if (count === 0) throw new Error(t("err.onlyCancellable"));
       if (wasApproved) {
         // Give the deducted hours back with a REVERSAL entry (positive).
         await tx.leaveLedgerEntry.create({

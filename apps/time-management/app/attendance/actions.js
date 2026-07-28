@@ -8,6 +8,8 @@ import { viewerCanApprove } from "@/lib/approvals";
 import { getT } from "@/lib/i18n.server";
 
 function errorMessage(e) {
+  // Never surface internal DB errors (Prisma throws PrismaClient* errors) — only intentional messages.
+  if (e instanceof Error && e.name.startsWith("PrismaClient")) return undefined;
   return e instanceof Error ? e.message : undefined;
 }
 

@@ -8,6 +8,8 @@ import { viewerCanApprove } from "@/lib/approvals";
 import { getT } from "@/lib/i18n.server";
 
 function errorMessage(e) {
+  // Never surface internal DB errors (Prisma throws PrismaClient* errors) — only intentional messages.
+  if (e instanceof Error && e.name.startsWith("PrismaClient")) return undefined;
   return e instanceof Error ? e.message : undefined;
 }
 
@@ -152,10 +154,12 @@ export async function approveTimesheet(timesheetId, _prevState, formData) {
       if (!(await viewerCanApprove(viewer, ts.employeeId, tx))) {
         throw new Error(t("err.notAuthorizedReviewTimesheet"));
       }
-      await tx.timesheet.update({
-        where: { id: timesheetId },
+      // Atomic SUBMITTED→APPROVED so two concurrent reviewers can't both process it.
+      const { count } = await tx.timesheet.updateMany({
+        where: { id: timesheetId, status: "SUBMITTED" },
         data: { status: "APPROVED", reviewedById: viewer.userId, reviewedAt: new Date(), decisionNote: parsed.data.decisionNote ?? null },
       });
+      if (count === 0) throw new Error(t("err.onlySubmittedReviewed"));
       await tx.employeeAuditLog.create({
         data: {
           employeeId: ts.employeeId,
@@ -192,10 +196,12 @@ export async function rejectTimesheet(timesheetId, _prevState, formData) {
       if (!(await viewerCanApprove(viewer, ts.employeeId, tx))) {
         throw new Error(t("err.notAuthorizedReviewTimesheet"));
       }
-      await tx.timesheet.update({
-        where: { id: timesheetId },
+      // Atomic SUBMITTED→REJECTED so two concurrent reviewers can't both process it.
+      const { count } = await tx.timesheet.updateMany({
+        where: { id: timesheetId, status: "SUBMITTED" },
         data: { status: "REJECTED", reviewedById: viewer.userId, reviewedAt: new Date(), decisionNote: parsed.data.decisionNote ?? null },
       });
+      if (count === 0) throw new Error(t("err.onlySubmittedReviewed"));
       await tx.employeeAuditLog.create({
         data: {
           employeeId: ts.employeeId,

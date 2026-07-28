@@ -39,6 +39,8 @@ type FormState = { error: string } | { ok: true } | undefined;
 // narrows it safely: the thrown Error's message, or undefined for anything else (so callers can
 // `?? "fallback"`). Every action's catch uses it instead of the old `e.message`.
 function errorMessage(e: unknown): string | undefined {
+  // Never surface internal DB errors (Prisma throws PrismaClient* errors) — only intentional messages.
+  if (e instanceof Error && e.name.startsWith("PrismaClient")) return undefined;
   return e instanceof Error ? e.message : undefined;
 }
 
