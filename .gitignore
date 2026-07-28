@@ -39,3 +39,6 @@ pnpm-debug.log*
 
 # codebase-memory-mcp knowledge-graph index (regenerable local cache; re-index with the MCP tool)
 .codebase-memory/
+
+# local architecture / onboarding guide — kept out of the public push
+docs/ARCHITECTURE.md
