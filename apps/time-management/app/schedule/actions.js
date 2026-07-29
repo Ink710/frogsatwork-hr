@@ -3,9 +3,9 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getViewer, withViewer, isHrRole } from "@hris/auth";
-import { shiftSchema, shiftSwapSchema, decisionSchema, toShiftInstant, weekStart } from "@hris/workable-hours";
+import { shiftSchema, shiftSwapSchema, decisionSchema, zonedWallClockToUtc, weekStart } from "@hris/workable-hours";
 import { viewerCanApprove } from "@/lib/approvals";
-import { getT } from "@/lib/i18n.server";
+import { getT, getTimeZone } from "@/lib/i18n.server";
 
 function errorMessage(e) {
   // Never surface internal DB errors (Prisma throws PrismaClient* errors) — only intentional messages.
@@ -26,7 +26,7 @@ async function requireDepartment(tx, viewer, t) {
   return me.departmentId;
 }
 
-async function resolveShiftFields(tx, dept, input, t) {
+async function resolveShiftFields(tx, dept, input, tz, t) {
   // A named assignee must belong to this department (RLS-scoped lookup); absent = open shift.
   if (input.employeeId) {
     const assignee = await tx.employee.findFirst({ where: { id: input.employeeId, departmentId: dept }, select: { id: true } });
@@ -34,8 +34,9 @@ async function resolveShiftFields(tx, dept, input, t) {
   }
   return {
     employeeId: input.employeeId ?? null,
-    startAt: toShiftInstant(input.date, input.start),
-    endAt: toShiftInstant(input.date, input.end),
+    // The typed HH:MM is wall-clock in the manager's timezone → store the true UTC instant.
+    startAt: zonedWallClockToUtc(input.date, input.start, tz),
+    endAt: zonedWallClockToUtc(input.date, input.end, tz),
     role: input.role ?? null,
     note: input.note ?? null,
   };
@@ -60,11 +61,12 @@ export async function createShift(_prevState, formData) {
   const parsed = parseShift(formData);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? t("err.invalidInput") };
   const input = parsed.data;
+  const tz = await getTimeZone();
 
   try {
     await withViewer(viewer, async (tx) => {
       const dept = await requireDepartment(tx, viewer, t);
-      const fields = await resolveShiftFields(tx, dept, input, t);
+      const fields = await resolveShiftFields(tx, dept, input, tz, t);
       await tx.shift.create({ data: { departmentId: dept, published: false, createdById: viewer.userId, ...fields } });
     });
   } catch (e) {
@@ -83,12 +85,13 @@ export async function updateShift(shiftId, _prevState, formData) {
   const parsed = parseShift(formData);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? t("err.invalidInput") };
   const input = parsed.data;
+  const tz = await getTimeZone();
 
   try {
     await withViewer(viewer, async (tx) => {
       const existing = await tx.shift.findUnique({ where: { id: shiftId }, select: { departmentId: true } });
       if (!existing) throw new Error(t("err.shiftNotFound")); // RLS: not visible/manageable
-      const fields = await resolveShiftFields(tx, existing.departmentId, input, t);
+      const fields = await resolveShiftFields(tx, existing.departmentId, input, tz, t);
       await tx.shift.update({ where: { id: shiftId }, data: fields });
     });
   } catch (e) {

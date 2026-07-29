@@ -30,13 +30,53 @@ export const shiftSwapSchema = z.object({
 export type ShiftInput = z.infer<typeof shiftSchema>;
 export type ShiftSwapInput = z.infer<typeof shiftSwapSchema>;
 
-// Combine a calendar date + a wall-clock time into a UTC instant (how shift start/end are stored).
-export function toShiftInstant(date: string, time: string): Date {
-  return new Date(`${date}T${time}:00.000Z`);
+// How far a timezone's wall-clock sits from UTC at a given instant, in milliseconds (negative for
+// zones behind UTC, e.g. −6h for America/Mexico_City). Uses Intl to read the zone's wall-clock for
+// the instant and diffs it against UTC — the standard no-dependency way to get a real, DST-aware offset.
+function zoneOffsetMs(utcInstant: Date, timeZone: string): number {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    })
+      .formatToParts(utcInstant)
+      .map((p) => [p.type, p.value]),
+  ) as Record<string, string>;
+  const wallAsUtc = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second);
+  return wallAsUtc - utcInstant.getTime();
 }
 
-// The "HH:MM" wall-clock label of a stored shift instant (UTC components, matching how it was saved).
-export function shiftTimeLabel(instant: Date | string | number): string {
-  const d = new Date(instant);
-  return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+// Interpret a calendar date + wall-clock time AS wall-clock in `timeZone`, and return the true UTC
+// instant it corresponds to. e.g. ("2026-07-20","09:00","America/Mexico_City") → 15:00Z. With the
+// default "UTC" it equals the old fake-UTC behavior (09:00 → 09:00Z), so existing callers/tests are
+// unchanged. One offset correction is exact except within the ~1h DST-transition window (acceptable).
+export function zonedWallClockToUtc(date: string, time: string, timeZone = "UTC"): Date {
+  const [y, mo, d] = date.split("-").map(Number);
+  const [h, mi] = time.split(":").map(Number);
+  const guess = Date.UTC(y, mo - 1, d, h, mi);
+  const offset = zoneOffsetMs(new Date(guess), timeZone);
+  return new Date(guess - offset);
+}
+
+// Back-compat alias: a UTC-framed wall-clock instant (used by tz-independent duration math, e.g.
+// meetingDurationHours). New code should pass an explicit timezone via zonedWallClockToUtc.
+export function toShiftInstant(date: string, time: string): Date {
+  return zonedWallClockToUtc(date, time, "UTC");
+}
+
+// The "HH:MM" wall-clock label of a stored UTC instant, rendered in `timeZone` (default "UTC" keeps
+// the old behavior). This is how a true-UTC punch/shift instant is shown in the viewer's local time.
+export function shiftTimeLabel(instant: Date | string | number, timeZone = "UTC"): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(instant));
 }

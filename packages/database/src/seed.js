@@ -476,6 +476,24 @@ async function main() {
   // 12. A PUBLISHED week of Engineering shifts (week of Mon 2026-07-20) so employees see a posted
   //     department schedule. Includes one OPEN (unassigned) shift. Built by Marcus (Eng manager).
   //     Times are UTC (date + wall-clock). Idempotent on readable ids.
+  // Demo timezone: shifts + punches are stored as true UTC instants built from wall-clock in this
+  // zone, so they display naturally (09:00 etc.) for a viewer in it. Keep in sync with the app's
+  // DEFAULT_TIME_ZONE (apps/time-management/lib/timezone.js). zonedToUtc mirrors zonedWallClockToUtc
+  // in @hris/workable-hours (inlined so the seed keeps no app dependency).
+  const DEMO_TIME_ZONE = "America/Mexico_City";
+  const zonedToUtc = (date, time, timeZone = DEMO_TIME_ZONE) => {
+    const [y, mo, d] = date.split("-").map(Number);
+    const [h, mi] = time.split(":").map(Number);
+    const guess = Date.UTC(y, mo - 1, d, h, mi);
+    const p = Object.fromEntries(
+      new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
+        .formatToParts(new Date(guess))
+        .map((x) => [x.type, x.value]),
+    );
+    const wallAsUtc = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second);
+    return new Date(guess - (wallAsUtc - guess));
+  };
+
   const SHIFTS = [
     { id: "sh-eng-0720-1", emp: PEOPLE.diego.empId, date: "2026-07-20", start: "09:00", end: "17:00", role: "Engineering" },
     { id: "sh-eng-0720-2", emp: PEOPLE.diego.empId, date: "2026-07-21", start: "09:00", end: "17:00", role: "Engineering" },
@@ -493,8 +511,8 @@ async function main() {
         id: s.id,
         departmentId: DEPT.eng,
         employeeId: s.emp,
-        startAt: new Date(`${s.date}T${s.start}:00.000Z`),
-        endAt: new Date(`${s.date}T${s.end}:00.000Z`),
+        startAt: zonedToUtc(s.date, s.start),
+        endAt: zonedToUtc(s.date, s.end),
         role: s.role,
         published: true,
         createdById: PEOPLE.marcus.userId,
@@ -512,11 +530,11 @@ async function main() {
   //     Diego is deliberately left with NO punch on 2026-07-21 so a fresh self clock-in demos cleanly.
   //     `createdById` is the employee's own user (a self / WEB punch). Idempotent on readable ids.
   const CLOCK_EVENTS = [
-    { id: "ce-diego-0720-in", emp: PEOPLE.diego.empId, by: PEOPLE.diego.userId, type: "IN", at: "2026-07-20T09:20:00.000Z" },
-    { id: "ce-diego-0720-out", emp: PEOPLE.diego.empId, by: PEOPLE.diego.userId, type: "OUT", at: "2026-07-20T17:05:00.000Z" },
-    { id: "ce-tom-0720-in", emp: PEOPLE.tom.empId, by: PEOPLE.tom.userId, type: "IN", at: "2026-07-20T10:00:00.000Z" },
-    { id: "ce-tom-0720-out", emp: PEOPLE.tom.empId, by: PEOPLE.tom.userId, type: "OUT", at: "2026-07-20T13:00:00.000Z" },
-    { id: "ce-priya-0723-in", emp: PEOPLE.priya.empId, by: PEOPLE.priya.userId, type: "IN", at: "2026-07-23T09:00:00.000Z" },
+    { id: "ce-diego-0720-in", emp: PEOPLE.diego.empId, by: PEOPLE.diego.userId, type: "IN", date: "2026-07-20", time: "09:20" },
+    { id: "ce-diego-0720-out", emp: PEOPLE.diego.empId, by: PEOPLE.diego.userId, type: "OUT", date: "2026-07-20", time: "17:05" },
+    { id: "ce-tom-0720-in", emp: PEOPLE.tom.empId, by: PEOPLE.tom.userId, type: "IN", date: "2026-07-20", time: "10:00" },
+    { id: "ce-tom-0720-out", emp: PEOPLE.tom.empId, by: PEOPLE.tom.userId, type: "OUT", date: "2026-07-20", time: "13:00" },
+    { id: "ce-priya-0723-in", emp: PEOPLE.priya.empId, by: PEOPLE.priya.userId, type: "IN", date: "2026-07-23", time: "09:00" },
   ];
   for (const c of CLOCK_EVENTS) {
     await prisma.clockEvent.upsert({
@@ -528,7 +546,7 @@ async function main() {
         createdById: c.by,
         type: c.type,
         source: "WEB",
-        at: new Date(c.at),
+        at: zonedToUtc(c.date, c.time),
       },
     });
   }

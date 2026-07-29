@@ -2,6 +2,7 @@ import "server-only";
 import { getViewer, withViewer, isHrRole, getSubtreeIds } from "@hris/auth";
 import { computeBalances, pendingHours, canApproveForEmployee, computeTimesheet, weekStart, shiftTimeLabel, hoursBetween, computeAttendanceDay, meetingDurationHours, LEAVE_TYPES } from "@hris/workable-hours";
 import { viewerCanApprove } from "@/lib/approvals";
+import { getTimeZone } from "@/lib/i18n.server";
 
 // The employee's CURRENT FLSA classification (drives timesheet overtime eligibility), read from the
 // open EmployeeHistory row — the same "current version" lookup employee-records uses for edits.
@@ -267,6 +268,7 @@ export async function getWeekSchedule(weekStartStr = null) {
   if (!viewer?.employeeId) return null;
   const ws = weekStart(weekStartStr ?? new Date());
   const weStart = addDays(ws, 7); // exclusive upper bound
+  const tz = await getTimeZone();
 
   return withViewer(viewer, async (tx) => {
     const me = await tx.employee.findUnique({
@@ -294,8 +296,8 @@ export async function getWeekSchedule(weekStartStr = null) {
         id: s.id,
         isMine: s.employeeId === viewer.employeeId,
         employeeName: s.employeeId ? (nameById[s.employeeId] ?? null) : null, // null = open shift
-        startTime: shiftTimeLabel(s.startAt),
-        endTime: shiftTimeLabel(s.endAt),
+        startTime: shiftTimeLabel(s.startAt, tz),
+        endTime: shiftTimeLabel(s.endAt, tz),
         hours: hoursBetween(s.startAt, s.endAt),
         role: s.role,
         note: s.note,
@@ -341,6 +343,7 @@ export async function getShiftForEdit(shiftId) {
   const form = await getShiftFormData();
   if (!form) return null;
   const viewer = await getViewer();
+  const tz = await getTimeZone();
   return withViewer(viewer, async (tx) => {
     const s = await tx.shift.findUnique({ where: { id: shiftId } }); // RLS-scoped
     if (!s) return null;
@@ -350,8 +353,8 @@ export async function getShiftForEdit(shiftId) {
         id: s.id,
         employeeId: s.employeeId,
         date: dayKey(s.startAt),
-        start: shiftTimeLabel(s.startAt),
-        end: shiftTimeLabel(s.endAt),
+        start: shiftTimeLabel(s.startAt, tz),
+        end: shiftTimeLabel(s.endAt, tz),
         role: s.role,
         note: s.note,
         published: s.published,
@@ -366,6 +369,7 @@ export async function getShiftForEdit(shiftId) {
 export async function getSwapForm(shiftId) {
   const viewer = await getViewer();
   if (!viewer?.employeeId) return null;
+  const tz = await getTimeZone();
   return withViewer(viewer, async (tx) => {
     const shift = await tx.shift.findUnique({
       where: { id: shiftId },
@@ -379,7 +383,7 @@ export async function getSwapForm(shiftId) {
       .map((r) => ({ id: r.id, name: `${r.firstName} ${r.lastName}` }));
 
     return {
-      shift: { id: shift.id, date: dayKey(shift.startAt), start: shiftTimeLabel(shift.startAt), end: shiftTimeLabel(shift.endAt) },
+      shift: { id: shift.id, date: dayKey(shift.startAt), start: shiftTimeLabel(shift.startAt, tz), end: shiftTimeLabel(shift.endAt, tz) },
       targets,
     };
   });
@@ -390,6 +394,7 @@ export async function getSwapForm(shiftId) {
 export async function getPendingSwaps() {
   const viewer = await getViewer();
   if (!viewer || !isApprover(viewer)) return [];
+  const tz = await getTimeZone();
   return withViewer(viewer, async (tx) => {
     const subtreeIds = viewer.role === "MANAGER" ? await getSubtreeIds(viewer.employeeId, tx) : undefined;
     const swaps = await tx.shiftSwapRequest.findMany({
@@ -409,8 +414,8 @@ export async function getPendingSwaps() {
         targetName: s.target ? `${s.target.firstName} ${s.target.lastName}` : null, // null = drop-to-open
         reason: s.reason,
         shiftDate: s.shift.startAt,
-        startTime: shiftTimeLabel(s.shift.startAt),
-        endTime: shiftTimeLabel(s.shift.endAt),
+        startTime: shiftTimeLabel(s.shift.startAt, tz),
+        endTime: shiftTimeLabel(s.shift.endAt, tz),
       }));
   });
 }
@@ -438,17 +443,18 @@ const startOfUtcDay = (d) => {
 };
 
 // Turn a computed day + its (optional) shift into a plain, client-safe shape (labels, not Dates).
-function serializeAttendanceDay(date, day, shift) {
+// Time labels are rendered in `tz` (the viewer's timezone), since the punch/shift instants are UTC.
+function serializeAttendanceDay(date, day, shift, tz = "UTC") {
   return {
     date,
     status: day.status,
     workedHours: day.workedHours,
     open: day.open,
-    firstIn: day.firstIn ? shiftTimeLabel(day.firstIn) : null,
-    lastOut: day.lastOut ? shiftTimeLabel(day.lastOut) : null,
+    firstIn: day.firstIn ? shiftTimeLabel(day.firstIn, tz) : null,
+    lastOut: day.lastOut ? shiftTimeLabel(day.lastOut, tz) : null,
     lateMinutes: day.lateMinutes,
     shortHours: day.shortHours,
-    scheduled: shift ? { start: shiftTimeLabel(shift.startAt), end: shiftTimeLabel(shift.endAt) } : null,
+    scheduled: shift ? { start: shiftTimeLabel(shift.startAt, tz), end: shiftTimeLabel(shift.endAt, tz) } : null,
   };
 }
 
@@ -459,6 +465,7 @@ export async function getClockStatus() {
   if (!viewer?.employeeId) return null;
   const today = startOfUtcDay(new Date());
   const tomorrow = addDays(today, 1);
+  const tz = await getTimeZone();
 
   return withViewer(viewer, async (tx) => {
     const events = await tx.clockEvent.findMany({
@@ -476,8 +483,8 @@ export async function getClockStatus() {
     return {
       date: dayKey(today),
       clockedIn: day.open,
-      since: openSession ? shiftTimeLabel(openSession.inAt) : null,
-      ...serializeAttendanceDay(dayKey(today), day, shift),
+      since: openSession ? shiftTimeLabel(openSession.inAt, tz) : null,
+      ...serializeAttendanceDay(dayKey(today), day, shift, tz),
     };
   });
 }
@@ -490,6 +497,7 @@ export async function getMyAttendance() {
   const today = startOfUtcDay(new Date());
   const rangeStart = addDays(today, -13);
   const rangeEnd = addDays(today, 1); // exclusive
+  const tz = await getTimeZone();
 
   return withViewer(viewer, async (tx) => {
     const events = await tx.clockEvent.findMany({
@@ -514,7 +522,7 @@ export async function getMyAttendance() {
       const dayEvents = eventsByDay[date] ?? [];
       const shift = shiftByDay[date] ?? null;
       if (dayEvents.length === 0 && !shift) continue; // nothing to report this day
-      days.push(serializeAttendanceDay(date, computeAttendanceDay(dayEvents, shift), shift));
+      days.push(serializeAttendanceDay(date, computeAttendanceDay(dayEvents, shift), shift, tz));
     }
     return { days };
   });
@@ -530,6 +538,7 @@ export async function getTeamAttendance(dateStr = null) {
   if (!viewer || !isApprover(viewer)) return null;
   const day = startOfUtcDay(dateStr ? new Date(dateStr) : new Date());
   const next = addDays(day, 1);
+  const tz = await getTimeZone();
 
   return withViewer(viewer, async (tx) => {
     const subtreeIds = viewer.role === "MANAGER" ? await getSubtreeIds(viewer.employeeId, tx) : undefined;
@@ -560,7 +569,7 @@ export async function getTeamAttendance(dateStr = null) {
       .map((id) => {
         const shift = shiftByEmp[id] ?? null;
         const computed = computeAttendanceDay(eventsByEmp[id] ?? [], shift);
-        return { employeeId: id, name: nameById[id] ?? "—", ...serializeAttendanceDay(dayKey(day), computed, shift) };
+        return { employeeId: id, name: nameById[id] ?? "—", ...serializeAttendanceDay(dayKey(day), computed, shift, tz) };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -584,6 +593,7 @@ export async function getTeamAttendanceWeek(weekStr = null) {
   const weEnd = addDays(ws, 7); // exclusive upper bound
   const dayDates = Array.from({ length: 7 }, (_, i) => addDays(ws, i));
   const days = dayDates.map(dayKey);
+  const tz = await getTimeZone();
 
   return withViewer(viewer, async (tx) => {
     const subtreeIds = viewer.role === "MANAGER" ? await getSubtreeIds(viewer.employeeId, tx) : undefined;
@@ -637,7 +647,7 @@ export async function getTeamAttendanceWeek(weekStr = null) {
           const key = `${id}|${d}`;
           const shift = shiftByKey[key] ?? null;
           const computed = computeAttendanceDay(eventsByKey[key] ?? [], shift);
-          const cell = serializeAttendanceDay(d, computed, shift);
+          const cell = serializeAttendanceDay(d, computed, shift, tz);
           if (onLeaveKeys.has(key)) cell.status = "ON_LEAVE"; // planned absence overrides the verdict
           totalWorked += cell.workedHours;
           return cell;
@@ -681,13 +691,14 @@ export async function getCorrectionTarget(employeeId) {
 export async function getMyNextShift() {
   const viewer = await getViewer();
   if (!viewer?.employeeId) return null;
+  const tz = await getTimeZone();
   return withViewer(viewer, async (tx) => {
     const s = await tx.shift.findFirst({
       where: { employeeId: viewer.employeeId, published: true, startAt: { gte: new Date() } },
       orderBy: { startAt: "asc" },
       select: { startAt: true, endAt: true, role: true },
     });
-    return s ? { date: dayKey(s.startAt), start: shiftTimeLabel(s.startAt), end: shiftTimeLabel(s.endAt), role: s.role } : null;
+    return s ? { date: dayKey(s.startAt), start: shiftTimeLabel(s.startAt, tz), end: shiftTimeLabel(s.endAt, tz), role: s.role } : null;
   });
 }
 

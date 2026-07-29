@@ -2,6 +2,7 @@ import { Manrope, Inter, IBM_Plex_Sans, JetBrains_Mono } from "next/font/google"
 import "./globals.css";
 import { AppHeader } from "@/components/AppHeader";
 import { ThemeWatcher } from "@/components/ThemeWatcher";
+import { TimeZoneWatcher } from "@/components/TimeZoneWatcher";
 import { LocaleProvider } from "@/components/LocaleProvider";
 import { getLocale } from "@/lib/i18n.server";
 import { messagesFor } from "@/lib/messages/index.js";
@@ -39,6 +40,7 @@ export default async function RootLayout({ children }) {
       </head>
       <body className="min-h-full flex flex-col">
         <ThemeWatcher />
+        <TimeZoneWatcher />
         <LocaleProvider locale={locale} messages={messages}>
           <AppHeader />
           {children}

@@ -3,9 +3,9 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getViewer, withViewer } from "@hris/auth";
-import { pairPunches, clockCorrectionSchema, toShiftInstant } from "@hris/workable-hours";
+import { pairPunches, clockCorrectionSchema, zonedWallClockToUtc } from "@hris/workable-hours";
 import { viewerCanApprove } from "@/lib/approvals";
-import { getT } from "@/lib/i18n.server";
+import { getT, getTimeZone } from "@/lib/i18n.server";
 
 function errorMessage(e) {
   // Never surface internal DB errors (Prisma throws PrismaClient* errors) — only intentional messages.
@@ -110,13 +110,15 @@ export async function correctClock(_prevState, formData) {
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? t("err.invalidInput") };
   const input = parsed.data;
+  const tz = await getTimeZone();
 
   try {
     await withViewer(viewer, async (tx) => {
       if (!(await viewerCanApprove(viewer, input.employeeId, tx))) {
         throw new Error(t("err.notAuthorizedCorrect"));
       }
-      const at = toShiftInstant(input.date, input.time);
+      // The typed HH:MM is wall-clock in the actor's timezone → store the true UTC instant.
+      const at = zonedWallClockToUtc(input.date, input.time, tz);
       await tx.clockEvent.create({
         data: {
           employeeId: input.employeeId,
