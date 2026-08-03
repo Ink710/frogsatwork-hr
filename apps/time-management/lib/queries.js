@@ -338,6 +338,50 @@ export async function getShiftFormData() {
   });
 }
 
+// Data for the BATCH new-shift form (managers/HR): the department's assignable employees, the 7 dates
+// of the target week (each with its day-of-week for labels + shortcuts), and which (employee, date)
+// pairs fall on APPROVED leave that week — so the form can warn (not block) about scheduling over leave.
+export async function getBatchShiftFormData(weekStr = null) {
+  const viewer = await getViewer();
+  if (!viewer?.employeeId || !(isHrRole(viewer.role) || viewer.role === "MANAGER")) return null;
+  const ws = weekStart(weekStr ?? new Date());
+  const weEnd = addDays(ws, 7); // exclusive
+  return withViewer(viewer, async (tx) => {
+    const me = await tx.employee.findUnique({
+      where: { id: viewer.employeeId },
+      select: { departmentId: true, department: { select: { id: true, name: true } } },
+    });
+    if (!me?.departmentId) return null;
+    const employees = await tx.employee.findMany({
+      where: { departmentId: me.departmentId, employmentStatus: "ACTIVE" },
+      select: { id: true, firstName: true, lastName: true, employeeNumber: true },
+      orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+    });
+
+    // Approved leave overlapping the week for these employees (RLS scopes to the manager's subtree).
+    const empIds = employees.map((e) => e.id);
+    const leaves = empIds.length
+      ? await tx.leaveRequest.findMany({
+          where: { status: "APPROVED", employeeId: { in: empIds }, startDate: { lt: weEnd }, endDate: { gte: ws } },
+          select: { employeeId: true, startDate: true, endDate: true },
+        })
+      : [];
+
+    const dayDates = Array.from({ length: 7 }, (_, i) => addDays(ws, i));
+    const weekDays = dayDates.map((d) => ({ date: dayKey(d), dow: d.getUTCDay() }));
+    const onLeave = {};
+    for (const l of leaves) {
+      const from = startOfUtcDay(l.startDate).getTime();
+      const to = startOfUtcDay(l.endDate).getTime();
+      for (const d of dayDates) {
+        if (d.getTime() >= from && d.getTime() <= to) (onLeave[l.employeeId] ??= []).push(dayKey(d));
+      }
+    }
+
+    return { department: me.department, employees, weekDays, onLeave, weekStart: dayKey(ws) };
+  });
+}
+
 // The existing shift + the form data, for the edit page. null if not visible/manageable.
 export async function getShiftForEdit(shiftId) {
   const form = await getShiftFormData();

@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import { getShiftFormData } from "@/lib/queries";
+import { getBatchShiftFormData } from "@/lib/queries";
 import { getT } from "@/lib/i18n.server";
-import { ShiftForm } from "@/components/ShiftForm";
+import { BatchShiftForm } from "@/components/BatchShiftForm";
 
 export async function generateMetadata() {
   const t = await getT();
@@ -11,9 +11,9 @@ export async function generateMetadata() {
 }
 
 export default async function NewShiftPage({ searchParams }) {
-  const [form, t, params] = await Promise.all([getShiftFormData(), getT(), searchParams]);
+  const params = await searchParams;
+  const [form, t] = await Promise.all([getBatchShiftFormData(params?.week ?? null), getT()]);
   if (!form) notFound(); // not a manager/HR with a department
-  const defaultDate = params?.week ?? "";
 
   return (
     <main className="mx-auto w-full max-w-xl px-6 py-10">
@@ -23,7 +23,7 @@ export default async function NewShiftPage({ searchParams }) {
       <h1 className="mt-3 text-2xl font-semibold tracking-tight">{t("schedule.newShift")}</h1>
       <p className="mt-1 text-sm text-muted-foreground">{form.department?.name}</p>
       <div className="mt-6">
-        <ShiftForm employees={form.employees} defaultDate={defaultDate} />
+        <BatchShiftForm employees={form.employees} weekDays={form.weekDays} onLeave={form.onLeave} />
       </div>
     </main>
   );

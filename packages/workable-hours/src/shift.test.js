@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { shiftSchema, toShiftInstant, zonedWallClockToUtc, shiftTimeLabel } from "./index.ts";
+import { shiftSchema, batchShiftSchema, toShiftInstant, zonedWallClockToUtc, shiftTimeLabel } from "./index.ts";
 
 describe("shiftSchema", () => {
   const base = { date: "2026-07-20", start: "09:00", end: "17:00", role: "Front desk" };
@@ -31,6 +31,29 @@ describe("toShiftInstant / shiftTimeLabel", () => {
     expect(inst.toISOString()).toBe("2026-07-20T09:30:00.000Z");
     expect(shiftTimeLabel(inst)).toBe("09:30");
     expect(shiftTimeLabel("2026-07-20T17:00:00.000Z")).toBe("17:00");
+  });
+});
+
+describe("batchShiftSchema", () => {
+  const base = { employeeIds: ["e1", "e2"], days: ["2026-07-20", "2026-07-21"], start: "09:00", end: "17:00" };
+
+  it("accepts multiple employees × days", () => {
+    expect(batchShiftSchema.safeParse(base).success).toBe(true);
+  });
+
+  it("accepts open-only (no employees) and defaults employeeIds/open", () => {
+    const r = batchShiftSchema.safeParse({ open: true, days: ["2026-07-20"], start: "09:00", end: "17:00" });
+    expect(r.success).toBe(true);
+    expect(r.data.employeeIds).toEqual([]);
+  });
+
+  it("rejects when neither an employee nor open is chosen", () => {
+    expect(batchShiftSchema.safeParse({ employeeIds: [], open: false, days: ["2026-07-20"], start: "09:00", end: "17:00" }).success).toBe(false);
+  });
+
+  it("rejects no days and end ≤ start", () => {
+    expect(batchShiftSchema.safeParse({ ...base, days: [] }).success).toBe(false);
+    expect(batchShiftSchema.safeParse({ ...base, start: "17:00", end: "09:00" }).success).toBe(false);
   });
 });
 

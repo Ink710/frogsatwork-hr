@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getViewer, withViewer, isHrRole } from "@hris/auth";
-import { shiftSchema, shiftSwapSchema, decisionSchema, zonedWallClockToUtc, weekStart } from "@hris/workable-hours";
+import { shiftSchema, batchShiftSchema, shiftSwapSchema, decisionSchema, zonedWallClockToUtc, weekStart } from "@hris/workable-hours";
 import { viewerCanApprove } from "@/lib/approvals";
 import { getT, getTimeZone } from "@/lib/i18n.server";
 
@@ -73,6 +73,73 @@ export async function createShift(_prevState, formData) {
     return { error: errorMessage(e) ?? t("err.shiftCreateFailed") };
   }
   const week = weekStart(input.date).toISOString().slice(0, 10);
+  revalidatePath("/schedule");
+  redirect(`/schedule?week=${week}`);
+}
+
+// Create MANY shifts at once (batch): every selected employee × selected day gets a shift with the same
+// start/end/role/note, plus an open (unassigned) shift per day if requested. Same gating as createShift.
+// Skips exact duplicates already on the schedule (same employee + start + end), so a re-submit or a
+// double-click is idempotent. Times are the manager's wall-clock → stored as true UTC instants (tz).
+export async function createShifts(_prevState, formData) {
+  const t = await getT();
+  const viewer = await getViewer();
+  if (!canManageSchedule(viewer)) return { error: t("err.notAuthorizedBuildSchedule") };
+  const parsed = batchShiftSchema.safeParse({
+    employeeIds: formData.getAll("employeeIds"),
+    open: formData.get("open") === "on",
+    days: formData.getAll("days"),
+    start: formData.get("start"),
+    end: formData.get("end"),
+    role: formData.get("role") || undefined,
+    note: formData.get("note") || undefined,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? t("err.invalidInput") };
+  const input = parsed.data;
+  const tz = await getTimeZone();
+  const firstDay = [...input.days].sort()[0];
+
+  try {
+    await withViewer(viewer, async (tx) => {
+      const dept = await requireDepartment(tx, viewer, t);
+      // Every named employee must belong to this department (RLS-scoped; open needs no check).
+      if (input.employeeIds.length) {
+        const found = await tx.employee.findMany({
+          where: { id: { in: input.employeeIds }, departmentId: dept, employmentStatus: "ACTIVE" },
+          select: { id: true },
+        });
+        if (found.length !== input.employeeIds.length) throw new Error(t("err.employeeNotInDept"));
+      }
+      const assignees = [...input.employeeIds, ...(input.open ? [null] : [])];
+
+      // Skip exact duplicates already scheduled across the selected days.
+      const sorted = [...input.days].sort();
+      const rangeStart = new Date(`${sorted[0]}T00:00:00.000Z`);
+      const rangeEnd = new Date(`${sorted[sorted.length - 1]}T00:00:00.000Z`);
+      rangeEnd.setUTCDate(rangeEnd.getUTCDate() + 1);
+      const existing = await tx.shift.findMany({
+        where: { departmentId: dept, startAt: { gte: rangeStart, lt: rangeEnd } },
+        select: { employeeId: true, startAt: true, endAt: true },
+      });
+      const seen = new Set(existing.map((s) => `${s.employeeId ?? ""}|${s.startAt.toISOString()}|${s.endAt.toISOString()}`));
+
+      const rows = [];
+      for (const day of input.days) {
+        const startAt = zonedWallClockToUtc(day, input.start, tz);
+        const endAt = zonedWallClockToUtc(day, input.end, tz);
+        for (const emp of assignees) {
+          const key = `${emp ?? ""}|${startAt.toISOString()}|${endAt.toISOString()}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          rows.push({ departmentId: dept, employeeId: emp, startAt, endAt, role: input.role ?? null, note: input.note ?? null, published: false, createdById: viewer.userId });
+        }
+      }
+      if (rows.length) await tx.shift.createMany({ data: rows });
+    });
+  } catch (e) {
+    return { error: errorMessage(e) ?? t("err.shiftCreateFailed") };
+  }
+  const week = weekStart(firstDay).toISOString().slice(0, 10);
   revalidatePath("/schedule");
   redirect(`/schedule?week=${week}`);
 }

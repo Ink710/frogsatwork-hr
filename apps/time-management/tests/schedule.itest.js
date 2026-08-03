@@ -28,8 +28,8 @@ vi.mock("@hris/auth", async () => {
 });
 
 import { getViewer, withViewer } from "@hris/auth";
-import { createShift, publishWeek, requestSwap, approveSwap } from "../app/schedule/actions.js";
-import { getWeekSchedule, getPendingSwaps } from "../lib/queries.js";
+import { createShift, createShifts, publishWeek, requestSwap, approveSwap } from "../app/schedule/actions.js";
+import { getWeekSchedule, getPendingSwaps, getBatchShiftFormData } from "../lib/queries.js";
 
 const ORG = "10000000-0000-0000-0000-000000000001";
 const V = {
@@ -57,6 +57,19 @@ async function run(promise) {
   }
 }
 const create = (fields) => run(createShift(undefined, form(fields)));
+// Batch form: employeeIds + days are multi-valued (append), open is a checkbox ("on").
+function batchForm({ employeeIds = [], open = false, days = [], start, end, role, note }) {
+  const fd = new FormData();
+  for (const id of employeeIds) fd.append("employeeIds", id);
+  if (open) fd.set("open", "on");
+  for (const d of days) fd.append("days", d);
+  if (start) fd.set("start", start);
+  if (end) fd.set("end", end);
+  if (role) fd.set("role", role);
+  if (note) fd.set("note", note);
+  return fd;
+}
+const createBatch = (fields) => run(createShifts(undefined, batchForm(fields)));
 const countShifts = (sch) => sch.days.reduce((n, d) => n + d.shifts.length, 0);
 const reqSwap = (fields) => run(requestSwap(undefined, form(fields)));
 const approveSwapA = (id, note) => run(approveSwap(id, undefined, form({ decisionNote: note })));
@@ -178,5 +191,71 @@ describe("shift swaps", () => {
     const queue = await getPendingSwaps();
     expect(queue.map((s) => s.id)).toContain(swap.id);
     expect(queue.find((s) => s.id === swap.id).requester.firstName).toBe("Diego");
+  });
+});
+
+describe("createShifts (batch) + getBatchShiftFormData", () => {
+  // An empty future week (2026-08-10 is a Monday; the seed only schedules the 07-20 week).
+  const W = "2026-08-10";
+
+  it("creates one draft shift per employee × day", async () => {
+    getViewer.mockResolvedValue(V.marcus);
+    const res = await createBatch({
+      employeeIds: [V.diego.employeeId, V.priya.employeeId],
+      days: ["2026-08-10", "2026-08-11", "2026-08-12"],
+      start: "09:00",
+      end: "17:00",
+    });
+    expect(res.redirect).toBe("REDIRECT:/schedule?week=2026-08-10");
+    expect(countShifts(await getWeekSchedule(W))).toBe(6); // 2 × 3, all drafts (manager sees)
+  });
+
+  it("adds an open (unassigned) shift when requested", async () => {
+    getViewer.mockResolvedValue(V.marcus);
+    await createBatch({ employeeIds: [V.diego.employeeId], open: true, days: ["2026-08-10"], start: "09:00", end: "17:00" });
+    const sch = await getWeekSchedule(W);
+    const day = sch.days.find((d) => d.date === "2026-08-10");
+    expect(day.shifts).toHaveLength(2);
+    expect(day.shifts.some((s) => s.employeeName === null)).toBe(true); // the open one
+  });
+
+  it("rejects an employee outside the manager's department", async () => {
+    getViewer.mockResolvedValue(V.marcus);
+    const res = await createBatch({ employeeIds: [V.peopleEmp.employeeId], days: ["2026-08-10"], start: "09:00", end: "17:00" });
+    expect(res.error).toBeTruthy();
+  });
+
+  it("skips exact duplicates on re-submit (idempotent)", async () => {
+    getViewer.mockResolvedValue(V.marcus);
+    const fields = { employeeIds: [V.diego.employeeId, V.priya.employeeId], days: ["2026-08-10", "2026-08-11", "2026-08-12"], start: "09:00", end: "17:00" };
+    await createBatch(fields);
+    await createBatch(fields); // same batch again
+    expect(countShifts(await getWeekSchedule(W))).toBe(6); // no duplicates
+  });
+
+  it("returns the week + flags a report's approved leave; null for a non-manager", async () => {
+    getViewer.mockResolvedValue(V.marcus);
+    // Diego on approved leave Tue 2026-08-11.
+    await asMgr((tx) =>
+      tx.leaveRequest.create({
+        data: {
+          employeeId: V.diego.employeeId,
+          type: "VACATION",
+          startDate: new Date("2026-08-11T00:00:00.000Z"),
+          endDate: new Date("2026-08-11T00:00:00.000Z"),
+          hours: "8.00",
+          status: "APPROVED",
+          createdById: V.marcus.userId,
+        },
+      }),
+    );
+    const data = await getBatchShiftFormData(W);
+    expect(data.weekDays).toHaveLength(7);
+    expect(data.weekDays[0].date).toBe("2026-08-10");
+    expect(data.employees.map((e) => e.id)).toContain(V.diego.employeeId);
+    expect(data.onLeave[V.diego.employeeId]).toContain("2026-08-11");
+
+    getViewer.mockResolvedValue(V.diego);
+    expect(await getBatchShiftFormData(W)).toBeNull();
   });
 });

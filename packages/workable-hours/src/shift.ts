@@ -27,8 +27,25 @@ export const shiftSwapSchema = z.object({
   reason: z.string().trim().max(500).optional(),
 });
 
+// Create MANY shifts at once (batch): every selected employee × every selected day gets a shift with
+// the same start/end/role/note. `open` adds an unassigned (open) shift for each day too. At least one
+// assignee (an employee or `open`) and one day are required.
+export const batchShiftSchema = z
+  .object({
+    employeeIds: z.array(z.string().min(1)).default([]),
+    open: z.coerce.boolean().default(false),
+    days: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a YYYY-MM-DD date.")).min(1, "Pick at least one day."),
+    start: z.string().regex(HHMM, "Use a HH:MM time."),
+    end: z.string().regex(HHMM, "Use a HH:MM time."),
+    role: z.string().trim().max(80).optional(),
+    note: z.string().trim().max(300).optional(),
+  })
+  .refine((v) => v.end > v.start, { message: "End time must be after the start time.", path: ["end"] })
+  .refine((v) => v.employeeIds.length > 0 || v.open, { message: "Pick at least one employee, or an open shift.", path: ["employeeIds"] });
+
 export type ShiftInput = z.infer<typeof shiftSchema>;
 export type ShiftSwapInput = z.infer<typeof shiftSwapSchema>;
+export type BatchShiftInput = z.infer<typeof batchShiftSchema>;
 
 // How far a timezone's wall-clock sits from UTC at a given instant, in milliseconds (negative for
 // zones behind UTC, e.g. −6h for America/Mexico_City). Uses Intl to read the zone's wall-clock for
