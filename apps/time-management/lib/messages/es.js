@@ -4,6 +4,8 @@ const es = {
 
   "nav.home": "Mi tiempo",
   "nav.timeOff": "Ausencias",
+  "nav.myWeek": "Mi semana",
+  "nav.activities": "Actividades",
   "nav.timesheets": "Horas",
   "nav.schedule": "Horario",
   "nav.attendance": "Asistencia",

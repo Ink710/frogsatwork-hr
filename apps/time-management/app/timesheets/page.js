@@ -3,6 +3,7 @@ import { getViewer } from "@hris/auth";
 import { formatHours } from "@hris/workable-hours";
 import { getCurrentTimesheet, getMyTimesheets, getMyProjects, getMyMeetings, getWeekMeetings } from "@/lib/queries";
 import { getT, getLocale } from "@/lib/i18n.server";
+import { PageTabs, myWeekTabs } from "@/components/PageTabs";
 import { INTL_LOCALE } from "@/lib/i18n";
 import { formatDate } from "@/lib/format";
 import { TimesheetGrid } from "@/components/TimesheetGrid";
@@ -41,6 +42,7 @@ export default async function TimesheetsPage() {
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-10">
+      <PageTabs tabs={myWeekTabs(t)} active="/timesheets" />
       <header className="mb-8">
         <h1 className="text-2xl font-semibold tracking-tight">{t("timesheets.title")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">{t("timesheets.subtitle")}</p>

@@ -5,6 +5,7 @@ import { getViewer } from "@hris/auth";
 import { formatHours } from "@hris/workable-hours";
 import { getTeamAttendance, getTeamAttendanceWeek } from "@/lib/queries";
 import { getT, getLocale } from "@/lib/i18n.server";
+import { PageTabs, myTeamTabs } from "@/components/PageTabs";
 import { INTL_LOCALE } from "@/lib/i18n";
 import { formatDate } from "@/lib/format";
 import { AttendanceStatusBadge } from "@/components/attendance-ui";
@@ -44,6 +45,7 @@ export default async function TeamAttendancePage({ searchParams }) {
 
     return (
       <main className="mx-auto w-full max-w-5xl px-6 py-10">
+        <PageTabs tabs={myTeamTabs(t)} active="/attendance/team" />
         <header className="mb-6">
           <h1 className="text-2xl font-semibold tracking-tight">{t("attendance.team.title")}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{t("attendance.team.rosterSubtitle")}</p>
@@ -81,6 +83,7 @@ export default async function TeamAttendancePage({ searchParams }) {
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-10">
+      <PageTabs tabs={myTeamTabs(t)} active="/attendance/team" />
       <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">{t("attendance.team.title")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">{t("attendance.team.subtitle")}</p>

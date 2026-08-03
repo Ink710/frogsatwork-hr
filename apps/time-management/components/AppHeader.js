@@ -24,16 +24,17 @@ export async function AppHeader() {
   // Managers + HR get an approvals queue for their reports/org; HR also gets the accrual policies.
   const isHr = role === "HR_ADMIN" || role === "HR_GENERALIST";
   const isApprover = role === "MANAGER" || isHr;
+  // Consolidated nav: related pages are grouped under one entry, switchable via the in-page PageTabs.
+  //   My Week   → Schedule + Timesheets
+  //   My team   → My team (timesheet review) + Team attendance
+  //   Activities → Projects + Meetings
   const navItems = [
     { href: "/", label: t("nav.home") },
     { href: "/time-off", label: t("nav.timeOff") },
-    { href: "/timesheets", label: t("nav.timesheets") },
-    { href: "/schedule", label: t("nav.schedule") },
+    { href: "/schedule", label: t("nav.myWeek") },
     { href: "/attendance", label: t("nav.attendance") },
     isApprover && { href: "/my-team", label: t("nav.myTeam") },
-    isApprover && { href: "/attendance/team", label: t("nav.teamAttendance") },
-    isApprover && { href: "/projects", label: t("nav.projects") },
-    isApprover && { href: "/meetings", label: t("nav.meetings") },
+    isApprover && { href: "/projects", label: t("nav.activities") },
     isApprover && { href: "/approvals", label: t("nav.approvals") },
     isHr && { href: "/time-off/policies", label: t("nav.policies") },
   ].filter(Boolean);

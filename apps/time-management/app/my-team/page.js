@@ -5,6 +5,7 @@ import { getViewer } from "@hris/auth";
 import { formatHours } from "@hris/workable-hours";
 import { getTeamTimesheets } from "@/lib/queries";
 import { getT, getLocale } from "@/lib/i18n.server";
+import { PageTabs, myTeamTabs } from "@/components/PageTabs";
 import { INTL_LOCALE } from "@/lib/i18n";
 import { formatDate } from "@/lib/format";
 import { TimesheetStatusBadge } from "@/components/timesheet-ui";
@@ -24,6 +25,7 @@ export default async function MyTeamPage({ searchParams }) {
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-10">
+      <PageTabs tabs={myTeamTabs(t)} active="/my-team" />
       <header className="mb-8">
         <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
           <Users className="h-6 w-6" aria-hidden="true" /> {t("myTeam.title")}

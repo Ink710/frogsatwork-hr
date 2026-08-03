@@ -5,6 +5,7 @@ import { getViewer } from "@hris/auth";
 import { formatHours } from "@hris/workable-hours";
 import { getWeekSchedule } from "@/lib/queries";
 import { getT, getLocale } from "@/lib/i18n.server";
+import { PageTabs, myWeekTabs } from "@/components/PageTabs";
 import { INTL_LOCALE } from "@/lib/i18n";
 import { formatDate } from "@/lib/format";
 import { PublishWeekButton } from "@/components/PublishWeekButton";
@@ -41,6 +42,7 @@ export default async function SchedulePage({ searchParams }) {
 
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-10">
+      <PageTabs tabs={myWeekTabs(t)} active="/schedule" />
       <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{t("schedule.title")}</h1>

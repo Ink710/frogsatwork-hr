@@ -6,6 +6,8 @@ const en = {
   // Header nav (grows as each domain milestone lands).
   "nav.home": "My time",
   "nav.timeOff": "Time off",
+  "nav.myWeek": "My Week",
+  "nav.activities": "Activities",
   "nav.timesheets": "Timesheets",
   "nav.schedule": "Schedule",
   "nav.attendance": "Attendance",
