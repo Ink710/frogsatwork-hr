@@ -1,8 +1,24 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useState } from "react";
+import { formatHours } from "@hris/workable-hours";
 import { useT } from "@/components/LocaleProvider";
 import { clockIn, clockOut } from "@/app/attendance/actions";
+
+// The "worked today" figure. Starts at the server-computed value (so SSR + first paint match — no
+// hydration flash) and, while clocked in, ticks up live from the open session's start (openSinceMs).
+// `baseHours` = worked from CLOSED sessions; the open session's elapsed time is added on each tick.
+export function WorkedToday({ initialLabel, baseHours = 0, openSinceMs = null }) {
+  const [label, setLabel] = useState(initialLabel);
+  useEffect(() => {
+    if (openSinceMs == null) return; // clocked out → static
+    const tick = () => setLabel(formatHours(baseHours + Math.max(0, (Date.now() - openSinceMs) / 3_600_000)));
+    tick();
+    const id = setInterval(tick, 30_000); // 30s — enough to catch each minute rollover promptly
+    return () => clearInterval(id);
+  }, [initialLabel, baseHours, openSinceMs]);
+  return <span className="font-mono tabular-nums">{label}</span>;
+}
 
 // Derived per-day attendance verdict → a semantic pill (auto-themes light/dark). ON_TIME is good;
 // LATE/SHORT are advisory warnings; ABSENT is a hard miss; OPEN = still clocked in.

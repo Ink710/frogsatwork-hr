@@ -524,10 +524,17 @@ export async function getClockStatus() {
     });
     const day = computeAttendanceDay(events, shift);
     const openSession = day.open ? day.sessions[day.sessions.length - 1] : null;
+    const openSinceMs = openSession ? openSession.inAt.getTime() : null;
+    // `workedHours` counts only CLOSED sessions, so it's 0 while you're still clocked in. `workedSoFar`
+    // adds the open session's elapsed time (as of now) so the "worked today" line isn't stuck at 0 —
+    // the client ticks it up live from openSinceMs.
+    const workedSoFar = day.workedHours + (openSinceMs ? Math.max(0, (Date.now() - openSinceMs) / 3_600_000) : 0);
     return {
       date: dayKey(today),
       clockedIn: day.open,
       since: openSession ? shiftTimeLabel(openSession.inAt, tz) : null,
+      openSinceMs,
+      workedSoFar: Math.round(workedSoFar * 100) / 100,
       ...serializeAttendanceDay(dayKey(today), day, shift, tz),
     };
   });
@@ -566,7 +573,15 @@ export async function getMyAttendance() {
       const dayEvents = eventsByDay[date] ?? [];
       const shift = shiftByDay[date] ?? null;
       if (dayEvents.length === 0 && !shift) continue; // nothing to report this day
-      days.push(serializeAttendanceDay(date, computeAttendanceDay(dayEvents, shift), shift, tz));
+      const computed = computeAttendanceDay(dayEvents, shift);
+      const row = serializeAttendanceDay(date, computed, shift, tz);
+      // For an in-progress (open) day, count the elapsed time of the open session so the row matches the
+      // live "worked today" card instead of showing 0m. (workedHours alone counts only closed sessions.)
+      if (computed.open) {
+        const openStart = computed.sessions[computed.sessions.length - 1].inAt.getTime();
+        row.workedHours = Math.round((computed.workedHours + Math.max(0, (Date.now() - openStart) / 3_600_000)) * 100) / 100;
+      }
+      days.push(row);
     }
     return { days };
   });

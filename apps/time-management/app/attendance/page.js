@@ -5,7 +5,7 @@ import { getClockStatus, getMyAttendance } from "@/lib/queries";
 import { getT, getLocale } from "@/lib/i18n.server";
 import { INTL_LOCALE } from "@/lib/i18n";
 import { formatDate } from "@/lib/format";
-import { AttendanceStatusBadge, ClockButton } from "@/components/attendance-ui";
+import { AttendanceStatusBadge, ClockButton, WorkedToday } from "@/components/attendance-ui";
 
 export async function generateMetadata() {
   const t = await getT();
@@ -54,7 +54,7 @@ export default async function AttendancePage() {
               )}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {t("attendance.workedToday")}: <span className="font-mono tabular-nums">{formatHours(status.workedHours)}</span>
+              {t("attendance.workedToday")}: <WorkedToday initialLabel={formatHours(status.workedSoFar)} baseHours={status.workedHours} openSinceMs={status.openSinceMs} />
               {status.scheduled ? (
                 <> · {t("attendance.scheduled")}: <span className="font-mono">{status.scheduled.start}–{status.scheduled.end}</span></>
               ) : null}

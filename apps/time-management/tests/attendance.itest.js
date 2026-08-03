@@ -70,7 +70,11 @@ describe("self clock in / out", () => {
 
     const res = await clockIn();
     expect(res.ok).toBe(true);
-    expect((await getClockStatus()).clockedIn).toBe(true);
+    const status = await getClockStatus();
+    expect(status.clockedIn).toBe(true);
+    // The open session is exposed so the "worked today" figure can tick up live from it.
+    expect(typeof status.openSinceMs).toBe("number");
+    expect(status.workedSoFar).toBeGreaterThanOrEqual(0);
 
     const audit = await asHr((tx) =>
       tx.employeeAuditLog.count({ where: { employeeId: V.diego.employeeId, eventType: "CLOCK_IN" } }),
