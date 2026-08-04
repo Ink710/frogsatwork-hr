@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { shiftSchema, batchShiftSchema, toShiftInstant, zonedWallClockToUtc, shiftTimeLabel } from "./index.ts";
+import { shiftSchema, batchShiftSchema, toShiftInstant, zonedWallClockToUtc, shiftTimeLabel, dayKeyInZone } from "./index.ts";
 
 describe("shiftSchema", () => {
   const base = { date: "2026-07-20", start: "09:00", end: "17:00", role: "Front desk" };
@@ -73,6 +73,14 @@ describe("zonedWallClockToUtc + shiftTimeLabel (timezone-aware)", () => {
   it("labels a true UTC instant back in the viewer's zone", () => {
     expect(shiftTimeLabel("2026-07-20T15:00:00.000Z", "America/Mexico_City")).toBe("09:00");
     expect(shiftTimeLabel("2026-07-20T15:00:00.000Z", "UTC")).toBe("15:00");
+  });
+
+  it("dayKeyInZone: an instant's local calendar date follows the zone (evening rollover)", () => {
+    // 2026-08-04 01:00 UTC is still Aug 3 in Mexico City (UTC−6) but already Aug 4 in Tokyo (UTC+9).
+    const inst = "2026-08-04T01:00:00.000Z";
+    expect(dayKeyInZone(inst, "UTC")).toBe("2026-08-04");
+    expect(dayKeyInZone(inst, "America/Mexico_City")).toBe("2026-08-03");
+    expect(dayKeyInZone(inst, "Asia/Tokyo")).toBe("2026-08-04");
   });
 
   it("round-trips: build in a zone, label in the same zone, returns the input", () => {

@@ -77,8 +77,11 @@ export function zonedWallClockToUtc(date: string, time: string, timeZone = "UTC"
   const [y, mo, d] = date.split("-").map(Number);
   const [h, mi] = time.split(":").map(Number);
   const guess = Date.UTC(y, mo - 1, d, h, mi);
-  const offset = zoneOffsetMs(new Date(guess), timeZone);
-  return new Date(guess - offset);
+  // First correction using the offset at the guess, then a second pass using the offset at the
+  // computed instant — this makes it exact across DST transitions (where those two offsets differ).
+  let result = guess - zoneOffsetMs(new Date(guess), timeZone);
+  result = guess - zoneOffsetMs(new Date(result), timeZone);
+  return new Date(result);
 }
 
 // Back-compat alias: a UTC-framed wall-clock instant (used by tz-independent duration math, e.g.
@@ -95,5 +98,17 @@ export function shiftTimeLabel(instant: Date | string | number, timeZone = "UTC"
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",
+  }).format(new Date(instant));
+}
+
+// The local CALENDAR date ("YYYY-MM-DD") of a true-UTC instant in `timeZone` — i.e. which day a punch
+// or shift belongs to for the viewer. en-CA formats as YYYY-MM-DD. Default "UTC" = the old dayKey.
+// This is what makes "today"/"this week" and day-grouping follow the viewer's clock, not UTC.
+export function dayKeyInZone(instant: Date | string | number, timeZone = "UTC"): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
   }).format(new Date(instant));
 }

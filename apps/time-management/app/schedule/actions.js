@@ -112,11 +112,11 @@ export async function createShifts(_prevState, formData) {
       }
       const assignees = [...input.employeeIds, ...(input.open ? [null] : [])];
 
-      // Skip exact duplicates already scheduled across the selected days.
+      // Skip exact duplicates already scheduled across the selected days. Range spans the selected
+      // LOCAL days in the manager's timezone (so an evening shift on the last day isn't missed).
       const sorted = [...input.days].sort();
-      const rangeStart = new Date(`${sorted[0]}T00:00:00.000Z`);
-      const rangeEnd = new Date(`${sorted[sorted.length - 1]}T00:00:00.000Z`);
-      rangeEnd.setUTCDate(rangeEnd.getUTCDate() + 1);
+      const rangeStart = zonedWallClockToUtc(sorted[0], "00:00", tz);
+      const rangeEnd = new Date(zonedWallClockToUtc(sorted[sorted.length - 1], "00:00", tz).getTime() + 86_400_000);
       const existing = await tx.shift.findMany({
         where: { departmentId: dept, startAt: { gte: rangeStart, lt: rangeEnd } },
         select: { employeeId: true, startAt: true, endAt: true },

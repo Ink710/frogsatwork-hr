@@ -13,7 +13,7 @@ vi.mock("@/lib/i18n.server", async () => {
   const { messagesFor } = await import("../lib/messages/index.js");
   const { createTranslator } = await import("../lib/i18n.js");
   const t = createTranslator(messagesFor("en"));
-  return { getT: async () => t, getLocale: async () => "en" };
+  return { getT: async () => t, getLocale: async () => "en", getTimeZone: async () => "America/Mexico_City" };
 });
 vi.mock("@hris/auth", async () => {
   const rls = await import("../../../packages/auth/src/rls");

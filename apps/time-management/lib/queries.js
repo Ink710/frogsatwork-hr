@@ -1,6 +1,6 @@
 import "server-only";
 import { getViewer, withViewer, isHrRole, getSubtreeIds } from "@hris/auth";
-import { computeBalances, pendingHours, canApproveForEmployee, computeTimesheet, weekStart, shiftTimeLabel, hoursBetween, computeAttendanceDay, meetingDurationHours, LEAVE_TYPES } from "@hris/workable-hours";
+import { computeBalances, pendingHours, canApproveForEmployee, computeTimesheet, weekStart, shiftTimeLabel, zonedWallClockToUtc, dayKeyInZone, hoursBetween, computeAttendanceDay, meetingDurationHours, LEAVE_TYPES } from "@hris/workable-hours";
 import { viewerCanApprove } from "@/lib/approvals";
 import { getTimeZone } from "@/lib/i18n.server";
 
@@ -199,7 +199,8 @@ export async function getCurrentTimesheet(weekStartStr = null) {
   const viewer = await getViewer();
   if (!viewer?.employeeId) return null;
   const subjectId = viewer.employeeId;
-  const ws = weekStart(weekStartStr ?? new Date());
+  const tz = await getTimeZone();
+  const ws = weekStart(weekStartStr ?? localTodayDate(tz));
   const we = new Date(ws);
   we.setUTCDate(we.getUTCDate() + 6);
 
@@ -259,6 +260,15 @@ const addDays = (d, n) => {
   x.setUTCDate(x.getUTCDate() + n);
   return x;
 };
+// Local-timezone day helpers (Model A): "which day / week is now" follows the viewer's clock, not UTC,
+// so an evening punch in a behind-UTC zone doesn't roll into tomorrow.
+//   localDayStart(dateStr, tz) → the true-UTC instant of local midnight for that calendar date.
+//   localTodayDate(tz)         → today's LOCAL calendar date as a UTC-midnight Date (feed to weekStart,
+//                                which only reads the weekday — so this is correct for any zone).
+const localDayStart = (dateStr, tz) => zonedWallClockToUtc(dateStr, "00:00", tz);
+const localTodayDate = (tz) => new Date(`${dayKeyInZone(new Date(), tz)}T00:00:00.000Z`);
+// Shift a "YYYY-MM-DD" calendar date by n days (pure calendar math, timezone-independent).
+const calDayStr = (dateStr, n) => dayKey(addDays(new Date(`${dateStr}T00:00:00.000Z`), n));
 
 // The viewer's DEPARTMENT schedule for one week (default: the current week). RLS scopes the rows:
 // an employee sees the published dept schedule + their own; a manager sees all (incl. drafts) in
@@ -266,9 +276,12 @@ const addDays = (d, n) => {
 export async function getWeekSchedule(weekStartStr = null) {
   const viewer = await getViewer();
   if (!viewer?.employeeId) return null;
-  const ws = weekStart(weekStartStr ?? new Date());
-  const weStart = addDays(ws, 7); // exclusive upper bound
   const tz = await getTimeZone();
+  const ws = weekStart(weekStartStr ?? localTodayDate(tz)); // week of the viewer's local today
+  const days7 = Array.from({ length: 7 }, (_, i) => dayKey(addDays(ws, i))); // the 7 calendar dates
+  // Fetch range covers those 7 LOCAL days (each local midnight is offset from ws in UTC).
+  const rangeStart = localDayStart(days7[0], tz);
+  const rangeEnd = new Date(localDayStart(days7[6], tz).getTime() + 86_400_000);
 
   return withViewer(viewer, async (tx) => {
     const me = await tx.employee.findUnique({
@@ -278,7 +291,7 @@ export async function getWeekSchedule(weekStartStr = null) {
     if (!me?.departmentId) return null;
 
     const shifts = await tx.shift.findMany({
-      where: { departmentId: me.departmentId, startAt: { gte: ws, lt: weStart } },
+      where: { departmentId: me.departmentId, startAt: { gte: rangeStart, lt: rangeEnd } },
       orderBy: { startAt: "asc" },
     });
 
@@ -289,9 +302,9 @@ export async function getWeekSchedule(weekStartStr = null) {
     const nameById = Object.fromEntries(roster.map((r) => [r.id, `${r.firstName} ${r.lastName}`]));
 
     const byDay = {};
-    for (let i = 0; i < 7; i++) byDay[dayKey(addDays(ws, i))] = [];
+    for (const d of days7) byDay[d] = [];
     for (const s of shifts) {
-      const key = dayKey(s.startAt);
+      const key = dayKeyInZone(s.startAt, tz);
       (byDay[key] ??= []).push({
         id: s.id,
         isMine: s.employeeId === viewer.employeeId,
@@ -344,7 +357,8 @@ export async function getShiftFormData() {
 export async function getBatchShiftFormData(weekStr = null) {
   const viewer = await getViewer();
   if (!viewer?.employeeId || !(isHrRole(viewer.role) || viewer.role === "MANAGER")) return null;
-  const ws = weekStart(weekStr ?? new Date());
+  const tz = await getTimeZone();
+  const ws = weekStart(weekStr ?? localTodayDate(tz));
   const weEnd = addDays(ws, 7); // exclusive
   return withViewer(viewer, async (tx) => {
     const me = await tx.employee.findUnique({
@@ -441,26 +455,38 @@ export async function getPendingSwaps() {
   const tz = await getTimeZone();
   return withViewer(viewer, async (tx) => {
     const subtreeIds = viewer.role === "MANAGER" ? await getSubtreeIds(viewer.employeeId, tx) : undefined;
-    const swaps = await tx.shiftSwapRequest.findMany({
-      where: { status: "PENDING" }, // RLS limits to visible requesters
-      orderBy: { createdAt: "asc" },
-      include: {
-        shift: { select: { startAt: true, endAt: true } },
-        requestedBy: { select: { id: true, firstName: true, lastName: true, employeeNumber: true } },
-        target: { select: { firstName: true, lastName: true } },
-      },
+    // No `include`: loading 3 relations at once fires concurrent queries on the one tx connection (a pg
+    // DeprecationWarning that THROWS on pg@9). Fetch the base rows, then batch-load relations in
+    // separate awaited queries and stitch — same data, one query at a time.
+    const swaps = await tx.shiftSwapRequest.findMany({ where: { status: "PENDING" }, orderBy: { createdAt: "asc" } });
+    const actionable = swaps.filter((s) => canApproveForEmployee(viewer, s.requestedByEmployeeId, { subtreeIds }));
+    if (actionable.length === 0) return [];
+
+    const shifts = await tx.shift.findMany({
+      where: { id: { in: [...new Set(actionable.map((s) => s.shiftId))] } },
+      select: { id: true, startAt: true, endAt: true },
     });
-    return swaps
-      .filter((s) => canApproveForEmployee(viewer, s.requestedByEmployeeId, { subtreeIds }))
-      .map((s) => ({
+    const shiftById = Object.fromEntries(shifts.map((s) => [s.id, s]));
+    const empIds = [...new Set(actionable.flatMap((s) => [s.requestedByEmployeeId, s.targetEmployeeId]).filter(Boolean))];
+    const emps = await tx.employee.findMany({
+      where: { id: { in: empIds } },
+      select: { id: true, firstName: true, lastName: true, employeeNumber: true },
+    });
+    const empById = Object.fromEntries(emps.map((e) => [e.id, e]));
+
+    return actionable.map((s) => {
+      const shift = shiftById[s.shiftId] ?? null;
+      const target = s.targetEmployeeId ? empById[s.targetEmployeeId] : null;
+      return {
         id: s.id,
-        requester: s.requestedBy,
-        targetName: s.target ? `${s.target.firstName} ${s.target.lastName}` : null, // null = drop-to-open
+        requester: empById[s.requestedByEmployeeId] ?? null,
+        targetName: target ? `${target.firstName} ${target.lastName}` : null, // null = drop-to-open
         reason: s.reason,
-        shiftDate: s.shift.startAt,
-        startTime: shiftTimeLabel(s.shift.startAt, tz),
-        endTime: shiftTimeLabel(s.shift.endAt, tz),
-      }));
+        shiftDate: shift?.startAt ?? null,
+        startTime: shift ? shiftTimeLabel(shift.startAt, tz) : null,
+        endTime: shift ? shiftTimeLabel(shift.endAt, tz) : null,
+      };
+    });
   });
 }
 
@@ -507,9 +533,10 @@ function serializeAttendanceDay(date, day, shift, tz = "UTC") {
 export async function getClockStatus() {
   const viewer = await getViewer();
   if (!viewer?.employeeId) return null;
-  const today = startOfUtcDay(new Date());
-  const tomorrow = addDays(today, 1);
   const tz = await getTimeZone();
+  const todayKey = dayKeyInZone(new Date(), tz); // the viewer's local "today"
+  const today = localDayStart(todayKey, tz); // UTC instant of local midnight
+  const tomorrow = new Date(today.getTime() + 86_400_000);
 
   return withViewer(viewer, async (tx) => {
     const events = await tx.clockEvent.findMany({
@@ -530,12 +557,12 @@ export async function getClockStatus() {
     // the client ticks it up live from openSinceMs.
     const workedSoFar = day.workedHours + (openSinceMs ? Math.max(0, (Date.now() - openSinceMs) / 3_600_000) : 0);
     return {
-      date: dayKey(today),
+      date: todayKey,
       clockedIn: day.open,
       since: openSession ? shiftTimeLabel(openSession.inAt, tz) : null,
       openSinceMs,
       workedSoFar: Math.round(workedSoFar * 100) / 100,
-      ...serializeAttendanceDay(dayKey(today), day, shift, tz),
+      ...serializeAttendanceDay(todayKey, day, shift, tz),
     };
   });
 }
@@ -545,10 +572,12 @@ export async function getClockStatus() {
 export async function getMyAttendance() {
   const viewer = await getViewer();
   if (!viewer?.employeeId) return null;
-  const today = startOfUtcDay(new Date());
-  const rangeStart = addDays(today, -13);
-  const rangeEnd = addDays(today, 1); // exclusive
   const tz = await getTimeZone();
+  const todayKey = dayKeyInZone(new Date(), tz);
+  // The 14 LOCAL dates ending today (newest first), and a UTC range wide enough to cover them.
+  const dayStrs = Array.from({ length: 14 }, (_, i) => dayKey(addDays(new Date(`${todayKey}T00:00:00.000Z`), -i)));
+  const rangeStart = localDayStart(dayStrs[dayStrs.length - 1], tz);
+  const rangeEnd = new Date(localDayStart(todayKey, tz).getTime() + 86_400_000); // end of local today
 
   return withViewer(viewer, async (tx) => {
     const events = await tx.clockEvent.findMany({
@@ -563,13 +592,12 @@ export async function getMyAttendance() {
     });
 
     const eventsByDay = {};
-    for (const e of events) (eventsByDay[dayKey(e.at)] ??= []).push(e);
+    for (const e of events) (eventsByDay[dayKeyInZone(e.at, tz)] ??= []).push(e);
     const shiftByDay = {};
-    for (const s of shifts) shiftByDay[dayKey(s.startAt)] = s;
+    for (const s of shifts) shiftByDay[dayKeyInZone(s.startAt, tz)] = s;
 
     const days = [];
-    for (let i = 0; i < 14; i++) {
-      const date = dayKey(addDays(today, -i));
+    for (const date of dayStrs) {
       const dayEvents = eventsByDay[date] ?? [];
       const shift = shiftByDay[date] ?? null;
       if (dayEvents.length === 0 && !shift) continue; // nothing to report this day
@@ -595,9 +623,10 @@ export async function getMyAttendance() {
 export async function getTeamAttendance(dateStr = null) {
   const viewer = await getViewer();
   if (!viewer || !isApprover(viewer)) return null;
-  const day = startOfUtcDay(dateStr ? new Date(dateStr) : new Date());
-  const next = addDays(day, 1);
   const tz = await getTimeZone();
+  const dateKey = dateStr ?? dayKeyInZone(new Date(), tz); // the local calendar day
+  const day = localDayStart(dateKey, tz); // UTC instant of local midnight
+  const next = new Date(day.getTime() + 86_400_000);
 
   return withViewer(viewer, async (tx) => {
     const subtreeIds = viewer.role === "MANAGER" ? await getSubtreeIds(viewer.employeeId, tx) : undefined;
@@ -628,14 +657,14 @@ export async function getTeamAttendance(dateStr = null) {
       .map((id) => {
         const shift = shiftByEmp[id] ?? null;
         const computed = computeAttendanceDay(eventsByEmp[id] ?? [], shift);
-        return { employeeId: id, name: nameById[id] ?? "—", ...serializeAttendanceDay(dayKey(day), computed, shift, tz) };
+        return { employeeId: id, name: nameById[id] ?? "—", ...serializeAttendanceDay(dateKey, computed, shift, tz) };
       })
       .sort((a, b) => a.name.localeCompare(b.name));
 
     return {
-      date: dayKey(day),
-      prevDay: dayKey(addDays(day, -1)),
-      nextDay: dayKey(addDays(day, 1)),
+      date: dateKey,
+      prevDay: calDayStr(dateKey, -1),
+      nextDay: calDayStr(dateKey, 1),
       rows,
     };
   });
@@ -648,22 +677,25 @@ export async function getTeamAttendance(dateStr = null) {
 export async function getTeamAttendanceWeek(weekStr = null) {
   const viewer = await getViewer();
   if (!viewer || !isApprover(viewer)) return null;
-  const ws = weekStart(weekStr ?? new Date());
-  const weEnd = addDays(ws, 7); // exclusive upper bound
-  const dayDates = Array.from({ length: 7 }, (_, i) => addDays(ws, i));
-  const days = dayDates.map(dayKey);
   const tz = await getTimeZone();
+  const ws = weekStart(weekStr ?? localTodayDate(tz)); // week of the viewer's local today
+  const weEnd = addDays(ws, 7); // calendar bound, used for the leave overlap below
+  const dayDates = Array.from({ length: 7 }, (_, i) => addDays(ws, i));
+  const days = dayDates.map(dayKey); // the 7 calendar dates Mon–Sun
+  // Event/shift fetch range covers those 7 LOCAL days (each local midnight is offset from ws in UTC).
+  const rangeStart = localDayStart(days[0], tz);
+  const rangeEnd = new Date(localDayStart(days[6], tz).getTime() + 86_400_000);
 
   return withViewer(viewer, async (tx) => {
     const subtreeIds = viewer.role === "MANAGER" ? await getSubtreeIds(viewer.employeeId, tx) : undefined;
     const events = await tx.clockEvent.findMany({
-      where: { at: { gte: ws, lt: weEnd } },
+      where: { at: { gte: rangeStart, lt: rangeEnd } },
       orderBy: { at: "asc" },
       select: { employeeId: true, type: true, at: true },
     });
     // Only ASSIGNED published shifts map to a person's attendance (open shifts are nobody's punch).
     const shifts = await tx.shift.findMany({
-      where: { published: true, employeeId: { not: null }, startAt: { gte: ws, lt: weEnd } },
+      where: { published: true, employeeId: { not: null }, startAt: { gte: rangeStart, lt: rangeEnd } },
       select: { employeeId: true, startAt: true, endAt: true },
     });
     // Approved leave overlapping the week → the ON_LEAVE overlay.
@@ -674,9 +706,9 @@ export async function getTeamAttendanceWeek(weekStr = null) {
 
     // Index events + shifts by "employeeId|dayKey"; leave by the same key across its covered days.
     const eventsByKey = {};
-    for (const e of events) (eventsByKey[`${e.employeeId}|${dayKey(e.at)}`] ??= []).push(e);
+    for (const e of events) (eventsByKey[`${e.employeeId}|${dayKeyInZone(e.at, tz)}`] ??= []).push(e);
     const shiftByKey = {};
-    for (const s of shifts) shiftByKey[`${s.employeeId}|${dayKey(s.startAt)}`] = s;
+    for (const s of shifts) shiftByKey[`${s.employeeId}|${dayKeyInZone(s.startAt, tz)}`] = s;
     const onLeaveKeys = new Set();
     for (const l of leaves) {
       const from = startOfUtcDay(l.startDate).getTime();
@@ -721,7 +753,7 @@ export async function getTeamAttendanceWeek(weekStr = null) {
       prevWeek: dayKey(addDays(ws, -7)),
       nextWeek: dayKey(addDays(ws, 7)),
       days,
-      today: dayKey(startOfUtcDay(new Date())),
+      today: dayKeyInZone(new Date(), tz), // local today, for the column highlight
       rows,
     };
   });
@@ -768,7 +800,9 @@ export async function getMyNextShift() {
 export async function getWhosOffToday(dateStr = null) {
   const viewer = await getViewer();
   if (!viewer) return [];
-  const day = startOfUtcDay(dateStr ? new Date(dateStr) : new Date());
+  const tz = await getTimeZone();
+  // Leave is calendar-based (dates stored at UTC midnight), so compare against the local calendar day.
+  const day = startOfUtcDay(dateStr ? new Date(dateStr) : localTodayDate(tz));
   const next = addDays(day, 1);
   return withViewer(viewer, async (tx) => {
     const reqs = await tx.leaveRequest.findMany({
@@ -958,7 +992,8 @@ export async function getEmployeeProjects(employeeId) {
 export async function getTeamTimesheets(weekStr = null) {
   const viewer = await getViewer();
   if (!viewer || !isApprover(viewer)) return null;
-  const ws = weekStart(weekStr ?? new Date());
+  const tz = await getTimeZone();
+  const ws = weekStart(weekStr ?? localTodayDate(tz));
   const we = addDays(ws, 6);
 
   return withViewer(viewer, async (tx) => {
@@ -1014,7 +1049,8 @@ export async function getTeamTimesheets(weekStr = null) {
 export async function getTeamMemberTimesheet(employeeId, weekStr = null) {
   const viewer = await getViewer();
   if (!viewer || !isApprover(viewer) || !employeeId) return null;
-  const ws = weekStart(weekStr ?? new Date());
+  const tz = await getTimeZone();
+  const ws = weekStart(weekStr ?? localTodayDate(tz));
   const we = new Date(ws);
   we.setUTCDate(we.getUTCDate() + 6);
 
@@ -1101,7 +1137,8 @@ function meetingSuggestionsForWeek(meetings, ws) {
 export async function getWeekMeetings(weekStartStr = null) {
   const viewer = await getViewer();
   if (!viewer?.employeeId) return [];
-  const ws = weekStart(weekStartStr ?? new Date());
+  const tz = await getTimeZone();
+  const ws = weekStart(weekStartStr ?? localTodayDate(tz));
   return withViewer(viewer, async (tx) => {
     const rows = await tx.meetingAssignment.findMany({
       where: { employeeId: viewer.employeeId, meeting: { status: "ACTIVE" } },
