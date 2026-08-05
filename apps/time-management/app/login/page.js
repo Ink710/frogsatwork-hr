@@ -1,6 +1,8 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { signIn, AuthError } from "@hris/auth";
 import { getT } from "@/lib/i18n.server";
+import { allowLoginAttempt } from "@/lib/rate-limit";
 import { Logo } from "@/components/Logo";
 
 export async function generateMetadata() {
@@ -10,6 +12,7 @@ export async function generateMetadata() {
 
 export default async function LoginPage({ searchParams }) {
   const params = await searchParams; // async in Next 16
+  const rateLimited = params?.error === "RateLimited";
   const hasError = Boolean(params?.error);
   const justActivated = Boolean(params?.activated);
   const t = await getT();
@@ -19,6 +22,14 @@ export default async function LoginPage({ searchParams }) {
   // an AuthError, which we convert into a friendly ?error redirect.
   async function login(formData) {
     "use server";
+    // Throttle by client IP before we even touch the DB. On Vercel the first hop of
+    // x-forwarded-for is the real caller; fall back to "unknown" so a missing header
+    // never crashes the login (it just shares one bucket).
+    const forwarded = (await headers()).get("x-forwarded-for") ?? "";
+    const ip = forwarded.split(",")[0].trim() || "unknown";
+    if (!(await allowLoginAttempt(ip))) {
+      redirect("/login?error=RateLimited");
+    }
     try {
       await signIn("credentials", {
         email: formData.get("email"),
@@ -52,7 +63,7 @@ export default async function LoginPage({ searchParams }) {
         )}
         {hasError && (
           <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {t("login.invalid")}
+            {t(rateLimited ? "login.rateLimited" : "login.invalid")}
           </p>
         )}
         <div>

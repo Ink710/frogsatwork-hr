@@ -14,6 +14,8 @@
     "@hris/database": "workspace:*",
     "@hris/types": "workspace:*",
     "@hris/workable-hours": "workspace:*",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.38.2",
     "bcryptjs": "^3.0.2",
     "lucide-react": "^1.24.0",
     "next": "16.2.9",

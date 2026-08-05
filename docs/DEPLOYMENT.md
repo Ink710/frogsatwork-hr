@@ -100,6 +100,72 @@ Sanity check (optional): connect as `hris_app` and confirm you can `SELECT` empl
 
 ---
 
+## Part F — 🛠️/👤 Second app: Time & Attendance (`apps/time-management`)
+
+The second app is a **separate Vercel project pointed at the same Neon database** as employee-records.
+It shares the schema, the `hris_app` role, auth, and the seed. Because both apps share one DB, this is
+mostly account wiring — the only DB action is bringing Neon's schema up to date.
+
+### F1 — 👤 Bring the shared Neon DB up to date (one-time)
+
+Neon was last migrated when only employee-records existed; the time-domain tables (leave, timesheets,
+shifts, attendance, projects, meetings) don't exist there yet. These migrations are **additive**, so
+they're safe for the already-live employee-records app.
+
+```bash
+DIRECT_URL='<owner direct url>' DATABASE_URL='<hris_app pooled url>' \
+  pnpm --filter @hris/database exec prisma migrate deploy      # applies the new migrations
+
+# Reseed (chosen): one unified demo dataset for both apps — shifts, leave balances, meetings, punches.
+# This resets any reviewer-created drift on the live employee-records demo (accepted).
+DIRECT_URL='<owner direct url>' DATABASE_URL='<hris_app pooled url>' \
+  pnpm --filter @hris/database db:seed
+```
+
+### F2 — 👤 Upstash Redis (login rate limiting)
+
+1. Create a free Upstash Redis database (any region).
+2. Copy its **REST URL** and **REST token** (the HTTP API, not the `redis://` string).
+   These become `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` below. If you skip this,
+   rate limiting is simply disabled (the code is env-gated) — nothing breaks.
+
+### F3 — 👤 Vercel project
+
+1. Import the **same** `github.com/Ink710/frogsatwork-hr` repo as a **new** Vercel project.
+2. **Root Directory** = `apps/time-management`. Framework auto-detects Next.js; pnpm auto-detects.
+3. **Environment Variables** (Production):
+   | Var | Value |
+   | --- | --- |
+   | `DATABASE_URL` | `hris_app` **pooled** Neon URL (same as employee-records) |
+   | `DIRECT_URL` | owner **direct** Neon URL (same) |
+   | `AUTH_SECRET` | a prod secret (can reuse employee-records' — sessions are per-domain either way) |
+   | `CRON_SECRET` | `openssl rand -base64 32` — **name it exactly this**: Vercel Cron auto-sends `Authorization: Bearer $CRON_SECRET`, which `/api/cron/accrue` checks |
+   | `UPSTASH_REDIS_REST_URL` | from Upstash (F2) |
+   | `UPSTASH_REDIS_REST_TOKEN` | from Upstash (F2) |
+   *(No `SMTP_*`; `APP_BASE_URL` optional.)*
+4. Deploy. `prebuild` generates the Prisma client, then `next build` (all routes are dynamic).
+
+### F4 — Vercel Cron (already in repo)
+
+`apps/time-management/vercel.json` declares a monthly cron hitting `/api/cron/accrue`
+(`0 6 1 * *`). Vercel picks it up automatically once `CRON_SECRET` is set.
+
+> **Hobby-tier note:** Vercel Hobby effectively fires crons at ~daily granularity and doesn't
+> guarantee the exact minute. That's fine here: accrual is **idempotent** (unique
+> `[employeeId, type, accrualPeriod]` + `skipDuplicates`), so any extra trigger within the same month
+> creates nothing. You can also run it on demand via the HR-only **"Run accrual"** button.
+
+### F5 — 👤 Verify
+
+- Log in at the new URL as `ana.okafor@frogsatwork.test`; confirm the time dashboard, schedule, and
+  attendance render with seeded data.
+- **Rate limiting:** submit ~6 rapid bad logins → the 6th shows *"Too many attempts…"*. (Only
+  observable once Upstash env is set.)
+- After the first monthly cron (or a manual "Run accrual"), confirm PTO balances accrued.
+- Fill in the README's Time & Attendance live-demo link.
+
+---
+
 ## Decisions & open items
 
 - **Email: disabled.** No `SMTP_*`; the invite send is best-effort so nothing breaks, and seeded

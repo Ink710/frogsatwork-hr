@@ -2,15 +2,22 @@
 
 [![CI](https://github.com/Ink710/frogsatwork-hr/actions/workflows/ci.yml/badge.svg)](https://github.com/Ink710/frogsatwork-hr/actions/workflows/ci.yml)
 
-> A lightweight, compliance-credible **HRIS** (Human Resources Information System) for managing
-> employee records across an organization. _Let's jump into it._
+> A lightweight, compliance-credible **HRIS** suite for managing employee records _and_ time &
+> attendance across an organization. _Let's jump into it._
 
-**▶ Live demo:** https://frogsatwork-hr.vercel.app — sign in with a seeded account below (password `password123`).
+**▶ Live demos** — sign in with a seeded account below (password `password123`):
+
+- **Employee Records:** https://frogsatwork-hr.vercel.app
+- **Time & Attendance:** _(link added after deploy)_
 
 FrogsAtWorkHR is a portfolio project built to demonstrate full-stack engineering judgment, not just
 CRUD mechanics. The domain decisions reflect how HR data actually behaves in the real world —
 records are **never hard-deleted**, changes are **effective-dated**, and sensitive data like
 compensation is guarded **on the server**, not just hidden in the UI.
+
+It's a **two-app monorepo suite** sharing one database, auth, and design system:
+**Employee Records** (the system of record) and **Time & Attendance** (PTO, timesheets,
+scheduling, and clock-in/out) — same sign-in, same security model.
 
 ## Screenshots
 
@@ -33,7 +40,7 @@ Most "employee CRUD" demos overwrite data and hide fields in the frontend. Real 
   and the API. A manager can only see their reports; compensation is unreadable outside a viewer's
   authority — even in raw API responses and audit diffs.
 
-## Features
+## Features — Employee Records
 
 - **Effective-dated employee records** with a full versioned timeline (temporal history model).
 - **Corrections vs. changes** — a genuine change opens a new version; a mistake can be corrected
@@ -55,6 +62,27 @@ Most "employee CRUD" demos overwrite data and hide fields in the frontend. Real 
   no flash of the wrong theme).
 - **Search, filter, and pagination** on the employee list.
 
+## Features — Time & Attendance
+
+The second app in the suite, sharing the same users, roles, and security model:
+
+- **Time off / PTO** — request, approve, and deny leave against a **ledger-based balance** (balance =
+  sum of signed rows, auditable), with **automatic monthly accrual** (proration on hire, capped) and
+  an overdraw warning.
+- **Timesheets** — weekly grids with **California "greater-of" overtime** (daily > 8h vs weekly > 40h,
+  non-exempt only) plus **daily double-time** (> 12h); overtime is _derived_, never stored.
+- **Scheduling** — a weekly shift calendar (assigned or **open** shifts), batch shift creation,
+  manager publish, and **drop/swap requests** routed through a unified approvals inbox.
+- **Attendance** — clock in/out with a live "worked today" counter, derived daily status
+  (on-time / late / short / absent), a **weekly team roster** with approved-leave overlay, and
+  **append-only corrections** (a manual punch, never a mutated row).
+- **Meetings** — weekly recurring activities that pre-fill suggested timesheet lines.
+- **Time dashboard** — a role-aware snapshot (self for everyone; team oversight for managers/HR).
+- **Approvals inbox** — one place for leave, timesheets, and shift swaps.
+- **Timezone-correct** — instants are stored UTC and displayed in the viewer's zone (cookie-based),
+  including day/week boundaries.
+- **Login rate limiting** — see _Architecture highlights_.
+
 ## Architecture highlights
 
 These are the parts worth reading the code for:
@@ -73,22 +101,33 @@ These are the parts worth reading the code for:
   write paths.
 - **Typed contracts.** Validation lives in Zod schemas shared across server actions and forms; the
   static TypeScript types are **derived from those schemas** (`z.infer`) so they can't drift.
+- **Deliberately minimal login rate limiting.** The Time & Attendance login is throttled per client
+  IP with Upstash Redis, kept at the **bare operational minimum** on purpose: a **fixed window**
+  (one auto-expiring integer counter, ~one Redis command per attempt — no large payloads), analytics
+  **off** (no extra keys written), an in-memory **ephemeral cache** so repeated blocked attempts on a
+  warm instance never touch Redis, and **IP-only keys** (no email/PII stored). It's **env-gated** — if
+  the Upstash vars are absent (local dev, tests), it's a transparent no-op and Redis is never
+  contacted. See `apps/time-management/lib/rate-limit.js`.
 
 ## Tech stack
 
 **Next.js 16** (App Router, Server Actions) · **React 19** · **Prisma 7 + PostgreSQL 16** ·
 **Auth.js v5** (credentials + JWT, bcrypt) · **Tailwind CSS v4** · **TypeScript 5** ·
-**Turborepo + pnpm** workspaces · **Vitest** · **nodemailer + Mailpit** · **lucide-react**.
+**Turborepo + pnpm** workspaces · **Vitest** · **nodemailer + Mailpit** · **lucide-react** ·
+**Upstash Redis** (login rate limiting) · **Vercel Cron** (monthly PTO accrual).
 
 ## Monorepo layout
 
 ```
 apps/
-  employee-records/     Next.js app (UI, routes, server actions)
+  employee-records/     Next.js app — system of record (UI, routes, server actions) · :3000
+  time-management/      Next.js app — time & attendance (PTO, timesheets, scheduling, clock) · :3001
 packages/
   database/             Prisma schema, migrations, seed, two-role client (@hris/database)
   auth/                 Auth.js config, RBAC predicates, RLS helpers, session (@hris/auth)
   types/                Shared Zod schemas + inferred TypeScript types (@hris/types)
+  workable-hours/       Time-domain Zod schemas + pure rules (overtime, accrual, totals) (@hris/workable-hours)
+  ui/, notifications/   Reserved shared-package slots for future apps
 ```
 
 ## Local development
@@ -112,9 +151,13 @@ cp .env.example .env            # then set AUTH_SECRET (see below)
 pnpm --filter @hris/database db:deploy
 pnpm --filter @hris/database db:seed
 
-# 5. Run the app  →  http://localhost:3000
-cd apps/employee-records && pnpm dev
+# 5. Run an app
+pnpm --filter employee-records dev    # Employee Records  → http://localhost:3000
+pnpm --filter time-management dev      # Time & Attendance → http://localhost:3001
 ```
+
+Both apps share the same database and `AUTH_SECRET`, so a single sign-in works across the suite in
+local dev.
 
 Invite emails are captured by Mailpit — open the web UI at **http://localhost:8025** to view them.
 
@@ -135,12 +178,13 @@ All demo accounts use the password **`password123`**:
 ## Testing
 
 ```bash
-pnpm test           # unit + integration (103 tests)
+pnpm test           # unit + integration (246 tests: 108 unit + 138 integration)
 ```
 
-Unit tests cover the pure logic (RBAC predicates, formatters, validation). Integration tests run
-against a real Postgres (`hris_test`), which the harness bootstraps automatically — they exercise
-RLS scoping, the compensation guard, and the write paths end-to-end.
+Unit tests cover the pure logic (RBAC predicates, overtime/accrual rules, formatters, validation).
+Integration tests run against a real Postgres (`hris_test`), which the harness bootstraps
+automatically — they exercise RLS scoping, the compensation guard, the approval gates, and the write
+paths end-to-end across both apps.
 
 ## Environment & secrets
 
@@ -152,8 +196,10 @@ RLS scoping, the compensation guard, and the write paths end-to-end.
 
 ## Status & roadmap
 
-The employee-records app is feature-complete. **Next:** production deployment (Vercel + hosted
-Postgres) and a lightweight ATS ("hire" flow) that plugs into the existing employee-creation path.
+Both apps are feature-complete. **Employee Records** is deployed (Vercel + Neon Postgres);
+**Time & Attendance** deploys as a second Vercel project against the same database
+(runbook in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)). **Next:** a lightweight ATS ("hire" flow)
+that plugs into the existing employee-creation path.
 
 ---
 
