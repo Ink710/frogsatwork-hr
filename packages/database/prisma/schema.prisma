@@ -24,6 +24,7 @@ enum Role {
   HR_GENERALIST
   HR_ADMIN
   PAYROLL_ADMIN
+  RECRUITER
   SYSTEM
 }
 
@@ -201,6 +202,40 @@ enum ActorType {
 }
 
 // ---------------------------------------------------------------------------
+// Recruiting (ATS) enums — used by apps/ats (M1). Visibility is per-job hiring
+// TEAM (JobMember), a new access model on the same withViewer/RLS mechanics.
+// ---------------------------------------------------------------------------
+
+// Requisition lifecycle. Never hard-deleted — CLOSED / FILLED are the archive states.
+enum JobStatus {
+  DRAFT
+  OPEN
+  PAUSED
+  CLOSED
+  FILLED
+}
+
+// A person's role on a SPECIFIC job's hiring team (distinct from their org-wide Role). Drives the
+// app_can_see_job / app_can_manage_job RLS: managers/recruiters manage, interviewers are read-only (M1).
+enum JobMemberRole {
+  RECRUITER
+  HIRING_MANAGER
+  INTERVIEWER
+}
+
+// Fixed top-level hiring pipeline (like TimesheetStatus / LeaveRequestStatus). The INTERVIEW phase is
+// subdivided into per-job InterviewRounds; an Application in INTERVIEW points at its current round.
+enum ApplicationStage {
+  APPLIED
+  SCREEN
+  INTERVIEW
+  OFFER
+  HIRED
+  REJECTED
+  WITHDRAWN
+}
+
+// ---------------------------------------------------------------------------
 // Identity — built first because history/audit FKs point at User.
 // ---------------------------------------------------------------------------
 
@@ -215,6 +250,9 @@ model Organization {
   leavePolicies LeavePolicy[]
   projects      Project[]
   meetings      Meeting[]
+  jobs          Job[]
+  candidates    Candidate[]
+  applications  Application[]
 }
 
 model User {
@@ -265,6 +303,10 @@ model User {
   // Meetings (M10): who created a recurring meeting, and who made an assignment.
   meetingsCreated        Meeting[]           @relation("MeetingCreatedBy")
   meetingAssignmentsMade MeetingAssignment[] @relation("MeetingAssignedBy")
+  // Recruiting (ATS, M1): who created a job/req, who added a hiring-team member, who acted on an application.
+  jobsCreated       Job[]              @relation("JobCreatedBy")
+  jobMembersAdded   JobMember[]        @relation("JobMemberAddedBy")
+  applicationEvents ApplicationEvent[] @relation("ApplicationEventActor")
 
   @@index([orgId])
 }
@@ -329,6 +371,7 @@ model Employee {
   clockEvents       ClockEvent[]
   projectAssignments ProjectAssignment[]
   meetingAssignments MeetingAssignment[]
+  jobMemberships     JobMember[]
 
   // Employee numbers are unique within an organization, not globally.
   @@unique([orgId, employeeNumber])
@@ -736,6 +779,7 @@ model Department {
   // access policy — see DepartmentBudget.
   budgetRow DepartmentBudget?
   shifts    Shift[]
+  jobs      Job[]
 
   @@index([orgId])
   @@index([parentDepartmentId])
@@ -811,4 +855,159 @@ model AppSetting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Recruiting (ATS) — apps/ats, M1. Visibility is the per-job hiring TEAM: recruiters + HR see all
+// reqs org-wide; everyone else sees a job (and its candidates/applications) only if they're on its
+// JobMember team. Enforced by app_can_see_job / app_can_manage_job (custom SECURITY DEFINER fns with
+// a read/write policy split, mirroring the Shift design). See the add_recruiting migration.
+// ---------------------------------------------------------------------------
+
+// A job requisition. Org-scoped; management gated to the job's hiring managers + recruiters/HR.
+model Job {
+  id             String         @id @default(uuid())
+  title          String
+  description    String?
+  location       String?
+  employmentType EmploymentType @default(FULL_TIME)
+  status         JobStatus      @default(DRAFT)
+  openings       Int            @default(1)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  orgId String
+  org   Organization @relation(fields: [orgId], references: [id])
+
+  // Optional hiring department (some reqs aren't tied to a dept yet).
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+
+  createdById String
+  createdBy   User   @relation("JobCreatedBy", fields: [createdById], references: [id])
+
+  interviewRounds InterviewRound[]
+  members         JobMember[]
+  applications    Application[]
+  applicationEvents ApplicationEvent[] @relation("ApplicationEventJob")
+
+  @@index([orgId, status])
+}
+
+// A configurable interview round inside a job's INTERVIEW phase (the per-job "form"). Ordered by
+// position. An Application in INTERVIEW points at the round it's currently in (Application.currentRoundId).
+model InterviewRound {
+  id        String   @id @default(uuid())
+  name      String
+  position  Int
+  createdAt DateTime @default(now())
+
+  jobId String
+  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  applications Application[]
+
+  @@unique([jobId, position])
+  @@index([jobId])
+}
+
+// A member of a job's hiring team + their role on it — the join that powers the ATS access model.
+// RLS: readable if you can SEE the job, writable if you can MANAGE it.
+model JobMember {
+  id        String        @id @default(uuid())
+  role      JobMemberRole
+  createdAt DateTime      @default(now())
+
+  jobId String
+  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  addedById String
+  addedBy   User   @relation("JobMemberAddedBy", fields: [addedById], references: [id])
+
+  @@unique([jobId, employeeId])
+  @@index([employeeId])
+}
+
+// A candidate (a person). Deduped by email within an org — one Candidate has many Applications, so
+// their history across reqs is visible. PII is designed to be ANONYMIZED later (GDPR right to be
+// forgotten, M8) rather than hard-deleted — the deliberate inverse of the employee "never delete" rule.
+model Candidate {
+  id             String   @id @default(uuid())
+  firstName      String
+  lastName       String
+  email          String
+  phone          String?
+  source         String? // where they came from, e.g. "Referral" (plain string; an adapter enum later)
+  // Object-storage key for the resume (like EmployeeDocument.fileUrl) — never a public URL.
+  resumeKey      String?
+  resumeFileName String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  orgId String
+  org   Organization @relation(fields: [orgId], references: [id])
+
+  applications Application[]
+
+  @@unique([orgId, email])
+}
+
+// One candidate's application to one job — the pipeline unit. `stage` is the fixed top-level pipeline;
+// while stage = INTERVIEW, `currentRoundId` points at the job round they're in. RLS = app_can_see_job(jobId).
+model Application {
+  id              String           @id @default(uuid())
+  stage           ApplicationStage @default(APPLIED)
+  appliedAt       DateTime         @default(now())
+  rejectionReason String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  // Denormalized so org-scoped reads/aggregations skip a join (and future public-apply inserts carry it).
+  orgId String
+  org   Organization @relation(fields: [orgId], references: [id])
+
+  jobId String
+  job   Job    @relation(fields: [jobId], references: [id])
+
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id])
+
+  // The interview round the candidate is currently in (only while stage = INTERVIEW). SetNull so
+  // editing/removing a round never destroys the application.
+  currentRoundId String?
+  currentRound   InterviewRound? @relation(fields: [currentRoundId], references: [id], onDelete: SetNull)
+
+  events ApplicationEvent[]
+
+  @@unique([jobId, candidateId])
+  @@index([jobId, stage])
+}
+
+// Append-only pipeline history AND the hiring-decision compliance trail. UPDATE/DELETE are revoked
+// from hris_app at the DB level (same guarantee as EmployeeAuditLog) — hiring history can't be
+// rewritten even with a bug. `jobId` is denormalized so the RLS policy is a one-liner (like
+// TimeEntry.employeeId). `roundName` is a SNAPSHOT string so editing/deleting a round can't rewrite
+// what happened (the departmentSnapshot pattern). occurredAt is DB-defaulted (no backdating).
+model ApplicationEvent {
+  id         String            @id @default(uuid())
+  fromStage  ApplicationStage?
+  toStage    ApplicationStage
+  roundName  String?
+  note       String?
+  occurredAt DateTime          @default(now())
+
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  // Denormalized owner column so the RLS policy is the same one-liner as every other scoped table.
+  jobId String
+  job   Job    @relation("ApplicationEventJob", fields: [jobId], references: [id])
+
+  actorId String
+  actor   User   @relation("ApplicationEventActor", fields: [actorId], references: [id])
+
+  @@index([applicationId, occurredAt])
 }

@@ -159,6 +159,21 @@ const PEOPLE = {
       { title: "Payroll Administrator", type: EmploymentType.FULL_TIME, salary: "98000.00", from: "2021-08-01", to: null },
     ],
   },
+  raj: {
+    userId: "30000000-0000-0000-0000-000000000008",
+    empId: "40000000-0000-0000-0000-000000000008",
+    number: "E-0008",
+    firstName: "Raj",
+    lastName: "Patel",
+    email: "raj.patel@frogsatwork.test",
+    role: Role.RECRUITER, // ATS: org-wide recruiting access; per-job scope is via JobMember + RLS
+    dept: "people",
+    manager: "ana",
+    hireDate: "2023-05-15",
+    history: [
+      { title: "Technical Recruiter", type: EmploymentType.FULL_TIME, salary: "95000.00", from: "2023-05-15", to: null },
+    ],
+  },
 };
 
 // Current-state profile fields (the profile revamp), keyed like PEOPLE. Kept separate so the
@@ -172,6 +187,7 @@ const PROFILES = {
   priya:  { location: "New York, NY",      phone: "+1 212 555 0105", timeZone: "America/New_York",    equityNote: "4-yr cliff · yr 1" },
   tom:    { location: "Denver, CO (Remote)", phone: "+1 720 555 0106", timeZone: "America/Denver",    equityNote: null },
   nadia:  { location: "Austin, TX",        phone: "+1 512 555 0107", timeZone: "America/Chicago",     equityNote: "4-yr cliff · yr 2" },
+  raj:    { location: "Remote (US)",       phone: "+1 512 555 0108", timeZone: "America/Chicago",     equityNote: null },
 };
 
 // Shared demo cadence so every profile renders a review cycle without per-person noise.
@@ -613,6 +629,118 @@ async function main() {
     });
   }
 
+  // 16. Recruiting (ATS, M1) — a live job req with its hiring team + interview rounds, and four
+  //     candidates spread across the pipeline. Visibility is per-job TEAM (JobMember) via RLS: Raj
+  //     (RECRUITER) + Marcus (HIRING_MANAGER) manage; Diego (INTERVIEWER) is read-only. The seed runs
+  //     as the OWNER, which bypasses RLS and the ApplicationEvent append-only revoke, so it writes freely.
+  const JOBS = [
+    { id: "job-be", title: "Senior Backend Engineer", status: "OPEN", dept: DEPT.eng, openings: 2,
+      location: "Remote (US)", employmentType: "FULL_TIME",
+      description: "Own core services on our Postgres + Node stack. Strong SQL and API design." },
+    { id: "job-pd", title: "Product Designer", status: "DRAFT", dept: DEPT.eng, openings: 1,
+      location: "San Francisco, CA", employmentType: "FULL_TIME",
+      description: "Shape the product's look and flows end to end." },
+  ];
+  for (const j of JOBS) {
+    await prisma.job.upsert({
+      where: { id: j.id },
+      update: { title: j.title, status: j.status, openings: j.openings, location: j.location, description: j.description },
+      create: {
+        id: j.id, title: j.title, description: j.description, location: j.location,
+        employmentType: j.employmentType, status: j.status, openings: j.openings,
+        orgId: ORG_ID, departmentId: j.dept, createdById: PEOPLE.raj.userId,
+      },
+    });
+  }
+
+  // Interview rounds for the backend req — the per-job INTERVIEW sub-steps, ordered by position.
+  const ROUNDS = [
+    { id: "ir-be-screen", job: "job-be", name: "Technical Screen", position: 0 },
+    { id: "ir-be-design", job: "job-be", name: "System Design", position: 1 },
+    { id: "ir-be-team", job: "job-be", name: "Team Interview", position: 2 },
+  ];
+  for (const r of ROUNDS) {
+    await prisma.interviewRound.upsert({
+      where: { id: r.id },
+      update: { name: r.name, position: r.position },
+      create: { id: r.id, jobId: r.job, name: r.name, position: r.position },
+    });
+  }
+
+  // The backend req's hiring team (the join that powers ATS visibility).
+  const JOB_MEMBERS = [
+    { id: "jm-be-raj", job: "job-be", emp: PEOPLE.raj.empId, role: "RECRUITER" },
+    { id: "jm-be-marcus", job: "job-be", emp: PEOPLE.marcus.empId, role: "HIRING_MANAGER" },
+    { id: "jm-be-diego", job: "job-be", emp: PEOPLE.diego.empId, role: "INTERVIEWER" },
+  ];
+  for (const m of JOB_MEMBERS) {
+    await prisma.jobMember.upsert({
+      where: { id: m.id },
+      update: { role: m.role },
+      create: { id: m.id, jobId: m.job, employeeId: m.emp, role: m.role, addedById: PEOPLE.raj.userId },
+    });
+  }
+
+  // Candidates (people) — deduped by email within the org.
+  const CANDIDATES = [
+    { id: "cand-nora", firstName: "Nora", lastName: "Adeyemi", email: "nora.adeyemi@example.com", source: "LinkedIn" },
+    { id: "cand-owen", firstName: "Owen", lastName: "Zhang", email: "owen.zhang@example.com", source: "Referral" },
+    { id: "cand-mei", firstName: "Mei", lastName: "Tanaka", email: "mei.tanaka@example.com", source: "Careers page" },
+    { id: "cand-luis", firstName: "Luis", lastName: "Romero", email: "luis.romero@example.com", source: "Referral" },
+  ];
+  for (const c of CANDIDATES) {
+    await prisma.candidate.upsert({
+      where: { id: c.id },
+      update: { firstName: c.firstName, lastName: c.lastName, email: c.email, source: c.source },
+      create: { id: c.id, ...c, orgId: ORG_ID },
+    });
+  }
+
+  // Applications to the backend req, spread across the pipeline. Mei is mid-INTERVIEW at "System Design".
+  const APPLICATIONS = [
+    { id: "app-nora", cand: "cand-nora", stage: "APPLIED", round: null },
+    { id: "app-owen", cand: "cand-owen", stage: "SCREEN", round: null },
+    { id: "app-mei", cand: "cand-mei", stage: "INTERVIEW", round: "ir-be-design" },
+    { id: "app-luis", cand: "cand-luis", stage: "OFFER", round: null },
+  ];
+  for (const a of APPLICATIONS) {
+    await prisma.application.upsert({
+      where: { id: a.id },
+      update: { stage: a.stage, currentRoundId: a.round },
+      create: {
+        id: a.id, orgId: ORG_ID, jobId: "job-be", candidateId: a.cand,
+        stage: a.stage, currentRoundId: a.round,
+      },
+    });
+  }
+
+  // The append-only ApplicationEvent trail that produced each application's current stage. jobId is
+  // denormalized (RLS one-liner); roundName is a snapshot. `update: {}` keeps it create-only on reseed.
+  const EVENTS = [
+    { id: "ae-nora-1", app: "app-nora", from: null, to: "APPLIED", round: null },
+    { id: "ae-owen-1", app: "app-owen", from: null, to: "APPLIED", round: null },
+    { id: "ae-owen-2", app: "app-owen", from: "APPLIED", to: "SCREEN", round: null },
+    { id: "ae-mei-1", app: "app-mei", from: null, to: "APPLIED", round: null },
+    { id: "ae-mei-2", app: "app-mei", from: "APPLIED", to: "SCREEN", round: null },
+    { id: "ae-mei-3", app: "app-mei", from: "SCREEN", to: "INTERVIEW", round: "Technical Screen" },
+    { id: "ae-mei-4", app: "app-mei", from: "INTERVIEW", to: "INTERVIEW", round: "System Design", note: "Advanced to System Design" },
+    { id: "ae-luis-1", app: "app-luis", from: null, to: "APPLIED", round: null },
+    { id: "ae-luis-2", app: "app-luis", from: "APPLIED", to: "SCREEN", round: null },
+    { id: "ae-luis-3", app: "app-luis", from: "SCREEN", to: "INTERVIEW", round: "Technical Screen" },
+    { id: "ae-luis-4", app: "app-luis", from: "INTERVIEW", to: "OFFER", round: null },
+  ];
+  for (const e of EVENTS) {
+    await prisma.applicationEvent.upsert({
+      where: { id: e.id },
+      update: {},
+      create: {
+        id: e.id, applicationId: e.app, jobId: "job-be",
+        fromStage: e.from, toStage: e.to, roundName: e.round ?? null, note: e.note ?? null,
+        actorId: PEOPLE.raj.userId,
+      },
+    });
+  }
+
   const counts = {
     organizations: await prisma.organization.count(),
     users: await prisma.user.count(),
@@ -630,6 +758,12 @@ async function main() {
     projectAssignments: await prisma.projectAssignment.count(),
     meetings: await prisma.meeting.count(),
     meetingAssignments: await prisma.meetingAssignment.count(),
+    jobs: await prisma.job.count(),
+    interviewRounds: await prisma.interviewRound.count(),
+    jobMembers: await prisma.jobMember.count(),
+    candidates: await prisma.candidate.count(),
+    applications: await prisma.application.count(),
+    applicationEvents: await prisma.applicationEvent.count(),
   };
   console.log("Seed complete:", counts);
 }

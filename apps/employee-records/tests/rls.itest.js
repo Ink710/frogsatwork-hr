@@ -23,9 +23,9 @@ describe("RLS row scoping (naked findMany, no where clause)", () => {
   });
 
   it.each([
-    ["ana", 7],
-    ["marcus", 4],
-    ["bianca", 7],
+    ["ana", 8], // all 8 employees (incl. Raj the recruiter, added for the ATS)
+    ["marcus", 4], // his Engineering subtree only (Raj is in People, under Ana)
+    ["bianca", 8],
     ["diego", 1],
   ])("withViewer(%s) sees %i employees", async (who, expected) => {
     const rows = await withViewer(V[who], (tx) => tx.employee.findMany());

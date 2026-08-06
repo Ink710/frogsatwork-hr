@@ -23,6 +23,7 @@ export {
   canManageDepartments,
   isPayroll,
   isHrRole,
+  isRecruiter,
 } from "./roles";
 export {
   getSubtreeIds,

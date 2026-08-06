@@ -50,6 +50,15 @@ export function isHrRole(role: Role) {
   return role === Role.HR_ADMIN || role === Role.HR_GENERALIST;
 }
 
+// May access the RECRUITING (ATS) area at all — recruiters + HR. Per-job visibility WITHIN the ATS
+// is enforced by Row-Level Security (app_can_see_job / app_can_manage_job, driven by hiring-team
+// membership); this is only the org-wide "has recruiting access" gate for the app shell + nav.
+// Note: being a recruiter grants NO extra employee-records visibility — getRecordScope still returns
+// SELF for RECRUITER (it isn't in ALL_RECORDS_ROLES and isn't a MANAGER).
+export function isRecruiter(role: Role) {
+  return role === Role.RECRUITER || role === Role.HR_ADMIN || role === Role.HR_GENERALIST;
+}
+
 // Which employee RECORDS this viewer can see at all.
 export function getRecordScope(viewer: Viewer) {
   if (ALL_RECORDS_ROLES.has(viewer.role)) return RECORD_SCOPE.ALL;
