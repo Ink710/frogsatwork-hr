@@ -29,7 +29,8 @@ describe("ATS RLS — per-job hiring-team scoping", () => {
       apps: await tx.application.count(),
       cands: await tx.candidate.count(),
     }));
-    expect(r).toEqual({ jobs: 2, apps: 4, cands: 4 });
+    // 5 applications, not 4: Owen applied to BOTH reqs (see the seed's cross-job candidate).
+    expect(r).toEqual({ jobs: 2, apps: 5, cands: 4 });
   });
 
   it("a hiring manager sees only their own req's pipeline (not the other job)", async () => {
@@ -38,7 +39,9 @@ describe("ATS RLS — per-job hiring-team scoping", () => {
       apps: await tx.application.count(),
       cands: await tx.candidate.count(),
     }));
-    // job-be only (Marcus isn't on the DRAFT job-pd), but all 4 of its applications + candidates.
+    // Marcus is on job-be only, so he sees that one req and its 4 applications — NOT the 5th
+    // (Owen's application to job-pd). That gap between 5 org-wide and 4 here is the RLS working:
+    // applications are scoped per JOB, even for a candidate he can otherwise see.
     expect(r).toEqual({ jobs: 1, apps: 4, cands: 4 });
   });
 

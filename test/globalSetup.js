@@ -32,6 +32,14 @@ export async function setup() {
   await owner.connect();
   await owner.query("GRANT CONNECT ON DATABASE hris_test TO hris_app");
   await owner.query("GRANT USAGE ON SCHEMA public TO hris_app");
+  // Database-level timeouts, inherited by EVERY new connection to hris_test — including the
+  // `prisma db seed` SUBPROCESS that resetDb() shells out to on each beforeEach. That subprocess
+  // sets none of its own, so without this a lock held by a stray backend made its upserts wait
+  // forever; execSync blocks the event loop, so the whole beforeEach hook hung until Vitest killed
+  // it (a different random test failing with "Hook timed out" each run). Now it fails FAST and loud
+  // instead of hanging. Applies to new sessions only, which is exactly what we want.
+  await owner.query("ALTER DATABASE hris_test SET lock_timeout = '8s'");
+  await owner.query("ALTER DATABASE hris_test SET statement_timeout = '30s'");
   await owner.end();
 
   // 3. Apply all migrations + seed. execSync inherits our env (DIRECT_URL=hris_test);

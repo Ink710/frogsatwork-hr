@@ -22,15 +22,16 @@ export async function resetDb() {
   const owner = new pg.Client({ connectionString: process.env.DIRECT_URL });
   await owner.connect();
 
-  // Under the full suite's load a Prisma interactive transaction can time out and leave a backend
-  // "idle in transaction" — still holding locks, which would make the TRUNCATE below wait forever
-  // (the 10s beforeEach hook then times out and the whole run stalls). Terminate any such backend
-  // first; the app's pool just reconnects lazily on its next query.
+  // A leftover backend still holding locks makes the TRUNCATE below — and, worse, the seed
+  // subprocess at the end of this function — wait on it, which used to hang the whole beforeEach.
+  // Terminate EVERY other connection to this database, whatever its state: `idle in transaction`
+  // was too narrow (an `active` or `idle in transaction (aborted)` backend holds locks just the
+  // same). Safe because hris_test is a dedicated test database owned by this process — nothing else
+  // legitimately connects to it, and Prisma's pool just reconnects lazily on its next query.
   await owner.query(`
     SELECT pg_terminate_backend(pid) FROM pg_stat_activity
     WHERE datname = current_database()
-      AND pid <> pg_backend_pid()
-      AND state = 'idle in transaction'`);
+      AND pid <> pg_backend_pid()`);
   // Belt-and-suspenders: if a lock is still held, fail fast with a clear error rather than hang.
   await owner.query("SET lock_timeout = '8s'");
   await owner.query(

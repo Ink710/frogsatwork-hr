@@ -637,7 +637,7 @@ async function main() {
     { id: "job-be", title: "Senior Backend Engineer", status: "OPEN", dept: DEPT.eng, openings: 2,
       location: "Remote (US)", employmentType: "FULL_TIME",
       description: "Own core services on our Postgres + Node stack. Strong SQL and API design." },
-    { id: "job-pd", title: "Product Designer", status: "DRAFT", dept: DEPT.eng, openings: 1,
+    { id: "job-pd", title: "Product Designer", status: "OPEN", dept: DEPT.eng, openings: 1,
       location: "San Francisco, CA", employmentType: "FULL_TIME",
       description: "Shape the product's look and flows end to end." },
   ];
@@ -672,6 +672,9 @@ async function main() {
     { id: "jm-be-raj", job: "job-be", emp: PEOPLE.raj.empId, role: "RECRUITER" },
     { id: "jm-be-marcus", job: "job-be", emp: PEOPLE.marcus.empId, role: "HIRING_MANAGER" },
     { id: "jm-be-diego", job: "job-be", emp: PEOPLE.diego.empId, role: "INTERVIEWER" },
+    // Raj also recruits the design req — so it has an owner, and (crucially for the candidate
+    // database) a candidate can appear on TWO reqs while Marcus/Diego still see only the backend one.
+    { id: "jm-pd-raj", job: "job-pd", emp: PEOPLE.raj.empId, role: "RECRUITER" },
   ];
   for (const m of JOB_MEMBERS) {
     await prisma.jobMember.upsert({
@@ -696,20 +699,25 @@ async function main() {
     });
   }
 
-  // Applications to the backend req, spread across the pipeline. Mei is mid-INTERVIEW at "System Design".
+  // Applications, spread across the pipeline AND across time (distinct appliedAt dates so the
+  // candidate database's date-range filter has something real to bite on). Mei is mid-INTERVIEW at
+  // "System Design". Owen appears TWICE — backend + design — which is what makes the candidate
+  // profile's cross-job history (one person, many applications) visible in the demo.
   const APPLICATIONS = [
-    { id: "app-nora", cand: "cand-nora", stage: "APPLIED", round: null },
-    { id: "app-owen", cand: "cand-owen", stage: "SCREEN", round: null },
-    { id: "app-mei", cand: "cand-mei", stage: "INTERVIEW", round: "ir-be-design" },
-    { id: "app-luis", cand: "cand-luis", stage: "OFFER", round: null },
+    { id: "app-nora", cand: "cand-nora", job: "job-be", stage: "APPLIED", round: null, applied: "2026-08-05" },
+    { id: "app-owen", cand: "cand-owen", job: "job-be", stage: "SCREEN", round: null, applied: "2026-07-28" },
+    { id: "app-mei", cand: "cand-mei", job: "job-be", stage: "INTERVIEW", round: "ir-be-design", applied: "2026-07-20" },
+    { id: "app-luis", cand: "cand-luis", job: "job-be", stage: "OFFER", round: null, applied: "2026-07-10" },
+    { id: "app-owen-pd", cand: "cand-owen", job: "job-pd", stage: "REJECTED", round: null, applied: "2026-06-15" },
   ];
   for (const a of APPLICATIONS) {
     await prisma.application.upsert({
       where: { id: a.id },
-      update: { stage: a.stage, currentRoundId: a.round },
+      update: { stage: a.stage, currentRoundId: a.round, appliedAt: new Date(`${a.applied}T12:00:00.000Z`) },
       create: {
-        id: a.id, orgId: ORG_ID, jobId: "job-be", candidateId: a.cand,
+        id: a.id, orgId: ORG_ID, jobId: a.job, candidateId: a.cand,
         stage: a.stage, currentRoundId: a.round,
+        appliedAt: new Date(`${a.applied}T12:00:00.000Z`),
       },
     });
   }
@@ -728,13 +736,18 @@ async function main() {
     { id: "ae-luis-2", app: "app-luis", from: "APPLIED", to: "SCREEN", round: null },
     { id: "ae-luis-3", app: "app-luis", from: "SCREEN", to: "INTERVIEW", round: "Technical Screen" },
     { id: "ae-luis-4", app: "app-luis", from: "INTERVIEW", to: "OFFER", round: null },
+    // Owen's earlier run at the design req: applied, then rejected. He's since re-applied to the
+    // backend req (app-owen, now at SCREEN) — the talent-pool story the candidate database surfaces.
+    { id: "ae-owen-pd-1", app: "app-owen-pd", job: "job-pd", from: null, to: "APPLIED", round: null },
+    { id: "ae-owen-pd-2", app: "app-owen-pd", job: "job-pd", from: "APPLIED", to: "REJECTED", round: null,
+      note: "Strong portfolio, but we went with a more senior profile." },
   ];
   for (const e of EVENTS) {
     await prisma.applicationEvent.upsert({
       where: { id: e.id },
       update: {},
       create: {
-        id: e.id, applicationId: e.app, jobId: "job-be",
+        id: e.id, applicationId: e.app, jobId: e.job ?? "job-be",
         fromStage: e.from, toStage: e.to, roundName: e.round ?? null, note: e.note ?? null,
         actorId: PEOPLE.raj.userId,
       },

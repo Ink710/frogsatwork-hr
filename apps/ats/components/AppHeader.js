@@ -22,7 +22,10 @@ export async function AppHeader() {
 
   return (
     <AppShellHeader
-      navItems={[{ href: "/", label: t("nav.jobs") }]}
+      navItems={[
+        { href: "/", label: t("nav.jobs") },
+        { href: "/candidates", label: t("nav.candidates") },
+      ]}
       userName={name}
       roleLabel={t(`enum.role.${role}`)}
       prefsLabel={t("nav.preferences")}

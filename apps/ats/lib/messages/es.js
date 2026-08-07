@@ -5,6 +5,7 @@ const es = {
   // Nav / shell
   "nav.home": "Vacantes",
   "nav.jobs": "Vacantes",
+  "nav.candidates": "Candidatos",
   "nav.preferences": "Preferencias",
   "nav.signOut": "Cerrar sesión",
 
@@ -75,6 +76,34 @@ const es = {
   "action.withdraw": "Retirar",
   "action.nextRound": "Siguiente ronda",
   "action.advanceToOffer": "Avanzar a Oferta",
+
+  // Candidate database
+  "candidates.title": "Candidatos",
+  "candidates.subtitle": "Todas las personas que han postulado. Busca también entre postulantes anteriores.",
+  "candidates.count": "{n} personas · mostrando {shown}",
+  "candidates.search": "Buscar nombre o correo",
+  "candidates.allStages": "Todas las etapas",
+  "candidates.allJobs": "Todas las vacantes",
+  "candidates.allSources": "Todos los orígenes",
+  "candidates.appliedFrom": "Postuló desde",
+  "candidates.appliedTo": "Postuló hasta",
+  "candidates.filter": "Filtrar",
+  "candidates.clear": "Limpiar",
+  "candidates.empty": "Aún no hay candidatos.",
+  "candidates.noMatch": "Ningún candidato coincide con esos filtros.",
+  "candidates.moreApplications": "+{n} más",
+  "candidates.applications": "{n} postulación(es)",
+  "candidates.noApplications": "Sin postulaciones",
+
+  // Candidate profile
+  "profile.back": "← Todos los candidatos",
+  "profile.details": "Candidato",
+  "profile.history": "Historial de postulaciones",
+  "profile.applicationsLabel": "Postulaciones",
+  "profile.appliedOn": "Postuló el {date}",
+  "profile.round": "Ronda",
+  "profile.rejectionReason": "Motivo",
+  "profile.viewPipeline": "Ver en el flujo →",
 
   // Application detail
   "app.title": "Candidato",

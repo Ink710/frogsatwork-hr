@@ -1,0 +1,89 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { INTL_LOCALE, formatDate, initials } from "@hris/ui";
+import { Avatar, Card, Field, FieldGrid } from "@hris/ui/server";
+import { getT, getLocale } from "@/lib/i18n.server";
+import { getCandidateProfile } from "@/lib/queries";
+import { StageBadge } from "@/components/recruiting-ui";
+
+// One person, every application. This is what the Candidate/Application split from M1 exists for:
+// "have we seen this person before?" is answerable at a glance, including past rejections.
+export default async function CandidateProfilePage({ params }) {
+  const { id } = await params; // async in Next 16
+  const t = await getT();
+  const locale = INTL_LOCALE[await getLocale()];
+
+  const candidate = await getCandidateProfile(id);
+  if (!candidate) notFound();
+
+  return (
+    <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8 sm:px-6">
+      <Link href="/candidates" className="text-sm text-muted-foreground hover:text-foreground">
+        {t("profile.back")}
+      </Link>
+
+      <div className="mt-3 flex items-center gap-4">
+        <Avatar initials={initials(candidate.firstName, candidate.lastName)} className="h-14 w-14 text-lg" />
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {candidate.firstName} {candidate.lastName}
+          </h1>
+          <p className="mt-0.5 font-mono text-sm text-muted-foreground">{candidate.email}</p>
+        </div>
+      </div>
+
+      <div className="mt-6 flex flex-col gap-6">
+        <Card title={t("profile.details")}>
+          <FieldGrid>
+            <Field label={t("app.email")}>{candidate.email}</Field>
+            {candidate.phone && <Field label={t("app.phone")}>{candidate.phone}</Field>}
+            {candidate.source && <Field label={t("app.source")}>{candidate.source}</Field>}
+            <Field label={t("profile.applicationsLabel")}>
+              {t("candidates.applications", { n: candidate.applications.length })}
+            </Field>
+          </FieldGrid>
+        </Card>
+
+        <Card title={t("profile.history")}>
+          {candidate.applications.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t("candidates.noApplications")}</p>
+          ) : (
+            <ul className="flex flex-col gap-3">
+              {candidate.applications.map((a) => (
+                <li key={a.id} className="rounded-lg border border-border p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="font-medium">{a.job.title}</p>
+                      <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+                        {t("profile.appliedOn", { date: formatDate(a.appliedAt, locale) })}
+                      </p>
+                      {a.currentRound && (
+                        <p className="mt-0.5 text-xs text-primary">
+                          {t("profile.round")}: {a.currentRound.name}
+                        </p>
+                      )}
+                      {a.rejectionReason && (
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {t("profile.rejectionReason")}: {a.rejectionReason}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <StageBadge stage={a.stage} label={t(`enum.applicationStage.${a.stage}`)} />
+                      <Link
+                        href={`/jobs/${a.job.id}/applications/${a.id}`}
+                        className="text-xs text-primary hover:underline"
+                      >
+                        {t("profile.viewPipeline")}
+                      </Link>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </div>
+    </main>
+  );
+}

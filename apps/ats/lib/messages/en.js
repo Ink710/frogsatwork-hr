@@ -6,6 +6,7 @@ const en = {
   // Nav / shell
   "nav.home": "Jobs",
   "nav.jobs": "Jobs",
+  "nav.candidates": "Candidates",
   "nav.preferences": "Preferences",
   "nav.signOut": "Sign out",
 
@@ -76,6 +77,34 @@ const en = {
   "action.withdraw": "Withdraw",
   "action.nextRound": "Next round",
   "action.advanceToOffer": "Advance to Offer",
+
+  // Candidate database
+  "candidates.title": "Candidates",
+  "candidates.subtitle": "Everyone who has applied. Search past applicants, not just active ones.",
+  "candidates.count": "{n} people · showing {shown}",
+  "candidates.search": "Search name or email",
+  "candidates.allStages": "All stages",
+  "candidates.allJobs": "All jobs",
+  "candidates.allSources": "All sources",
+  "candidates.appliedFrom": "Applied from",
+  "candidates.appliedTo": "Applied to",
+  "candidates.filter": "Filter",
+  "candidates.clear": "Clear",
+  "candidates.empty": "No candidates yet.",
+  "candidates.noMatch": "No candidates match those filters.",
+  "candidates.moreApplications": "+{n} more",
+  "candidates.applications": "{n} application(s)",
+  "candidates.noApplications": "No applications",
+
+  // Candidate profile
+  "profile.back": "← All candidates",
+  "profile.details": "Candidate",
+  "profile.history": "Application history",
+  "profile.applicationsLabel": "Applications",
+  "profile.appliedOn": "Applied {date}",
+  "profile.round": "Round",
+  "profile.rejectionReason": "Reason",
+  "profile.viewPipeline": "View in pipeline →",
 
   // Application detail
   "app.title": "Candidate",
