@@ -21,6 +21,14 @@ export default async function JobBoardPage({ params }) {
       <div className="mt-2 flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">{job.title}</h1>
         <JobStatusBadge status={job.status} label={t(`enum.jobStatus.${job.status}`)} />
+        {board.canManage && (
+          <Link
+            href={`/jobs/${id}/manage`}
+            className="ml-auto rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+          >
+            {t("jobs.manage")}
+          </Link>
+        )}
       </div>
       {job.location && (
         <p className="mt-1 text-sm text-muted-foreground">

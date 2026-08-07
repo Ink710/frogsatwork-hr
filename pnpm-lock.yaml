@@ -237,6 +237,9 @@ importers:
       '@hris/recruiting':
         specifier: workspace:*
         version: link:../../packages/recruiting
+      '@hris/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
       '@hris/types':
         specifier: workspace:*
         version: link:../../packages/types
@@ -301,6 +304,9 @@ importers:
       '@hris/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@hris/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
       '@hris/types':
         specifier: workspace:*
         version: link:../../packages/types
@@ -471,6 +477,8 @@ importers:
       zod:
         specifier: ^4.1.13
         version: 4.4.3
+
+  packages/storage: {}
 
   packages/types:
     dependencies:

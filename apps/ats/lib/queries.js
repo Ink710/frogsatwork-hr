@@ -1,5 +1,6 @@
 import "server-only";
-import { getViewer, withViewer } from "@hris/auth";
+import { prisma } from "@hris/database";
+import { getViewer, withViewer, isRecruiter } from "@hris/auth";
 import { APPLICATION_STAGES } from "@hris/recruiting";
 
 // The active pipeline columns, in order. REJECTED / WITHDRAWN are shown separately (see `closed`).
@@ -96,6 +97,121 @@ export async function getJobBoard(jobId) {
       canManage,
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// PUBLIC careers site (M6) — no viewer, no session, no withViewer.
+// ---------------------------------------------------------------------------
+
+// Postings visible to the open internet: OPEN *and* published. Uses the bare `prisma` client (not
+// withViewer) because the caller is anonymous — which is safe here precisely because these are the
+// rows we've chosen to advertise, and only non-sensitive columns are selected. Job has RLS enabled;
+// with no session variables `app_can_see_job` is false, so we must go through the same
+// SECURITY DEFINER boundary the write path uses — see app_public_jobs in the migration.
+export async function getPublishedJobs() {
+  return prisma.$queryRaw`
+    SELECT id, title, location, "employmentType"::text AS "employmentType", "publishedAt"
+    FROM app_public_jobs()
+    ORDER BY "publishedAt" DESC, title ASC`;
+}
+
+// One public posting, or null. Same boundary; also returns the description for the detail page.
+export async function getPublishedJob(jobId) {
+  const [row] = await prisma.$queryRaw`
+    SELECT id, title, description, location, "employmentType"::text AS "employmentType", "publishedAt"
+    FROM app_public_jobs() WHERE id = ${jobId}`;
+  return row ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Job requisition management (M5).
+// ---------------------------------------------------------------------------
+
+// May this viewer OPEN a brand-new req? A new job has no JobMember rows yet, so app_can_manage_job
+// (which decides by membership-or-role) can't be the gate at creation time — this is an app-layer
+// decision. The DB backstop is the `job_insert` RLS policy, which enforces the SAME rule against the
+// new row's own columns (org match + recruiting role).
+export function canCreateJob(viewer) {
+  return Boolean(viewer) && isRecruiter(viewer.role);
+}
+
+// Departments for the job form's select. Department has no RLS (it isn't employee-scoped), so a
+// plain read is correct here.
+export async function getJobFormData() {
+  const viewer = await getViewer();
+  if (!viewer) return { departments: [] };
+  return withViewer(viewer, async (tx) => {
+    const departments = await tx.department.findMany({
+      where: { orgId: viewer.orgId },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    });
+    return { departments };
+  });
+}
+
+// Structural directory of the org — id, name, job title, department only. Uses app_org_chart, the
+// SECURITY DEFINER function that deliberately exposes NO compensation or contact data.
+//
+// Why this and not `tx.employee.findMany`: a RECRUITER intentionally gets NO employee-records
+// visibility (they aren't in app_can_see_employee's privileged roles), so an RLS-scoped employee
+// query returns only themselves — they could never staff a hiring team. The org chart function is
+// the suite's established answer to exactly this ("I need colleagues' NAMES, not their HR records"),
+// already used by the org chart page and time-management's schedule/roster.
+async function orgDirectory(tx, orgId) {
+  return tx.$queryRaw`SELECT id, "firstName", "lastName", "jobTitle" FROM app_org_chart(${orgId}) ORDER BY "lastName", "firstName"`;
+}
+
+// Everything the manage screen needs: the job, its ordered rounds, its hiring team (names resolved
+// structurally), and whether the viewer may change any of it. null when RLS hides the job.
+export async function getJobForManage(jobId) {
+  const viewer = await getViewer();
+  if (!viewer) return null;
+  return withViewer(viewer, async (tx) => {
+    const job = await tx.job.findFirst({
+      where: { id: jobId },
+      include: {
+        interviewRounds: { orderBy: { position: "asc" }, select: { id: true, name: true, position: true } },
+        // Deliberately NOT `include: { employee }` — that relation is Employee-RLS-filtered, so a
+        // recruiter would see null for every teammate. Names come from the directory below.
+        members: { orderBy: { createdAt: "asc" }, select: { id: true, role: true, employeeId: true } },
+      },
+    });
+    if (!job) return null;
+
+    const directory = await orgDirectory(tx, viewer.orgId);
+    const byId = new Map(directory.map((p) => [p.id, p]));
+    const members = job.members.map((m) => {
+      const p = byId.get(m.employeeId);
+      return {
+        id: m.id,
+        role: m.role,
+        employeeId: m.employeeId,
+        name: p ? `${p.firstName} ${p.lastName}` : "—",
+        jobTitle: p?.jobTitle ?? null,
+      };
+    });
+
+    const canManage = await viewerCanManageJob(tx, jobId);
+    return { job: { ...job, members }, canManage };
+  });
+}
+
+// People who can be added to a hiring team — the structural directory (see orgDirectory).
+export async function getAssignableEmployees() {
+  const viewer = await getViewer();
+  if (!viewer) return [];
+  return withViewer(viewer, async (tx) => {
+    const rows = await orgDirectory(tx, viewer.orgId);
+    return rows.map((p) => ({ id: p.id, name: `${p.firstName} ${p.lastName}`, jobTitle: p.jobTitle }));
+  });
+}
+
+// Is this employee id a real, current member of the viewer's org? Validated through the same
+// structural function, so adding a teammate never requires HR-record access.
+export async function isInOrgDirectory(tx, orgId, employeeId) {
+  const [row] = await tx.$queryRaw`SELECT 1 AS ok FROM app_org_chart(${orgId}) WHERE id = ${employeeId}`;
+  return Boolean(row);
 }
 
 // ---------------------------------------------------------------------------

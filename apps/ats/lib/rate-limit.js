@@ -51,3 +51,33 @@ export async function allowLoginAttempt(identifier) {
   const { success } = await rl.limit(identifier);
   return success;
 }
+
+// The PUBLIC careers apply endpoint — the one route reachable without an account, so it gets its own
+// budget. Slightly more generous than login (a real applicant may legitimately retry a failed
+// submission or apply to several roles) but still far below what a spam bot wants. Same fixed-window,
+// same single counter, same env gate.
+const APPLY_ATTEMPTS = 8;
+const APPLY_WINDOW = "10 m";
+let applyLimiter = null;
+
+function getApplyLimiter() {
+  if (applyLimiter) return applyLimiter;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  applyLimiter = new Ratelimit({
+    redis: new Redis({ url, token }),
+    limiter: Ratelimit.fixedWindow(APPLY_ATTEMPTS, APPLY_WINDOW),
+    analytics: false,
+    ephemeralCache: new Map(),
+    prefix: "tm:apply",
+  });
+  return applyLimiter;
+}
+
+export async function allowApplyAttempt(identifier) {
+  const rl = getApplyLimiter();
+  if (!rl) return true;
+  const { success } = await rl.limit(identifier);
+  return success;
+}

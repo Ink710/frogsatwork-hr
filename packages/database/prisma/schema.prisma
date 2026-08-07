@@ -873,6 +873,11 @@ model Job {
   employmentType EmploymentType @default(FULL_TIME)
   status         JobStatus      @default(DRAFT)
   openings       Int            @default(1)
+  // When this req was POSTED PUBLICLY. null = not advertised — a job can be OPEN internally without
+  // appearing on the careers site (confidential backfills, exec searches). A nullable timestamp
+  // rather than a boolean: it carries the same yes/no plus the "posted on" date the listing shows.
+  // The public apply path refuses any job that isn't OPEN *and* published.
+  publishedAt    DateTime?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 

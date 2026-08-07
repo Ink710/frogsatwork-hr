@@ -1,18 +1,31 @@
 import Link from "next/link";
+import { getViewer } from "@hris/auth";
 import { getT } from "@/lib/i18n.server";
-import { getJobsForViewer } from "@/lib/queries";
+import { getJobsForViewer, canCreateJob } from "@/lib/queries";
 import { JobStatusBadge } from "@/components/recruiting-ui";
 
 // Landing: the jobs (requisitions) the viewer can access. RLS scopes this — a recruiter/HR sees the
 // whole org; a hiring-team member sees their reqs; anyone else sees an empty list.
 export default async function JobsPage() {
   const t = await getT();
-  const jobs = await getJobsForViewer();
+  const [jobs, viewer] = await Promise.all([getJobsForViewer(), getViewer()]);
 
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
-      <h1 className="text-2xl font-semibold tracking-tight">{t("jobs.title")}</h1>
-      <p className="mt-1 text-sm text-muted-foreground">{t("jobs.subtitle")}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("jobs.title")}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{t("jobs.subtitle")}</p>
+        </div>
+        {canCreateJob(viewer) && (
+          <Link
+            href="/jobs/new"
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+          >
+            + {t("jobs.new")}
+          </Link>
+        )}
+      </div>
 
       {jobs.length === 0 ? (
         <p className="mt-8 rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">

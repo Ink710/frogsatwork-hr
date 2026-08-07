@@ -186,6 +186,29 @@ Integration tests run against a real Postgres (`hris_test`), which the harness b
 automatically — they exercise RLS scoping, the compensation guard, the approval gates, and the write
 paths end-to-end across both apps.
 
+## Paid services: the seam ships, the account is yours
+
+Two capabilities need a third-party account that costs money at real volume. Rather than pretend
+otherwise, the suite ships the **integration seam** fully wired and leaves the credentials to whoever
+runs the app. Both degrade honestly: unconfigured, they either no-op or fail with an actionable error —
+never silently.
+
+**Object storage** (`@hris/storage`) — one interface, `put` / `getStream` / `remove`, selected with
+`STORAGE_DRIVER`:
+
+| Driver | Status |
+| --- | --- |
+| `local` (default) | **Fully working.** Writes to the filesystem; used in development and tests. |
+| `s3` · `r2` · `vercel-blob` | **Declared, not implemented.** Throws a clear "configure this driver" error. |
+
+The local driver is the right choice for development but **cannot** be used on serverless hosting
+(Vercel's filesystem is ephemeral and read-only), so a deployed instance that accepts document or
+résumé uploads needs a cloud driver. Implementing one is a single file against the existing interface —
+no calling code changes.
+
+**Login / apply rate limiting** — the minimal Upstash Redis limiter (see *Architecture highlights*).
+Without `UPSTASH_REDIS_REST_URL` / `_TOKEN` it is a transparent no-op and Redis is never contacted.
+
 ## Environment & secrets
 
 - Real secrets live in **`.env`** (and `.env.local`), which are **git-ignored** — nothing sensitive

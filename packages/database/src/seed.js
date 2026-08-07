@@ -642,12 +642,15 @@ async function main() {
       description: "Shape the product's look and flows end to end." },
   ];
   for (const j of JOBS) {
+    // OPEN reqs are also POSTED PUBLICLY so the careers page has content. publishedAt is separate
+    // from status on purpose: a req can be open internally without being advertised.
+    const publishedAt = j.status === "OPEN" ? new Date("2026-06-01T09:00:00.000Z") : null;
     await prisma.job.upsert({
       where: { id: j.id },
-      update: { title: j.title, status: j.status, openings: j.openings, location: j.location, description: j.description },
+      update: { title: j.title, status: j.status, openings: j.openings, location: j.location, description: j.description, publishedAt },
       create: {
         id: j.id, title: j.title, description: j.description, location: j.location,
-        employmentType: j.employmentType, status: j.status, openings: j.openings,
+        employmentType: j.employmentType, status: j.status, openings: j.openings, publishedAt,
         orgId: ORG_ID, departmentId: j.dept, createdById: PEOPLE.raj.userId,
       },
     });

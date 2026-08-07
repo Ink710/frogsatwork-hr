@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { moveApplication, advanceRound } from "@/app/jobs/actions";
+import { moveApplication, advanceRound } from "@/app/(internal)/jobs/actions";
 
 // The move controls on a pipeline card. `buttons` is prepared server-side (labels already translated,
 // pipeline rules already applied), so this stays a thin dispatcher:

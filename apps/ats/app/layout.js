@@ -1,6 +1,5 @@
 import { Manrope, Inter, IBM_Plex_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import { AppHeader } from "@/components/AppHeader";
 import { ThemeWatcher, LocaleProvider } from "@hris/ui/client";
 import { getLocale } from "@/lib/i18n.server";
 import { messagesFor } from "@/lib/messages/index.js";
@@ -36,12 +35,11 @@ export default async function RootLayout({ children }) {
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
+      {/* The root layout holds ONLY the document shell + providers. The app header lives in the
+          (internal) route group, so the public careers site never renders internal navigation. */}
       <body className="min-h-full flex flex-col">
         <ThemeWatcher />
-        <LocaleProvider locale={locale} messages={messages}>
-          <AppHeader />
-          {children}
-        </LocaleProvider>
+        <LocaleProvider locale={locale} messages={messages}>{children}</LocaleProvider>
       </body>
     </html>
   );

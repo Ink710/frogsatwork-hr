@@ -18,7 +18,7 @@ vi.mock("@hris/auth", async () => {
 });
 
 import { getViewer, withViewer } from "@hris/auth";
-import { moveApplication, advanceRound } from "../app/jobs/actions.js";
+import { moveApplication, advanceRound } from "../app/(internal)/jobs/actions.js";
 import { getJobBoard } from "../lib/queries.js";
 
 const ORG = "10000000-0000-0000-0000-000000000001";
