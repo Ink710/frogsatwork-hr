@@ -13,6 +13,10 @@ const timeManagementAlias = {
   "@": fileURLToPath(new URL("./apps/time-management", import.meta.url)),
   "server-only": serverOnly,
 };
+const atsAlias = {
+  "@": fileURLToPath(new URL("./apps/ats", import.meta.url)),
+  "server-only": serverOnly,
+};
 
 // Shared integration-project settings (fresh migrated+seeded hris_test, sequential files).
 const integrationBase = {
@@ -46,6 +50,11 @@ export default defineConfig({
         // hris_test never races the employee-records integration project.
         resolve: { alias: timeManagementAlias },
         test: { name: "integration-tm", include: ["apps/time-management/**/*.itest.js"], ...integrationBase },
+      },
+      {
+        // Same, for the ATS app — its own `@/…` root + its own reseeding invocation.
+        resolve: { alias: atsAlias },
+        test: { name: "integration-ats", include: ["apps/ats/**/*.itest.js"], ...integrationBase },
       },
     ],
   },

@@ -58,7 +58,7 @@ jobs:
         run: pnpm --filter @hris/database exec prisma generate
 
       - name: Lint
-        run: pnpm --filter employee-records --filter time-management lint
+        run: pnpm --filter employee-records --filter time-management --filter ats lint
 
       - name: Test (unit + integration)
         run: pnpm test
