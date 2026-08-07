@@ -4,8 +4,7 @@ import { formatHours } from "@hris/workable-hours";
 import { getCurrentTimesheet, getMyTimesheets, getMyProjects, getMyMeetings, getWeekMeetings } from "@/lib/queries";
 import { getT, getLocale } from "@/lib/i18n.server";
 import { PageTabs, myWeekTabs } from "@/components/PageTabs";
-import { INTL_LOCALE } from "@/lib/i18n";
-import { formatDate } from "@/lib/format";
+import { INTL_LOCALE, formatDate } from "@hris/ui";
 import { TimesheetGrid } from "@/components/TimesheetGrid";
 import { TimesheetStatusBadge } from "@/components/timesheet-ui";
 

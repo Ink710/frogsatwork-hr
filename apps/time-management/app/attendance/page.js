@@ -3,8 +3,7 @@ import { getViewer } from "@hris/auth";
 import { formatHours } from "@hris/workable-hours";
 import { getClockStatus, getMyAttendance } from "@/lib/queries";
 import { getT, getLocale } from "@/lib/i18n.server";
-import { INTL_LOCALE } from "@/lib/i18n";
-import { formatDate } from "@/lib/format";
+import { INTL_LOCALE, formatDate } from "@hris/ui";
 import { AttendanceStatusBadge, ClockButton, WorkedToday } from "@/components/attendance-ui";
 
 export async function generateMetadata() {

@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { IdCard, Building2, UserRound, MapPin, Calendar, Clock, Mail, Phone } from "lucide-react";
-import { formatDate, tenureParts, initials } from "@/lib/format";
+import { formatDate, tenureParts, initials, INTL_LOCALE } from "@hris/ui";
 import { getT, getLocale } from "@/lib/i18n.server";
-import { INTL_LOCALE } from "@/lib/i18n";
-import { Avatar, StatusBadge } from "@/components/profile-ui";
+import { Avatar, StatusBadge } from "@hris/ui/server";
 
 // Lucide icons (outline, 2px) keyed by the sidebar's field names.
 const ICONS = {

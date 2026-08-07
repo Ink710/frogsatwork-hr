@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import { uploadDocument } from "@/app/employees/[id]/actions";
 import { DOCUMENT_TYPES } from "@hris/types";
-import { useT } from "./LocaleProvider";
+import { useT } from "@hris/ui/client";
 
 export function UploadDocForm({ employeeId }) {
   const t = useT();

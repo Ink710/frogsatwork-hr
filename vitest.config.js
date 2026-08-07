@@ -25,6 +25,12 @@ const integrationBase = {
   globalSetup: ["./test/globalSetup.js"],
   setupFiles: ["./test/loadTestEnv.js"],
   fileParallelism: false,
+  // resetDb() (the beforeEach fixture) TRUNCATEs and then re-runs the whole seed in a subprocess —
+  // pnpm + prisma CLI startup plus every upsert. That fixture has grown with the schema (time
+  // management, then recruiting), and under full-suite load it regularly exceeded Vitest's default
+  // 10s hook timeout, failing a RANDOM test each run with "Hook timed out". The work is legitimately
+  // slow, not stuck, so give it real headroom.
+  hookTimeout: 45000,
 };
 
 export default defineConfig({

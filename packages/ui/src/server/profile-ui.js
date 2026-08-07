@@ -2,7 +2,7 @@
 // No "use client" — these are pure markup, reused by the Overview cards, the sidebar, and
 // the other tab pages so the whole profile shares one visual language. All colors are semantic
 // design tokens (bg-card, border-border, text-muted-foreground…), so they theme automatically.
-import { humanize } from "@/lib/format";
+import { humanize } from "../format";
 
 // Status colors mapped to the semantic token palette.
 const STATUS_STYLES = {

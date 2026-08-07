@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { resendInvite } from "@/app/employees/[id]/actions";
-import { useT } from "./LocaleProvider";
+import { useT } from "@hris/ui/client";
 
 // Small HR-only control on an unactivated employee's profile. Binds the userId and reports
 // success/failure inline. `label` (already translated by the caller) says "Send invite" vs "Resend".

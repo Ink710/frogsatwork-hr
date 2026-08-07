@@ -7,7 +7,7 @@ import {
   updateEmergencyContact,
   deleteEmergencyContact,
 } from "@/app/employees/[id]/actions";
-import { useT } from "./LocaleProvider";
+import { useT } from "@hris/ui/client";
 
 const fieldCls = "w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-sm outline-none focus:border-ring";
 

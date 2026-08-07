@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { useT } from "@/components/LocaleProvider";
+import { useT } from "@hris/ui/client";
 import { toggleMeetingStatus } from "@/app/meetings/actions";
 
 // Archive an ACTIVE meeting or reactivate an ARCHIVED one. Archived meetings drop out of the employee

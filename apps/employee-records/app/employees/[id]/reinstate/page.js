@@ -2,8 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getEmployeeForReinstate } from "@/lib/queries";
 import { getT, getLocale } from "@/lib/i18n.server";
-import { INTL_LOCALE } from "@/lib/i18n";
-import { formatDate } from "@/lib/format";
+import { INTL_LOCALE, formatDate } from "@hris/ui";
 import { ReinstateForm } from "@/components/ReinstateForm";
 
 export async function generateMetadata() {

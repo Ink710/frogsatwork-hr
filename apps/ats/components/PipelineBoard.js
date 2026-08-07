@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { nextStage, nextRound } from "@hris/recruiting";
 import { getLocale, getT } from "@/lib/i18n.server";
-import { INTL_LOCALE } from "@/lib/i18n";
-import { formatDate } from "@/lib/format";
+import { INTL_LOCALE, formatDate } from "@hris/ui";
 import { BOARD_STAGES } from "@/lib/queries";
 import { StageBadge } from "@/components/recruiting-ui";
 import { StageMoveActions } from "@/components/StageMoveActions";

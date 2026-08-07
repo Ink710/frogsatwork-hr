@@ -13,7 +13,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/i18n.server", async () => {
   const { messagesFor } = await import("../lib/messages/index.js");
-  const { createTranslator } = await import("../lib/i18n.js");
+  const { createTranslator } = await import("@hris/ui");
   const t = createTranslator(messagesFor("en"));
   return { getT: async () => t, getLocale: async () => "en", getTimeZone: async () => "America/Mexico_City" };
 });

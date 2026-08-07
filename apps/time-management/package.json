@@ -13,6 +13,7 @@
     "@hris/auth": "workspace:*",
     "@hris/database": "workspace:*",
     "@hris/types": "workspace:*",
+    "@hris/ui": "workspace:*",
     "@hris/workable-hours": "workspace:*",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.38.2",

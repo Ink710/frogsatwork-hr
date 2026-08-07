@@ -2,9 +2,8 @@
 
 import { useActionState, useMemo, useState } from "react";
 import { AlertTriangle } from "lucide-react";
-import { useT, useLocale } from "@/components/LocaleProvider";
-import { INTL_LOCALE } from "@/lib/i18n";
-import { formatDate } from "@/lib/format";
+import { useT, useLocale } from "@hris/ui/client";
+import { INTL_LOCALE, formatDate } from "@hris/ui";
 import { createShifts } from "@/app/schedule/actions";
 
 const fieldCls =

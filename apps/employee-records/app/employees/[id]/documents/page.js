@@ -1,9 +1,8 @@
 import { getViewer, canEditEmployee } from "@hris/auth";
 import { getEmployeeDocuments } from "@/lib/documents";
 import { getT, getLocale } from "@/lib/i18n.server";
-import { INTL_LOCALE } from "@/lib/i18n";
-import { formatDate } from "@/lib/format";
-import { Card } from "@/components/profile-ui";
+import { INTL_LOCALE, formatDate } from "@hris/ui";
+import { Card } from "@hris/ui/server";
 import { UploadDocForm } from "@/components/UploadDocForm";
 import { DeleteDocButton } from "@/components/DeleteDocButton";
 

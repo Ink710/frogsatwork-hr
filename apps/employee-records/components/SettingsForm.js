@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { setStorageDir } from "@/app/settings/actions";
-import { useT } from "./LocaleProvider";
+import { useT } from "@hris/ui/client";
 
 export function SettingsForm({ storageDir }) {
   const t = useT();

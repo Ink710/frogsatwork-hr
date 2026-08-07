@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/* Tailwind v4 auto-detects the classes to generate by scanning source files — but it deliberately
+   SKIPS node_modules, which is exactly where @hris/ui resolves (pnpm workspace symlink). Without
+   this, every utility class used by the shared components is purged and they render UNSTYLED, with
+   no build error to warn you. Keep this in sync in all three apps. */
+@source "../../../packages/ui/src";
+
 /* Class-based dark mode: `dark:` utilities activate when an ancestor (the <html>) has the
    `.dark` class, instead of following prefers-color-scheme directly. The theme controller sets
    that class — from the saved preference, or from the OS when the preference is "system". */

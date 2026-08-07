@@ -1,11 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getT, getLocale } from "@/lib/i18n.server";
-import { INTL_LOCALE } from "@/lib/i18n";
-import { formatDate, formatDateTime, initials } from "@/lib/format";
+import { INTL_LOCALE, formatDate, formatDateTime, initials } from "@hris/ui";
 import { getApplicationDetail } from "@/lib/queries";
 import { StageBadge } from "@/components/recruiting-ui";
-import { Avatar, Card, Field, FieldGrid } from "@/components/profile-ui";
+import { Avatar, Card, Field, FieldGrid } from "@hris/ui/server";
 
 // Human label for one pipeline event: the initial application, an interview-round advance
 // (INTERVIEW→INTERVIEW), or a stage move.

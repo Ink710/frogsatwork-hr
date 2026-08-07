@@ -6,8 +6,7 @@ import { formatHours } from "@hris/workable-hours";
 import { getTeamAttendance, getTeamAttendanceWeek } from "@/lib/queries";
 import { getT, getLocale } from "@/lib/i18n.server";
 import { PageTabs, myTeamTabs } from "@/components/PageTabs";
-import { INTL_LOCALE } from "@/lib/i18n";
-import { formatDate } from "@/lib/format";
+import { INTL_LOCALE, formatDate } from "@hris/ui";
 import { AttendanceStatusBadge } from "@/components/attendance-ui";
 import { AttendanceRoster } from "@/components/AttendanceRoster";
 

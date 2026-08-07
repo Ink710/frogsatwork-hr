@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { useT } from "@/components/LocaleProvider";
+import { useT } from "@hris/ui/client";
 import { cancelTimeOff } from "@/app/time-off/actions";
 
 // Cancels one request (the subject's own, or a manager/HR acting for them). Bound to the request id;

@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { Trash2 } from "lucide-react";
-import { useT } from "@/components/LocaleProvider";
+import { useT } from "@hris/ui/client";
 import { deleteShift } from "@/app/schedule/actions";
 
 export function DeleteShiftButton({ shiftId }) {

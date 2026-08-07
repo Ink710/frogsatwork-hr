@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useState } from "react";
 import { formatHours } from "@hris/workable-hours";
-import { useT } from "@/components/LocaleProvider";
+import { useT } from "@hris/ui/client";
 import { clockIn, clockOut } from "@/app/attendance/actions";
 
 // The "worked today" figure. Starts at the server-computed value (so SSR + first paint match — no

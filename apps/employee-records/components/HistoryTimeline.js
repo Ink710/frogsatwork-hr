@@ -1,4 +1,4 @@
-import { formatDate, formatMoney, formatPayBasis } from "@/lib/format";
+import { formatDate, formatMoney, formatPayBasis } from "@hris/ui";
 
 // Presentational, server-rendered (no "use client"). Renders the effective-dated history as a
 // vertical timeline, newest at the top. `history` is expected already ordered version-desc.

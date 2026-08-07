@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { CheckCheck } from "lucide-react";
-import { useT } from "@/components/LocaleProvider";
+import { useT } from "@hris/ui/client";
 import { publishWeek } from "@/app/schedule/actions";
 
 // Publishes this week's draft shifts → visible to the whole department. Managers/HR only.

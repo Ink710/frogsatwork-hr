@@ -1,9 +1,8 @@
 import { redirect } from "next/navigation";
 import { getViewer } from "@hris/auth";
 import { getT } from "@/lib/i18n.server";
-import { Card } from "@/components/profile-ui";
-import { ThemeToggle } from "@/components/ThemeToggle";
-import { LanguageToggle } from "@/components/LanguageToggle";
+import { Card } from "@hris/ui/server";
+import { ThemeToggle, LanguageToggle } from "@hris/ui/client";
 
 export async function generateMetadata() {
   const t = await getT();

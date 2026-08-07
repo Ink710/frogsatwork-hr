@@ -5,9 +5,8 @@ import { getViewer } from "@hris/auth";
 import { formatHours } from "@hris/workable-hours";
 import { getTimeOffOverview } from "@/lib/queries";
 import { getT, getLocale } from "@/lib/i18n.server";
-import { INTL_LOCALE } from "@/lib/i18n";
-import { formatDate } from "@/lib/format";
-import { Card } from "@/components/profile-ui";
+import { INTL_LOCALE, formatDate } from "@hris/ui";
+import { Card } from "@hris/ui/server";
 import { LeaveStatusBadge } from "@/components/time-off-ui";
 import { CancelRequestButton } from "@/components/CancelRequestButton";
 

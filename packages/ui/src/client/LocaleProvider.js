@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useMemo } from "react";
-import { createTranslator, DEFAULT_LOCALE } from "@/lib/i18n";
+import { createTranslator, DEFAULT_LOCALE } from "../i18n";
 
 // Bridges the server-read locale to Client Components. The root layout reads the cookie and
 // passes { locale, messages }; here we build the translator once and expose it via context.

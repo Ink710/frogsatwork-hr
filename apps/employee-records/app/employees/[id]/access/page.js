@@ -1,9 +1,8 @@
 import { notFound } from "next/navigation";
 import { getEmployeeAccess } from "@/lib/queries";
 import { getT, getLocale } from "@/lib/i18n.server";
-import { INTL_LOCALE } from "@/lib/i18n";
-import { formatDate } from "@/lib/format";
-import { Card, Field, FieldGrid, Pill } from "@/components/profile-ui";
+import { INTL_LOCALE, formatDate } from "@hris/ui";
+import { Card, Field, FieldGrid, Pill } from "@hris/ui/server";
 
 function CheckRow({ ok, children }) {
   return (

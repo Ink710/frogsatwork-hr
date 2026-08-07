@@ -6,8 +6,7 @@ import { formatHours } from "@hris/workable-hours";
 import { getWeekSchedule } from "@/lib/queries";
 import { getT, getLocale } from "@/lib/i18n.server";
 import { PageTabs, myWeekTabs } from "@/components/PageTabs";
-import { INTL_LOCALE } from "@/lib/i18n";
-import { formatDate } from "@/lib/format";
+import { INTL_LOCALE, formatDate } from "@hris/ui";
 import { PublishWeekButton } from "@/components/PublishWeekButton";
 
 export async function generateMetadata() {

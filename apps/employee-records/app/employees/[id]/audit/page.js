@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { getEmployeeAuditLog } from "@/lib/queries";
 import { getT } from "@/lib/i18n.server";
 import { AuditLogList } from "@/components/AuditLogList";
-import { Card, Pill } from "@/components/profile-ui";
+import { Card, Pill } from "@hris/ui/server";
 
 export default async function EmployeeAuditPage({ params }) {
   const { id } = await params;

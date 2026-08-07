@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { setPassword } from "@/app/set-password/actions";
-import { useT } from "./LocaleProvider";
+import { useT } from "@hris/ui/client";
 
 export function SetPasswordForm({ token }) {
   const t = useT();

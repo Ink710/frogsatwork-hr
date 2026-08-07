@@ -1,7 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { THEMES, getStoredTheme, setTheme, subscribeTheme } from "@/lib/theme";
+import { THEMES, getStoredTheme, setTheme, subscribeTheme } from "../theme";
 import { useT } from "./LocaleProvider";
 
 // A three-way segmented control. useSyncExternalStore reads the saved preference from localStorage

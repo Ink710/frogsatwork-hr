@@ -1,9 +1,8 @@
 import { Manrope, Inter, IBM_Plex_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { AppHeader } from "@/components/AppHeader";
-import { ThemeWatcher } from "@/components/ThemeWatcher";
+import { ThemeWatcher, LocaleProvider } from "@hris/ui/client";
 import { TimeZoneWatcher } from "@/components/TimeZoneWatcher";
-import { LocaleProvider } from "@/components/LocaleProvider";
 import { getLocale } from "@/lib/i18n.server";
 import { messagesFor } from "@/lib/messages/index.js";
 

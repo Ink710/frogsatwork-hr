@@ -6,8 +6,7 @@ import { formatHours } from "@hris/workable-hours";
 import { getTeamTimesheets } from "@/lib/queries";
 import { getT, getLocale } from "@/lib/i18n.server";
 import { PageTabs, myTeamTabs } from "@/components/PageTabs";
-import { INTL_LOCALE } from "@/lib/i18n";
-import { formatDate } from "@/lib/format";
+import { INTL_LOCALE, formatDate } from "@hris/ui";
 import { TimesheetStatusBadge } from "@/components/timesheet-ui";
 
 export async function generateMetadata() {

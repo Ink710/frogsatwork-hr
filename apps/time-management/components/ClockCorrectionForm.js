@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { useT } from "@/components/LocaleProvider";
+import { useT } from "@hris/ui/client";
 import { correctClock } from "@/app/attendance/actions";
 
 // Manager/HR form to append a corrective punch for an employee (e.g. close a forgotten clock-out).

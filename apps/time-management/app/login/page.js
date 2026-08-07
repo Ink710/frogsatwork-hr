@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { signIn, AuthError } from "@hris/auth";
 import { getT } from "@/lib/i18n.server";
 import { allowLoginAttempt } from "@/lib/rate-limit";
-import { Logo } from "@/components/Logo";
+import { Logo } from "@hris/ui/client";
 
 export async function generateMetadata() {
   const t = await getT();

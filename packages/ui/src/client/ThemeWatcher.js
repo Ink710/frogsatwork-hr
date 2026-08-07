@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { applyTheme, getStoredTheme } from "@/lib/theme";
+import { applyTheme, getStoredTheme } from "../theme";
 
 // Mounted once in the root layout. Renders nothing; it just keeps the live theme in sync while
 // the app is open: when the preference is "system", it re-applies on OS light/dark changes, and

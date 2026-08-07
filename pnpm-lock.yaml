@@ -240,6 +240,9 @@ importers:
       '@hris/types':
         specifier: workspace:*
         version: link:../../packages/types
+      '@hris/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@upstash/ratelimit':
         specifier: ^2.0.8
         version: 2.0.8(@upstash/redis@1.38.2)
@@ -301,6 +304,9 @@ importers:
       '@hris/types':
         specifier: workspace:*
         version: link:../../packages/types
+      '@hris/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       bcryptjs:
         specifier: ^3.0.2
         version: 3.0.3
@@ -359,6 +365,9 @@ importers:
       '@hris/types':
         specifier: workspace:*
         version: link:../../packages/types
+      '@hris/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@hris/workable-hours':
         specifier: workspace:*
         version: link:../../packages/workable-hours
@@ -469,7 +478,17 @@ importers:
         specifier: ^4.1.13
         version: 4.4.3
 
-  packages/ui: {}
+  packages/ui:
+    dependencies:
+      lucide-react:
+        specifier: '*'
+        version: 1.24.0(react@19.2.4)
+      next:
+        specifier: '*'
+        version: 16.2.9(@babel/core@7.29.7)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      react:
+        specifier: '*'
+        version: 19.2.4
 
   packages/workable-hours:
     dependencies:

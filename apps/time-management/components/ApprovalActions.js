@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { useT } from "@/components/LocaleProvider";
+import { useT } from "@hris/ui/client";
 import { decideTimeOff } from "@/app/time-off/actions";
 
 // One form, two submit buttons (name="intent"): Approve or Deny. Both flow through decideTimeOff via

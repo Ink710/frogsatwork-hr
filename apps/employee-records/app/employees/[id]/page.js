@@ -3,9 +3,8 @@ import { notFound } from "next/navigation";
 import { getViewer, canEditEmployee, canTerminate } from "@hris/auth";
 import { getEmployeeOverview } from "@/lib/queries";
 import { getT, getLocale } from "@/lib/i18n.server";
-import { INTL_LOCALE } from "@/lib/i18n";
-import { formatDate, formatMoney, formatPayBasis } from "@/lib/format";
-import { Card, Field, FieldGrid, Pill } from "@/components/profile-ui";
+import { INTL_LOCALE, formatDate, formatMoney, formatPayBasis } from "@hris/ui";
+import { Card, Field, FieldGrid, Pill } from "@hris/ui/server";
 import { EmergencyContacts } from "@/components/EmergencyContacts";
 import { ResendInviteButton } from "@/components/ResendInviteButton";
 

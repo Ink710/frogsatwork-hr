@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { LEAVE_TYPES, defaultLeaveHours, formatHours } from "@hris/workable-hours";
-import { useT } from "@/components/LocaleProvider";
+import { useT } from "@hris/ui/client";
 import { submitTimeOff } from "@/app/time-off/actions";
 
 const fieldCls =

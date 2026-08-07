@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { LOCALES, LOCALE_LABELS, setLocaleCookie } from "@/lib/i18n";
+import { LOCALES, LOCALE_LABELS, setLocaleCookie } from "../i18n";
 import { useLocale, useT } from "./LocaleProvider";
 
 // Sets the locale cookie and refreshes, so Server Components re-render in the new language.

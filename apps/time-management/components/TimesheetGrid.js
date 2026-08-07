@@ -3,9 +3,8 @@
 import { Fragment, useActionState, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { computeTimesheet, formatHours } from "@hris/workable-hours";
-import { useT, useLocale } from "@/components/LocaleProvider";
-import { INTL_LOCALE } from "@/lib/i18n";
-import { formatDate } from "@/lib/format";
+import { useT, useLocale } from "@hris/ui/client";
+import { INTL_LOCALE, formatDate } from "@hris/ui";
 import { saveOrSubmitTimesheet } from "@/app/timesheets/actions";
 
 // The 7 "YYYY-MM-DD" days (Mon–Sun) of a week, from its Monday.

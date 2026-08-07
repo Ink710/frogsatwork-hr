@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { deleteDepartment } from "@/app/departments/actions";
-import { useT } from "./LocaleProvider";
+import { useT } from "@hris/ui/client";
 
 export function DeleteDepartmentButton({ departmentId }) {
   const t = useT();

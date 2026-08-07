@@ -8,7 +8,7 @@ import {
   PAY_FREQUENCY_OPTIONS,
   PAY_BASIS_OPTIONS,
 } from "@/lib/enums";
-import { useT } from "./LocaleProvider";
+import { useT } from "@hris/ui/client";
 
 const field = "mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30";
 const label = "block text-sm font-medium";

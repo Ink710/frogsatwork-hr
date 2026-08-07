@@ -3,8 +3,7 @@ import { notFound } from "next/navigation";
 import { getViewer, canManageDepartments } from "@hris/auth";
 import { getDepartmentDetail } from "@/lib/queries";
 import { getT, getLocale } from "@/lib/i18n.server";
-import { INTL_LOCALE } from "@/lib/i18n";
-import { formatMoney } from "@/lib/format";
+import { INTL_LOCALE, formatMoney } from "@hris/ui";
 import { OrgNode } from "@/components/OrgNode";
 import { DeleteDepartmentButton } from "@/components/DeleteDepartmentButton";
 

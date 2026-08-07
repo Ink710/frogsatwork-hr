@@ -4,7 +4,7 @@ import { Users, Building2, UserPlus, UserMinus, PieChart } from "lucide-react";
 import { getViewer } from "@hris/auth";
 import { getDashboardStats, getDepartmentBudgets } from "@/lib/queries";
 import { getT, getLocale } from "@/lib/i18n.server";
-import { INTL_LOCALE } from "@/lib/i18n";
+import { INTL_LOCALE } from "@hris/ui";
 import { BudgetPie } from "@/components/BudgetPie";
 
 export async function generateMetadata() {

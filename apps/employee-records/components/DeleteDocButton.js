@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { deleteDocument } from "@/app/employees/[id]/actions";
-import { useT } from "./LocaleProvider";
+import { useT } from "@hris/ui/client";
 
 export function DeleteDocButton({ docId }) {
   const t = useT();

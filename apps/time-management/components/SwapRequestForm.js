@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { useT } from "@/components/LocaleProvider";
+import { useT } from "@hris/ui/client";
 import { requestSwap } from "@/app/schedule/actions";
 
 const fieldCls =

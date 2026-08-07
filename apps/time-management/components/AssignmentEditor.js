@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { X } from "lucide-react";
-import { useT } from "@/components/LocaleProvider";
+import { useT } from "@hris/ui/client";
 import { assignToProject, unassignFromProject } from "@/app/projects/actions";
 
 // Manage who may log time to a project: a list of current assignees (each removable) + a picker of

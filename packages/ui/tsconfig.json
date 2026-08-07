@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // These are React components rendered in the browser, so pull in DOM types
+    // (the base config is Node/ES-only) and preserve JSX for Next to compile.
+    "lib": ["DOM", "DOM.Iterable", "ES2023"],
+    "jsx": "preserve",
+    "rootDir": "src",
+    // Only the .ts files here are type-CHECKED (checkJs is off in the base config), and those are
+    // pure helpers + re-export barrels — no React types needed. The JSX lives in .js files, which
+    // the consuming apps type-check with their own @types/react.
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.js"]
+}

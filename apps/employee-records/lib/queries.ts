@@ -21,7 +21,7 @@ import { isWithinCorrectionWindow, CORRECTION_WINDOW_DAYS, EMPLOYMENT_TYPES } fr
 import { buildTree } from "./tree.js";
 // Extensionless: format is now .ts. An explicit "./format.js" resolves to the .ts file in tsc
 // and esbuild but NOT in Next's bundler — extensionless resolves everywhere. (tree is still .js.)
-import { REDACTED } from "./format";
+import { REDACTED } from "@hris/ui";
 
 export const EMPLOYEE_PAGE_SIZE = 5;
 

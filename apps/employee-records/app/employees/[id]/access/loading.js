@@ -1,4 +1,4 @@
-import { CardSkeleton } from "@/components/profile-ui";
+import { CardSkeleton } from "@hris/ui/server";
 
 export default function Loading() {
   return (

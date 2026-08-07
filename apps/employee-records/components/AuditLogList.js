@@ -2,9 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { loadMoreAuditLog } from "@/app/employees/[id]/actions";
-import { formatDateTime, REDACTED } from "@/lib/format";
-import { INTL_LOCALE } from "@/lib/i18n";
-import { useT, useLocale } from "./LocaleProvider";
+import { formatDateTime, REDACTED, INTL_LOCALE } from "@hris/ui";
+import { useT, useLocale } from "@hris/ui/client";
 
 const EVENT_STYLES = {
   CREATE: "bg-success/15 text-success  ",

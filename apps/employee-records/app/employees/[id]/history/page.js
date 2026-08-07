@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation";
 import { getEmployeeHistory } from "@/lib/queries";
 import { getT, getLocale } from "@/lib/i18n.server";
-import { INTL_LOCALE } from "@/lib/i18n";
+import { INTL_LOCALE } from "@hris/ui";
 import { HistoryTimeline } from "@/components/HistoryTimeline";
-import { Card, Pill } from "@/components/profile-ui";
+import { Card, Pill } from "@hris/ui/server";
 
 // The signature feature: the effective-dated timeline. Salary is comp-gated inside the query.
 export default async function EmployeeHistoryPage({ params }) {

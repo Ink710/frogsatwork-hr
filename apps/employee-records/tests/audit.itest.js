@@ -23,7 +23,7 @@ vi.mock("@hris/auth", async () => {
 
 import { getViewer, withViewer } from "@hris/auth";
 import { getEmployeeAuditLog } from "../lib/queries";
-import { REDACTED } from "../lib/format";
+import { REDACTED } from "@hris/ui";
 
 // Seeded ids (see packages/database/src/seed.js).
 const ORG = "10000000-0000-0000-0000-000000000001";

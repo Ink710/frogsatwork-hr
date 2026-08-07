@@ -3,7 +3,7 @@ import { getViewer } from "@hris/auth";
 import { formatHours } from "@hris/workable-hours";
 import { getLeavePolicies } from "@/lib/queries";
 import { getT } from "@/lib/i18n.server";
-import { Card } from "@/components/profile-ui";
+import { Card } from "@hris/ui/server";
 import { RunAccrualButton } from "@/components/RunAccrualButton";
 
 export async function generateMetadata() {

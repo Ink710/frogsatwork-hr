@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { useT } from "@/components/LocaleProvider";
+import { useT } from "@hris/ui/client";
 import { runAccrualNow } from "@/app/time-off/actions";
 
 // HR-admin button that runs this month's accrual on demand (the dev stand-in for the Vercel Cron).

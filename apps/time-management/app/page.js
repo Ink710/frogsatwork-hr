@@ -4,9 +4,8 @@ import { getViewer, auth } from "@hris/auth";
 import { formatHours } from "@hris/workable-hours";
 import { getMyTimeSnapshot, getTeamTimeSnapshot } from "@/lib/queries";
 import { getT, getLocale } from "@/lib/i18n.server";
-import { INTL_LOCALE } from "@/lib/i18n";
-import { formatDate } from "@/lib/format";
-import { StatCard, Section } from "@/components/dashboard-ui";
+import { INTL_LOCALE, formatDate } from "@hris/ui";
+import { StatCard, Section } from "@hris/ui/server";
 
 export async function generateMetadata() {
   const t = await getT();

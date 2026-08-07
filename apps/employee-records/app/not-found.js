@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { getT } from "@/lib/i18n.server";
+import { NotFoundBox } from "@hris/ui/server";
 
 // App-wide 404. Rendered for unmatched URLs and for notFound() calls in routes without a
 // more-specific not-found.js. Note: getX loaders that return null on an unauthorized viewer
@@ -7,15 +7,11 @@ import { getT } from "@/lib/i18n.server";
 export default async function NotFound() {
   const t = await getT();
   return (
-    <main className="mx-auto w-full max-w-3xl px-6 py-16 text-center">
-      <h1 className="text-lg font-semibold">{t("notFound.title")}</h1>
-      <p className="mt-1 text-sm text-muted-foreground">{t("notFound.body")}</p>
-      <Link
-        href="/employees"
-        className="mt-4 inline-block text-sm text-primary hover:underline "
-      >
-        {t("notFound.back")}
-      </Link>
-    </main>
+    <NotFoundBox
+      title={t("notFound.title")}
+      body={t("notFound.body")}
+      backHref="/employees"
+      backLabel={t("notFound.back")}
+    />
   );
 }

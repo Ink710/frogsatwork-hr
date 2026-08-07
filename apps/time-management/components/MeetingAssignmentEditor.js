@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { X } from "lucide-react";
-import { useT } from "@/components/LocaleProvider";
+import { useT } from "@hris/ui/client";
 import { assignToMeeting, unassignFromMeeting } from "@/app/meetings/actions";
 
 // Manage who may log time to a meeting: a list of current assignees (each removable) + a picker of

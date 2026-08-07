@@ -1,4 +1,4 @@
-import { CardSkeleton } from "@/components/profile-ui";
+import { CardSkeleton } from "@hris/ui/server";
 
 // Fallback for the Overview tab content (renders inside the profile layout's content slot).
 export default function Loading() {

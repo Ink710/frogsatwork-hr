@@ -1,4 +1,4 @@
-import { formatMoney } from "@/lib/format";
+import { formatMoney } from "@hris/ui";
 
 // Brand categorical palette (theme-aware CSS vars registered by @theme in globals.css). Cycles
 // if there are more departments than colors.
