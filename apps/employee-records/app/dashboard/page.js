@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Users, Building2, UserPlus, UserMinus, PieChart } from "lucide-react";
+import { Users, Building2, UserPlus, UserMinus, PieChart, UserRoundPlus } from "lucide-react";
 import { getViewer } from "@hris/auth";
-import { getDashboardStats, getDepartmentBudgets } from "@/lib/queries";
+import { getDashboardStats, getDepartmentBudgets, getOnboardingQueue } from "@/lib/queries";
 import { getT, getLocale } from "@/lib/i18n.server";
 import { INTL_LOCALE } from "@hris/ui";
 import { BudgetPie } from "@/components/BudgetPie";
@@ -73,7 +73,11 @@ export default async function DashboardPage() {
   const t = await getT();
   const noData = t("dash.noData");
   // Budget pie: null unless the viewer is upper management (HR_ADMIN / PAYROLL_ADMIN).
-  const [localeCode, budgets] = await Promise.all([getLocale(), getDepartmentBudgets()]);
+  const [localeCode, budgets, onboarding] = await Promise.all([
+    getLocale(),
+    getDepartmentBudgets(),
+    getOnboardingQueue(),
+  ]);
   const locale = INTL_LOCALE[localeCode];
 
   return (
@@ -89,6 +93,35 @@ export default async function DashboardPage() {
         <StatCard label={t("dash.newHires")} value={s.newHires} hint={t("dash.thisYear")} icon={UserPlus} />
         <StatCard label={t("dash.terminations")} value={s.terminations} hint={t("dash.thisYear")} icon={UserMinus} />
       </div>
+
+      {/* The hire seam: candidates the ATS marked HIRED who don't have an employee record yet.
+          RLS scopes this — a manager sees an empty list without any gate here. */}
+      {onboarding.length > 0 && (
+        <section className="mt-10 rounded-xl border border-border bg-card p-6">
+          <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            <UserRoundPlus className="h-4 w-4" aria-hidden="true" />
+            {t("dash.onboarding")}
+          </h2>
+          <ul className="flex flex-col gap-2">
+            {onboarding.map((h) => (
+              <li key={h.applicationId} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3">
+                <div>
+                  <p className="text-sm font-medium">{h.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {h.jobTitle} · <span className="font-mono">{h.email}</span>
+                  </p>
+                </div>
+                <Link
+                  href={`/employees/new?fromApplication=${h.applicationId}`}
+                  className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90"
+                >
+                  {t("dash.createRecord")}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {budgets && budgets.length > 0 && (
         <section className="mt-10 rounded-xl border border-border bg-card p-6">

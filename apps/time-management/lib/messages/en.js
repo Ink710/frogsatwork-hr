@@ -26,6 +26,7 @@ const en = {
   "enum.role.HR_GENERALIST": "HR Generalist",
   "enum.role.HR_ADMIN": "HR Admin",
   "enum.role.PAYROLL_ADMIN": "Payroll Admin",
+  "enum.role.RECRUITER": "Recruiter",
   "enum.role.SYSTEM": "System",
 
   // Weekdays (0 = Sunday … 6 = Saturday, matching Date.getUTCDay / Meeting.dayOfWeek).

@@ -23,6 +23,7 @@ const es = {
   "enum.role.HR_GENERALIST": "Generalista de RR. HH.",
   "enum.role.HR_ADMIN": "Administrador de RR. HH.",
   "enum.role.PAYROLL_ADMIN": "Administrador de Nómina",
+  "enum.role.RECRUITER": "Reclutador",
   "enum.role.SYSTEM": "Sistema",
 
   // Días de la semana (0 = domingo … 6 = sábado, según Date.getUTCDay / Meeting.dayOfWeek).

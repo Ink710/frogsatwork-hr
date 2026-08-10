@@ -1,6 +1,8 @@
 // English dictionary for the ATS (recruiting) app. Flat dot-keyed strings, same shape as the other
 // suite apps. Kept lean — generic shell keys (login/prefs/error/nav/role) + the recruiting domain.
 const en = {
+  "hire.done": "Hired — employee record created ({number}).",
+  "hire.pending": "Hired — waiting for HR to create the employee record.",
   "brand.slogan": "Let’s jump into it.",
 
   // Nav / shell

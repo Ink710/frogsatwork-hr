@@ -453,6 +453,8 @@ export async function getApplicationDetail(jobId, appId) {
     const app = await tx.application.findFirst({
       where: { id: appId, jobId },
       include: {
+        // M8: set once HR has actually created this person's employee record.
+        hiredEmployee: { select: { id: true, employeeNumber: true } },
         candidate: {
           select: { firstName: true, lastName: true, email: true, phone: true, source: true },
         },

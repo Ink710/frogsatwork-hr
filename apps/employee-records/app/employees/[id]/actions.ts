@@ -1051,6 +1051,37 @@ export async function createEmployee(_prevState: FormState, formData: FormData) 
     // swallow — creation succeeded; resend covers the mail failure.
   }
 
+  // THE HIRE SEAM (M8). When this hire came from an ATS application, record the link.
+  //
+  // Deliberately AFTER the transaction commits, exactly like the invite above: a recruiting-side
+  // problem must never roll back a successfully created employee. app_link_hire is idempotent, so a
+  // retry is safe.
+  //
+  // It goes through that SECURITY DEFINER function rather than a plain update because an
+  // HR_GENERALIST — who is fully entitled to create this employee — has no write access to
+  // "Application" (app_can_manage_job excludes them). The function also fills the requisition once
+  // its openings are used up. See the hire_seam migration.
+  //
+  // A failure here is SURFACED, not swallowed: an employee that exists but isn't linked is a real
+  // inconsistency HR should know about, unlike a retryable email.
+  const applicationId = formData.get("applicationId");
+  if (typeof applicationId === "string" && applicationId) {
+    try {
+      const rows = await withViewer<{ result: string }[]>(
+        viewer,
+        (tx) => tx.$queryRaw`SELECT app_link_hire(${applicationId}, ${newId.employeeId}) AS result`,
+      );
+      const result = rows[0]?.result;
+      if (result !== "OK" && result !== "ALREADY_LINKED") {
+        return {
+          error: `Employee created, but the application could not be linked (${result ?? "unknown"}). Link it from the ATS.`,
+        };
+      }
+    } catch {
+      return { error: "Employee created, but the application could not be linked. Link it from the ATS." };
+    }
+  }
+
   revalidatePath("/employees");
   redirect(`/employees/${newId.employeeId}`);
 }

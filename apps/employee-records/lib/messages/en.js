@@ -1,5 +1,8 @@
 // English messages. Flat dot-namespaced keys. Keep in sync with es.js.
 const en = {
+  "dash.onboarding": "New hires to onboard",
+  "dash.createRecord": "Create employee record",
+  "create.fromApplication": "Onboarding {name}, hired for {job}. Their name and email are prefilled — the rest is yours to complete.",
   // Common
   "common.save": "Save",
   "common.cancel": "Cancel",
@@ -429,6 +432,7 @@ const en = {
   "enum.role.HR_GENERALIST": "HR generalist",
   "enum.role.HR_ADMIN": "HR admin",
   "enum.role.PAYROLL_ADMIN": "Payroll admin",
+  "enum.role.RECRUITER": "Recruiter",
   "enum.role.SYSTEM": "System",
   // Enums — FLSA
   "enum.flsa.EXEMPT": "Exempt",

@@ -389,6 +389,8 @@ model Employee {
   meetingAssignments MeetingAssignment[]
   jobMemberships     JobMember[]
   scorecardsAuthored Scorecard[]        @relation("ScorecardAuthor")
+  // The ATS application this person was hired from, if they came through recruiting (M8).
+  hiredFromApplication Application?     @relation("ApplicationHire")
 
   // Employee numbers are unique within an organization, not globally.
   @@unique([orgId, employeeNumber])
@@ -1004,6 +1006,16 @@ model Application {
   // editing/removing a round never destroys the application.
   currentRoundId String?
   currentRound   InterviewRound? @relation(fields: [currentRoundId], references: [id], onDelete: SetNull)
+
+  // THE HIRE SEAM (M8). Set once HR has actually created this person's employee record, which is a
+  // separate, deliberate act: reaching HIRED records the DECISION, this records the ONBOARDING.
+  // Until it's set, the application sits in employee-records' onboarding queue.
+  //
+  // @unique so one Employee can never be claimed by two applications (NULLs stay distinct in
+  // Postgres, so any number of applications may legitimately be un-onboarded). Written only through
+  // app_link_hire — see the hire_seam migration for why a plain UPDATE isn't enough.
+  hiredEmployeeId String?   @unique
+  hiredEmployee   Employee? @relation("ApplicationHire", fields: [hiredEmployeeId], references: [id])
 
   events     ApplicationEvent[]
   scorecards Scorecard[]

@@ -14,13 +14,16 @@ import { useT } from "@hris/ui/client";
 const field = "mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30";
 const label = "block text-sm font-medium";
 
-export function CreateEmployeeForm({ departments, managerOptions, canEditComp }) {
+// `hire` is set when HR came from the onboarding queue: the candidate's known details prefill the
+// form and the application id rides along in a hidden field so createEmployee can link the two.
+export function CreateEmployeeForm({ departments, managerOptions, canEditComp, hire = null }) {
   const t = useT();
   const [state, formAction, pending] = useActionState(createEmployee, {});
   const today = new Date().toLocaleDateString("en-CA");
 
   return (
     <form action={formAction} className="mt-6 space-y-4">
+      {hire && <input type="hidden" name="applicationId" value={hire.applicationId} />}
       {state?.error && (
         <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive  ">{state.error}</p>
       )}
@@ -28,17 +31,17 @@ export function CreateEmployeeForm({ departments, managerOptions, canEditComp })
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className={label} htmlFor="firstName">{t("field.firstName")}</label>
-          <input id="firstName" name="firstName" required className={field} />
+          <input id="firstName" name="firstName" required defaultValue={hire?.firstName ?? ""} className={field} />
         </div>
         <div>
           <label className={label} htmlFor="lastName">{t("field.lastName")}</label>
-          <input id="lastName" name="lastName" required className={field} />
+          <input id="lastName" name="lastName" required defaultValue={hire?.lastName ?? ""} className={field} />
         </div>
       </div>
 
       <div>
         <label className={label} htmlFor="email">{t("field.email")}</label>
-        <input id="email" name="email" type="email" required className={field} />
+        <input id="email" name="email" type="email" required defaultValue={hire?.email ?? ""} className={field} />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -118,7 +121,7 @@ export function CreateEmployeeForm({ departments, managerOptions, canEditComp })
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className={label} htmlFor="phone">{t("field.phone")}</label>
-            <input id="phone" name="phone" className={field} />
+            <input id="phone" name="phone" defaultValue={hire?.phone ?? ""} className={field} />
           </div>
           <div>
             <label className={label} htmlFor="location">{t("field.location")}</label>

@@ -54,6 +54,16 @@ export default async function ApplicationDetailPage({ params }) {
       </div>
 
       <div className="mt-6 flex flex-col gap-6">
+        {app.stage === "HIRED" && (
+          <p className={`rounded-md px-3 py-2 text-sm ${app.hiredEmployee ? "bg-success/10 text-success" : "bg-warning/10 text-warning"}`}>
+            {/* The other side of the hire seam: recruiters can see whether HR has completed the
+                onboarding, without needing access to employee-records itself. */}
+            {app.hiredEmployee
+              ? t("hire.done", { number: app.hiredEmployee.employeeNumber })
+              : t("hire.pending")}
+          </p>
+        )}
+
         <Card title={t("app.title")}>
           <FieldGrid>
             <Field label={t("app.email")}>{c.email}</Field>

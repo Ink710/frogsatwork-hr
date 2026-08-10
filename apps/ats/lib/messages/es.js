@@ -1,5 +1,7 @@
 // Spanish dictionary for the ATS (recruiting) app. Mirrors en.js key-for-key.
 const es = {
+  "hire.done": "Contratado — expediente creado ({number}).",
+  "hire.pending": "Contratado — pendiente de que RR. HH. cree el expediente.",
   "brand.slogan": "Saltemos a ello.",
 
   // Nav / shell

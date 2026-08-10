@@ -1,5 +1,8 @@
 // Spanish messages. Must mirror the keys in en.js.
 const es = {
+  "dash.onboarding": "Nuevas contrataciones por dar de alta",
+  "dash.createRecord": "Crear expediente",
+  "create.fromApplication": "Dando de alta a {name}, contratado para {job}. Su nombre y correo vienen prellenados — el resto lo completas tú.",
   // Common
   "common.save": "Guardar",
   "common.cancel": "Cancelar",
@@ -429,6 +432,7 @@ const es = {
   "enum.role.HR_GENERALIST": "Generalista de RH.",
   "enum.role.HR_ADMIN": "Administrador de RH.",
   "enum.role.PAYROLL_ADMIN": "Administrador de nómina",
+  "enum.role.RECRUITER": "Reclutador",
   "enum.role.SYSTEM": "Sistema",
   // Enums — FLSA
   "enum.flsa.EXEMPT": "Exento",

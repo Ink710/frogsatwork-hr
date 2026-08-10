@@ -1128,6 +1128,67 @@ export const getEmployeeAuditLog = cache(async (employeeId: string, cursor: stri
 });
 
 // Options for the "new employee" form. Gated to HR (also gates the /employees/new route).
+// ---------------------------------------------------------------------------
+// The hire seam (M8) — candidates the ATS has marked HIRED, waiting to be onboarded.
+// ---------------------------------------------------------------------------
+
+// Applications at HIRED with no employee record yet — the gap between the DECISION (made in the ATS)
+// and the ONBOARDING (owned here).
+//
+// Gated on canEditEmployee, NOT left to RLS alone. RLS would happily show this to a HIRING MANAGER,
+// who satisfies app_can_see_job for their own req — but they cannot create employees, so a queue
+// they're unable to action is just a confusing dead end (and a small leak of hiring activity onto a
+// dashboard that isn't theirs). Visibility should match capability.
+export async function getOnboardingQueue() {
+  const viewer = await getViewer();
+  if (!viewer || !canEditEmployee(viewer)) return [];
+  return withViewer(viewer, async (tx) => {
+    const rows = await tx.application.findMany({
+      where: { stage: "HIRED", hiredEmployeeId: null },
+      orderBy: { updatedAt: "asc" },
+      select: {
+        id: true,
+        updatedAt: true,
+        candidate: { select: { firstName: true, lastName: true, email: true } },
+        job: { select: { id: true, title: true } },
+      },
+    });
+    return rows.map((a) => ({
+      applicationId: a.id,
+      name: `${a.candidate.firstName} ${a.candidate.lastName}`,
+      email: a.candidate.email,
+      jobTitle: a.job.title,
+      hiredAt: a.updatedAt,
+    }));
+  });
+}
+
+// The candidate behind one hired application, for prefilling the new-employee form. Returns null if
+// it isn't hired, is already onboarded, or RLS hides it — so a stale link can't leak a name.
+export async function getHireForPrefill(applicationId: string) {
+  const viewer = await getViewer();
+  if (!viewer || !canEditEmployee(viewer)) return null;
+  return withViewer(viewer, async (tx) => {
+    const a = await tx.application.findFirst({
+      where: { id: applicationId, stage: "HIRED", hiredEmployeeId: null },
+      select: {
+        id: true,
+        candidate: { select: { firstName: true, lastName: true, email: true, phone: true } },
+        job: { select: { title: true } },
+      },
+    });
+    if (!a) return null;
+    return {
+      applicationId: a.id,
+      firstName: a.candidate.firstName,
+      lastName: a.candidate.lastName,
+      email: a.candidate.email,
+      phone: a.candidate.phone,
+      jobTitle: a.job.title,
+    };
+  });
+}
+
 export async function getNewEmployeeFormData() {
   const viewer = await getViewer();
   if (!viewer || !canEditEmployee(viewer)) return null;
