@@ -100,6 +100,91 @@ export async function getJobBoard(jobId) {
 }
 
 // ---------------------------------------------------------------------------
+// Collaboration — competencies + scorecards (M7).
+// ---------------------------------------------------------------------------
+
+// The criteria this job scores on, in order. RLS: readable by the whole hiring team.
+export async function getJobCompetencies(jobId) {
+  const viewer = await getViewer();
+  if (!viewer) return [];
+  return withViewer(viewer, (tx) =>
+    tx.jobCompetency.findMany({
+      where: { jobId },
+      orderBy: { position: "asc" },
+      select: { id: true, name: true, position: true },
+    }),
+  );
+}
+
+// The viewer's OWN scorecard for an application (plus the job's competencies and their current
+// ratings), creating nothing. Returns null when they're not on the hiring team at all.
+export async function getMyScorecard(applicationId) {
+  const viewer = await getViewer();
+  if (!viewer?.employeeId) return null;
+  return withViewer(viewer, async (tx) => {
+    const application = await tx.application.findFirst({
+      where: { id: applicationId },
+      select: { id: true, jobId: true, currentRoundId: true },
+    });
+    if (!application) return null; // RLS hid it → not on this job
+
+    const [competencies, scorecard] = await Promise.all([
+      tx.jobCompetency.findMany({
+        where: { jobId: application.jobId },
+        orderBy: { position: "asc" },
+        select: { id: true, name: true },
+      }),
+      tx.scorecard.findFirst({
+        where: { applicationId, authorEmployeeId: viewer.employeeId },
+        include: { ratings: { select: { competencyId: true, rating: true, comment: true } } },
+      }),
+    ]);
+
+    return { application, competencies, scorecard };
+  });
+}
+
+// The debrief: every scorecard on this application the viewer is ALLOWED to read, plus how many are
+// being withheld.
+//
+// The hidden count is deliberate. RLS already hides colleagues' feedback until you've submitted your
+// own — but silently returning fewer rows would read as "nobody has reviewed yet", which is a lie.
+// Telling someone "2 colleagues have submitted; submit yours to read them" is honest AND reinforces
+// the rule. The count comes from a SECURITY DEFINER aggregate so it reveals a NUMBER and nothing else.
+export async function getApplicationScorecards(applicationId) {
+  const viewer = await getViewer();
+  if (!viewer) return { scorecards: [], hiddenCount: 0 };
+  return withViewer(viewer, async (tx) => {
+    const scorecards = await tx.scorecard.findMany({
+      where: { applicationId },
+      orderBy: [{ submittedAt: "asc" }, { createdAt: "asc" }],
+      include: { ratings: { orderBy: { competencyName: "asc" } } },
+    });
+
+    // Total submitted, regardless of visibility — one integer, via the owner-privileged helper.
+    const [{ total }] = await tx.$queryRaw`
+      SELECT app_submitted_scorecard_count(${applicationId}) AS total`;
+    const visibleSubmitted = scorecards.filter((s) => s.status === "SUBMITTED").length;
+    const hiddenCount = Math.max(0, Number(total) - visibleSubmitted);
+
+    // Resolve author names structurally — a RECRUITER has no employee-records access (the M5 lesson).
+    const directory = await orgDirectory(tx, viewer.orgId);
+    const byId = new Map(directory.map((p) => [p.id, p]));
+
+    return {
+      scorecards: scorecards.map((s) => ({
+        ...s,
+        authorName: byId.get(s.authorEmployeeId)
+          ? `${byId.get(s.authorEmployeeId).firstName} ${byId.get(s.authorEmployeeId).lastName}`
+          : "—",
+        isMine: s.authorEmployeeId === viewer.employeeId,
+      })),
+      hiddenCount,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
 // PUBLIC careers site (M6) — no viewer, no session, no withViewer.
 // ---------------------------------------------------------------------------
 
@@ -172,6 +257,7 @@ export async function getJobForManage(jobId) {
       where: { id: jobId },
       include: {
         interviewRounds: { orderBy: { position: "asc" }, select: { id: true, name: true, position: true } },
+        competencies: { orderBy: { position: "asc" }, select: { id: true, name: true, position: true } },
         // Deliberately NOT `include: { employee }` — that relation is Employee-RLS-filtered, so a
         // recruiter would see null for every teammate. Names come from the directory below.
         members: { orderBy: { createdAt: "asc" }, select: { id: true, role: true, employeeId: true } },

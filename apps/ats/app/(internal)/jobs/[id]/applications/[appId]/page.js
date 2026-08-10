@@ -2,8 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getT, getLocale } from "@/lib/i18n.server";
 import { INTL_LOCALE, formatDate, formatDateTime, initials } from "@hris/ui";
-import { getApplicationDetail } from "@/lib/queries";
+import { getApplicationDetail, getMyScorecard, getApplicationScorecards } from "@/lib/queries";
 import { StageBadge } from "@/components/recruiting-ui";
+import { ScorecardForm } from "@/components/ScorecardForm";
+import { DebriefPanel } from "@/components/DebriefPanel";
 import { Avatar, Card, Field, FieldGrid } from "@hris/ui/server";
 
 // Human label for one pipeline event: the initial application, an interview-round advance
@@ -24,6 +26,10 @@ export default async function ApplicationDetailPage({ params }) {
   const locale = INTL_LOCALE[await getLocale()];
   const detail = await getApplicationDetail(id, appId);
   if (!detail) notFound();
+
+  // Feedback: the viewer's own scorecard (anyone on the hiring team may write one) and the debrief
+  // of everything they're allowed to read. The withholding happens in RLS, not here.
+  const [mine, debrief] = await Promise.all([getMyScorecard(appId), getApplicationScorecards(appId)]);
 
   const { app } = detail;
   const c = app.candidate;
@@ -56,6 +62,17 @@ export default async function ApplicationDetailPage({ params }) {
             <Field label={t("app.appliedLabel")}>{formatDate(app.appliedAt, locale)}</Field>
             {app.currentRound && <Field label={t("app.currentRound")}>{app.currentRound.name}</Field>}
           </FieldGrid>
+        </Card>
+
+        {mine && (
+          <Card title={t("score.title")}>
+            <p className="mb-3 text-xs text-muted-foreground">{t("score.subtitle")}</p>
+            <ScorecardForm applicationId={appId} competencies={mine.competencies} scorecard={mine.scorecard} />
+          </Card>
+        )}
+
+        <Card title={t("debrief.title")}>
+          <DebriefPanel scorecards={debrief.scorecards} hiddenCount={debrief.hiddenCount} />
         </Card>
 
         <Card title={t("app.timeline")}>

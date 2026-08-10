@@ -3,4 +3,5 @@
 // as each recruiting milestone lands.
 export * from "./job";
 export * from "./candidate";
+export * from "./scorecard";
 export * from "./rules";

@@ -678,6 +678,11 @@ async function main() {
     // Raj also recruits the design req — so it has an owner, and (crucially for the candidate
     // database) a candidate can appear on TWO reqs while Marcus/Diego still see only the backend one.
     { id: "jm-pd-raj", job: "job-pd", emp: PEOPLE.raj.empId, role: "RECRUITER" },
+    // A SECOND interviewer on the backend req who has deliberately submitted NO feedback — logging
+    // in as Tom is how you see the anti-anchoring rule work (Diego's scorecard stays hidden until
+    // Tom files his own). Priya is deliberately left OFF every hiring team: she is the suite's
+    // "outsider" persona, and several tests rely on her seeing nothing at all.
+    { id: "jm-be-tom", job: "job-be", emp: PEOPLE.tom.empId, role: "INTERVIEWER" },
   ];
   for (const m of JOB_MEMBERS) {
     await prisma.jobMember.upsert({
@@ -757,6 +762,55 @@ async function main() {
     });
   }
 
+  // 17. Collaboration (M7) — what the backend req scores on, plus one SUBMITTED scorecard from Diego
+  //     (INTERVIEWER) on Mei. Priya is on the same team with nothing submitted, so signing in as her
+  //     demonstrates the anchoring guard: she cannot read Diego's feedback until she files her own.
+  const COMPETENCIES = [
+    { id: "jc-be-design", job: "job-be", name: "System design", position: 0 },
+    { id: "jc-be-coding", job: "job-be", name: "Coding", position: 1 },
+    { id: "jc-be-comms", job: "job-be", name: "Communication", position: 2 },
+  ];
+  for (const c of COMPETENCIES) {
+    await prisma.jobCompetency.upsert({
+      where: { id: c.id },
+      update: { name: c.name, position: c.position },
+      create: { id: c.id, jobId: c.job, name: c.name, position: c.position },
+    });
+  }
+
+  await prisma.scorecard.upsert({
+    where: { id: "sc-diego-mei" },
+    update: {},
+    create: {
+      id: "sc-diego-mei",
+      applicationId: "app-mei",
+      jobId: "job-be",
+      interviewRoundId: "ir-be-design",
+      authorEmployeeId: PEOPLE.diego.empId,
+      status: "SUBMITTED",
+      recommendation: "YES",
+      notes: "Strong on distributed systems; walked through trade-offs unprompted.",
+      submittedAt: new Date("2026-07-22T16:00:00.000Z"),
+    },
+  });
+  // competencyName is stored alongside the FK — a snapshot, so renaming a competency later never
+  // rewrites what this debrief said.
+  const DIEGO_RATINGS = [
+    { id: "sr-1", comp: "jc-be-design", name: "System design", rating: 4, comment: "Clear on trade-offs." },
+    { id: "sr-2", comp: "jc-be-coding", name: "Coding", rating: 3, comment: null },
+    { id: "sr-3", comp: "jc-be-comms", name: "Communication", rating: 4, comment: "Explains well." },
+  ];
+  for (const r of DIEGO_RATINGS) {
+    await prisma.scorecardRating.upsert({
+      where: { id: r.id },
+      update: {},
+      create: {
+        id: r.id, scorecardId: "sc-diego-mei", competencyId: r.comp,
+        competencyName: r.name, rating: r.rating, comment: r.comment,
+      },
+    });
+  }
+
   const counts = {
     organizations: await prisma.organization.count(),
     users: await prisma.user.count(),
@@ -780,6 +834,8 @@ async function main() {
     candidates: await prisma.candidate.count(),
     applications: await prisma.application.count(),
     applicationEvents: await prisma.applicationEvent.count(),
+    competencies: await prisma.jobCompetency.count(),
+    scorecards: await prisma.scorecard.count(),
   };
   console.log("Seed complete:", counts);
 }

@@ -223,6 +223,50 @@ const en = {
   "jobForm.notPublished": "Not posted publicly",
   "jobForm.publishHint": "Only OPEN roles that are posted publicly appear on the careers page.",
 
+  // Competencies (what a job scores on)
+  "comps.title": "Competencies",
+  "comps.subtitle": "What interviewers score candidates on for this role.",
+  "comps.empty": "No competencies yet. Add some so scorecards have something to rate.",
+  "comps.name": "Competency",
+  "comps.add": "Add competency",
+  "comps.rename": "Rename",
+  "comps.remove": "Remove",
+
+  // Your own scorecard
+  "score.title": "Your feedback",
+  "score.subtitle": "Rate each competency and give a recommendation.",
+  "score.noComps": "This job has no competencies yet — ask the recruiter to add some.",
+  "score.recommendation": "Recommendation",
+  "score.pickRecommendation": "Choose…",
+  "score.notes": "Notes",
+  "score.comment": "comment",
+  "score.commentPlaceholder": "Optional comment",
+  "score.saveDraft": "Save draft",
+  "score.submit": "Submit feedback",
+  "score.saved": "Draft saved.",
+  "score.submitWarning": "Submitting is final — you can't edit afterwards, and only then can you read your colleagues' feedback.",
+  "score.locked": "You've submitted this feedback. It can no longer be edited.",
+
+  // Debrief
+  "debrief.title": "Debrief",
+  "debrief.empty": "No feedback submitted yet.",
+  "debrief.hidden": "{n} colleague(s) have submitted feedback. Submit yours to read theirs.",
+  "debrief.you": "(you)",
+  "debrief.submittedOn": "Submitted {date}",
+  "debrief.average": "avg {n}/4",
+
+  "enum.recommendation.STRONG_YES": "Strong yes",
+  "enum.recommendation.YES": "Yes",
+  "enum.recommendation.NO": "No",
+  "enum.recommendation.STRONG_NO": "Strong no",
+
+  "err.competencyFailed": "Couldn't update the competencies. Please try again.",
+  "err.competencyNotFound": "That competency no longer exists.",
+  "err.scorecardFailed": "Couldn't save your feedback. Please try again.",
+  "err.scorecardLocked": "This feedback was already submitted and can't be changed.",
+  "err.needRecommendation": "Choose a recommendation before submitting.",
+  "err.needRatings": "Rate every competency before submitting. Missing: {missing}",
+
   // Errors (server actions)
   "err.notAuthorized": "You can’t manage this job’s pipeline.",
   "err.notAuthorizedCreate": "Only recruiters and HR can open a requisition.",

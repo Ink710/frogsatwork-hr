@@ -12,6 +12,7 @@ import {
   jobSchema,
   interviewRoundSchema,
   jobMemberSchema,
+  competencySchema,
   JOB_STATUSES,
 } from "@hris/recruiting";
 import { viewerCanManageJob, canCreateJob, isInOrgDirectory } from "@/lib/queries";
@@ -233,6 +234,78 @@ export async function removeRound(jobId, roundId, _prevState) {
     });
   } catch (e) {
     return { error: errorMessage(e) ?? t("err.roundFailed") };
+  }
+  revalidatePath(`/jobs/${jobId}/manage`);
+  return { ok: true };
+}
+
+// --- Competencies (what this job scores candidates on) ---
+//
+// Same shape as the interview-round actions above: manage-gated, appended in order, and safe to
+// remove because ScorecardRating keeps a competencyName SNAPSHOT — deleting a competency can never
+// rewrite what a past debrief said.
+
+export async function addCompetency(jobId, _prevState, formData) {
+  const t = await getT();
+  const viewer = await getViewer();
+  if (!viewer) return { error: t("err.notAuthorized") };
+  const parsed = competencySchema.safeParse({ name: formData.get("name"), position: 0 });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? t("err.invalidInput") };
+
+  try {
+    await withViewer(viewer, async (tx) => {
+      await requireManageableJob(tx, jobId, t);
+      const last = await tx.jobCompetency.findFirst({
+        where: { jobId },
+        orderBy: { position: "desc" },
+        select: { position: true },
+      });
+      await tx.jobCompetency.create({
+        data: { jobId, name: parsed.data.name, position: (last?.position ?? -1) + 1 },
+      });
+    });
+  } catch (e) {
+    return { error: errorMessage(e) ?? t("err.competencyFailed") };
+  }
+  revalidatePath(`/jobs/${jobId}/manage`);
+  return { ok: true };
+}
+
+export async function renameCompetency(jobId, competencyId, _prevState, formData) {
+  const t = await getT();
+  const viewer = await getViewer();
+  if (!viewer) return { error: t("err.notAuthorized") };
+  const parsed = competencySchema.safeParse({ name: formData.get("name"), position: 0 });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? t("err.invalidInput") };
+
+  try {
+    await withViewer(viewer, async (tx) => {
+      await requireManageableJob(tx, jobId, t);
+      const { count } = await tx.jobCompetency.updateMany({
+        where: { id: competencyId, jobId },
+        data: { name: parsed.data.name },
+      });
+      if (count === 0) throw new Error(t("err.competencyNotFound"));
+    });
+  } catch (e) {
+    return { error: errorMessage(e) ?? t("err.competencyFailed") };
+  }
+  revalidatePath(`/jobs/${jobId}/manage`);
+  return { ok: true };
+}
+
+export async function removeCompetency(jobId, competencyId, _prevState) {
+  const t = await getT();
+  const viewer = await getViewer();
+  if (!viewer) return { error: t("err.notAuthorized") };
+  try {
+    await withViewer(viewer, async (tx) => {
+      await requireManageableJob(tx, jobId, t);
+      const { count } = await tx.jobCompetency.deleteMany({ where: { id: competencyId, jobId } });
+      if (count === 0) throw new Error(t("err.competencyNotFound"));
+    });
+  } catch (e) {
+    return { error: errorMessage(e) ?? t("err.competencyFailed") };
   }
   revalidatePath(`/jobs/${jobId}/manage`);
   return { ok: true };

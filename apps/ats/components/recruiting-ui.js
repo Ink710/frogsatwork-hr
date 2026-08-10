@@ -27,6 +27,27 @@ export function StageBadge({ stage, label }) {
   );
 }
 
+// A verdict badge. Greens for yes, reds for no — no neutral tone, because the scale has no neutral.
+const RECOMMENDATION_TONE = {
+  STRONG_YES: "bg-success/15 text-success",
+  YES: "bg-success/10 text-success",
+  NO: "bg-destructive/10 text-destructive",
+  STRONG_NO: "bg-destructive/15 text-destructive",
+};
+
+export function RecommendationBadge({ recommendation, label }) {
+  if (!recommendation) return null;
+  return (
+    <span
+      className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+        RECOMMENDATION_TONE[recommendation] ?? "bg-muted text-muted-foreground"
+      }`}
+    >
+      {label}
+    </span>
+  );
+}
+
 export function JobStatusBadge({ status, label }) {
   return (
     <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${JOB_STATUS_TONE[status] ?? JOB_STATUS_TONE.DRAFT}`}>

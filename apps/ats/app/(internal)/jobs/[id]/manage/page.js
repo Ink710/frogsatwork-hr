@@ -7,6 +7,7 @@ import { getJobForManage, getJobFormData, getAssignableEmployees } from "@/lib/q
 import { JobStatusBadge } from "@/components/recruiting-ui";
 import { JobForm } from "@/components/JobForm";
 import { RoundEditor } from "@/components/RoundEditor";
+import { CompetencyEditor } from "@/components/CompetencyEditor";
 import { TeamEditor } from "@/components/TeamEditor";
 import { JobStatusControl } from "@/components/JobStatusControl";
 import { PublishControl } from "@/components/PublishControl";
@@ -49,6 +50,11 @@ export default async function ManageJobPage({ params }) {
         <Card title={t("rounds.title")}>
           <p className="mb-3 text-xs text-muted-foreground">{t("rounds.subtitle")}</p>
           <RoundEditor jobId={id} rounds={job.interviewRounds} />
+        </Card>
+
+        <Card title={t("comps.title")}>
+          <p className="mb-3 text-xs text-muted-foreground">{t("comps.subtitle")}</p>
+          <CompetencyEditor jobId={id} competencies={job.competencies} />
         </Card>
 
         <Card title={t("team.title")}>

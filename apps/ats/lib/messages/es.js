@@ -222,6 +222,50 @@ const es = {
   "jobForm.notPublished": "No publicada",
   "jobForm.publishHint": "Solo las vacantes ABIERTAS y publicadas aparecen en la página de empleo.",
 
+  // Competencias
+  "comps.title": "Competencias",
+  "comps.subtitle": "Lo que los entrevistadores evalúan para este puesto.",
+  "comps.empty": "Aún no hay competencias. Añade algunas para que las evaluaciones tengan qué calificar.",
+  "comps.name": "Competencia",
+  "comps.add": "Añadir competencia",
+  "comps.rename": "Renombrar",
+  "comps.remove": "Quitar",
+
+  // Tu evaluación
+  "score.title": "Tu evaluación",
+  "score.subtitle": "Califica cada competencia y da una recomendación.",
+  "score.noComps": "Esta vacante aún no tiene competencias — pídele al reclutador que las añada.",
+  "score.recommendation": "Recomendación",
+  "score.pickRecommendation": "Elige…",
+  "score.notes": "Notas",
+  "score.comment": "comentario",
+  "score.commentPlaceholder": "Comentario opcional",
+  "score.saveDraft": "Guardar borrador",
+  "score.submit": "Enviar evaluación",
+  "score.saved": "Borrador guardado.",
+  "score.submitWarning": "El envío es definitivo — después no podrás editarla, y solo entonces podrás leer la de tus colegas.",
+  "score.locked": "Ya enviaste esta evaluación. No se puede editar.",
+
+  // Debrief
+  "debrief.title": "Debrief",
+  "debrief.empty": "Aún no se ha enviado ninguna evaluación.",
+  "debrief.hidden": "{n} colega(s) han enviado su evaluación. Envía la tuya para leerlas.",
+  "debrief.you": "(tú)",
+  "debrief.submittedOn": "Enviada el {date}",
+  "debrief.average": "prom. {n}/4",
+
+  "enum.recommendation.STRONG_YES": "Sí, sin duda",
+  "enum.recommendation.YES": "Sí",
+  "enum.recommendation.NO": "No",
+  "enum.recommendation.STRONG_NO": "No, en absoluto",
+
+  "err.competencyFailed": "No se pudieron actualizar las competencias. Inténtalo de nuevo.",
+  "err.competencyNotFound": "Esa competencia ya no existe.",
+  "err.scorecardFailed": "No se pudo guardar tu evaluación. Inténtalo de nuevo.",
+  "err.scorecardLocked": "Esta evaluación ya fue enviada y no se puede cambiar.",
+  "err.needRecommendation": "Elige una recomendación antes de enviar.",
+  "err.needRatings": "Califica todas las competencias antes de enviar. Faltan: {missing}",
+
   // Errors
   "err.notAuthorized": "No puedes gestionar el flujo de esta vacante.",
   "err.notAuthorizedCreate": "Solo reclutadores y RR. HH. pueden abrir una vacante.",

@@ -223,6 +223,22 @@ enum JobMemberRole {
   INTERVIEWER
 }
 
+// An interviewer's feedback is editable while DRAFT and frozen once SUBMITTED — the same lifecycle as
+// a Timesheet. The lock is enforced by the UPDATE policy's USING clause, so it holds at the database.
+enum ScorecardStatus {
+  DRAFT
+  SUBMITTED
+}
+
+// The overall verdict on a scorecard. Deliberately four options with no neutral middle: a debrief
+// needs a position, and "maybe" is how hiring decisions stall.
+enum Recommendation {
+  STRONG_YES
+  YES
+  NO
+  STRONG_NO
+}
+
 // Fixed top-level hiring pipeline (like TimesheetStatus / LeaveRequestStatus). The INTERVIEW phase is
 // subdivided into per-job InterviewRounds; an Application in INTERVIEW points at its current round.
 enum ApplicationStage {
@@ -372,6 +388,7 @@ model Employee {
   projectAssignments ProjectAssignment[]
   meetingAssignments MeetingAssignment[]
   jobMemberships     JobMember[]
+  scorecardsAuthored Scorecard[]        @relation("ScorecardAuthor")
 
   // Employee numbers are unique within an organization, not globally.
   @@unique([orgId, employeeNumber])
@@ -895,6 +912,8 @@ model Job {
   members         JobMember[]
   applications    Application[]
   applicationEvents ApplicationEvent[] @relation("ApplicationEventJob")
+  competencies    JobCompetency[]
+  scorecards      Scorecard[]        @relation("ScorecardJob")
 
   @@index([orgId, status])
 }
@@ -911,6 +930,7 @@ model InterviewRound {
   job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   applications Application[]
+  scorecards   Scorecard[]
 
   @@unique([jobId, position])
   @@index([jobId])
@@ -985,10 +1005,87 @@ model Application {
   currentRoundId String?
   currentRound   InterviewRound? @relation(fields: [currentRoundId], references: [id], onDelete: SetNull)
 
-  events ApplicationEvent[]
+  events     ApplicationEvent[]
+  scorecards Scorecard[]
 
   @@unique([jobId, candidateId])
   @@index([jobId, stage])
+}
+
+// A criterion this job scores candidates on (M7) — e.g. "System design", "Communication". Per-job and
+// ordered, exactly like InterviewRound: the same "the req defines its own process" idea, applied to
+// evaluation instead of stages.
+model JobCompetency {
+  id        String   @id @default(uuid())
+  name      String
+  position  Int
+  createdAt DateTime @default(now())
+
+  jobId String
+  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  ratings ScorecardRating[]
+
+  @@unique([jobId, position])
+  @@index([jobId])
+}
+
+// One interviewer's written feedback on one candidate for one interview round (M7).
+//
+// Visibility is the suite's most interesting rule: a teammate may not read this until THEY have
+// submitted their own scorecard for the same application — the anti-anchoring guard, enforced by
+// app_can_see_scorecard, not by the UI. Recruiters/hiring managers (who run the debrief) always see
+// everything. Editing stops at submit, enforced by the UPDATE policy.
+model Scorecard {
+  id             String          @id @default(uuid())
+  status         ScorecardStatus @default(DRAFT)
+  recommendation Recommendation?
+  notes          String?
+  submittedAt    DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  // Denormalized owner column — every ATS policy keys off jobId (same reason as ApplicationEvent).
+  jobId String
+  job   Job    @relation("ScorecardJob", fields: [jobId], references: [id])
+
+  // SetNull, not Cascade: deleting a round must never destroy the feedback given in it (M5's
+  // guarantee for candidates, applied here to interviewers' work).
+  interviewRoundId String?
+  interviewRound   InterviewRound? @relation(fields: [interviewRoundId], references: [id], onDelete: SetNull)
+
+  authorEmployeeId String
+  author           Employee @relation("ScorecardAuthor", fields: [authorEmployeeId], references: [id])
+
+  ratings ScorecardRating[]
+
+  // One scorecard per person per round on a given application.
+  @@unique([applicationId, interviewRoundId, authorEmployeeId])
+  @@index([applicationId])
+  @@index([jobId])
+}
+
+// One competency's score inside a scorecard. `competencyName` is a SNAPSHOT taken at write time, so
+// renaming or removing a competency later can never rewrite what a past debrief actually said — the
+// same reasoning as ApplicationEvent.roundName and EmployeeHistory.departmentSnapshot.
+model ScorecardRating {
+  id        String   @id @default(uuid())
+  rating    Int // 1–4, see RATING_SCALE in @hris/recruiting
+  comment   String?
+  createdAt DateTime @default(now())
+
+  scorecardId String
+  scorecard   Scorecard @relation(fields: [scorecardId], references: [id], onDelete: Cascade)
+
+  competencyId   String
+  competency     JobCompetency @relation(fields: [competencyId], references: [id], onDelete: Cascade)
+  competencyName String
+
+  @@unique([scorecardId, competencyId])
+  @@index([scorecardId])
 }
 
 // Append-only pipeline history AND the hiring-decision compliance trail. UPDATE/DELETE are revoked
