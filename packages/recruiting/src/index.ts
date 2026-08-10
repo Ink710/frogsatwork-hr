@@ -4,4 +4,5 @@
 export * from "./job";
 export * from "./candidate";
 export * from "./scorecard";
+export * from "./reporting";
 export * from "./rules";

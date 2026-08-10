@@ -732,31 +732,39 @@ async function main() {
 
   // The append-only ApplicationEvent trail that produced each application's current stage. jobId is
   // denormalized (RLS one-liner); roundName is a snapshot. `update: {}` keeps it create-only on reseed.
+  // `at` BACKDATES each event. ApplicationEvent.occurredAt is DB-defaulted precisely so the APP can
+  // never backdate history — but the seed runs as the owner and sets it explicitly, so the demo has a
+  // believable timeline. Without this every event lands at seed time and every reported duration is
+  // ~0 days, which would make the M9 funnel and time-to-hire figures meaningless.
   const EVENTS = [
-    { id: "ae-nora-1", app: "app-nora", from: null, to: "APPLIED", round: null },
-    { id: "ae-owen-1", app: "app-owen", from: null, to: "APPLIED", round: null },
-    { id: "ae-owen-2", app: "app-owen", from: "APPLIED", to: "SCREEN", round: null },
-    { id: "ae-mei-1", app: "app-mei", from: null, to: "APPLIED", round: null },
-    { id: "ae-mei-2", app: "app-mei", from: "APPLIED", to: "SCREEN", round: null },
-    { id: "ae-mei-3", app: "app-mei", from: "SCREEN", to: "INTERVIEW", round: "Technical Screen" },
-    { id: "ae-mei-4", app: "app-mei", from: "INTERVIEW", to: "INTERVIEW", round: "System Design", note: "Advanced to System Design" },
-    { id: "ae-luis-1", app: "app-luis", from: null, to: "APPLIED", round: null },
-    { id: "ae-luis-2", app: "app-luis", from: "APPLIED", to: "SCREEN", round: null },
-    { id: "ae-luis-3", app: "app-luis", from: "SCREEN", to: "INTERVIEW", round: "Technical Screen" },
-    { id: "ae-luis-4", app: "app-luis", from: "INTERVIEW", to: "OFFER", round: null },
+    { id: "ae-nora-1", app: "app-nora", from: null, to: "APPLIED", round: null, at: "2026-08-05" },
+    { id: "ae-owen-1", app: "app-owen", from: null, to: "APPLIED", round: null, at: "2026-07-28" },
+    { id: "ae-owen-2", app: "app-owen", from: "APPLIED", to: "SCREEN", round: null, at: "2026-08-03" },
+    { id: "ae-mei-1", app: "app-mei", from: null, to: "APPLIED", round: null, at: "2026-07-20" },
+    { id: "ae-mei-2", app: "app-mei", from: "APPLIED", to: "SCREEN", round: null, at: "2026-07-24" },
+    { id: "ae-mei-3", app: "app-mei", from: "SCREEN", to: "INTERVIEW", round: "Technical Screen", at: "2026-07-30" },
+    { id: "ae-mei-4", app: "app-mei", from: "INTERVIEW", to: "INTERVIEW", round: "System Design", note: "Advanced to System Design", at: "2026-08-04" },
+    { id: "ae-luis-1", app: "app-luis", from: null, to: "APPLIED", round: null, at: "2026-07-10" },
+    { id: "ae-luis-2", app: "app-luis", from: "APPLIED", to: "SCREEN", round: null, at: "2026-07-14" },
+    { id: "ae-luis-3", app: "app-luis", from: "SCREEN", to: "INTERVIEW", round: "Technical Screen", at: "2026-07-21" },
+    { id: "ae-luis-4", app: "app-luis", from: "INTERVIEW", to: "OFFER", round: null, at: "2026-08-01" },
     // Owen's earlier run at the design req: applied, then rejected. He's since re-applied to the
     // backend req (app-owen, now at SCREEN) — the talent-pool story the candidate database surfaces.
-    { id: "ae-owen-pd-1", app: "app-owen-pd", job: "job-pd", from: null, to: "APPLIED", round: null },
+    { id: "ae-owen-pd-1", app: "app-owen-pd", job: "job-pd", from: null, to: "APPLIED", round: null, at: "2026-06-15" },
     { id: "ae-owen-pd-2", app: "app-owen-pd", job: "job-pd", from: "APPLIED", to: "REJECTED", round: null,
-      note: "Strong portfolio, but we went with a more senior profile." },
+      note: "Strong portfolio, but we went with a more senior profile.", at: "2026-06-28" },
   ];
   for (const e of EVENTS) {
     await prisma.applicationEvent.upsert({
       where: { id: e.id },
-      update: {},
+      // Re-assert occurredAt so a reseed refreshes the demo TIMELINE (the reporting figures depend
+      // on it). Only these fixed seed ids are touched; app-created events have random uuids and are
+      // never rewritten — the append-only guarantee is about the APP, not the seeder.
+      update: { occurredAt: e.at ? new Date(`${e.at}T10:00:00.000Z`) : undefined },
       create: {
         id: e.id, applicationId: e.app, jobId: e.job ?? "job-be",
         fromStage: e.from, toStage: e.to, roundName: e.round ?? null, note: e.note ?? null,
+        occurredAt: e.at ? new Date(`${e.at}T10:00:00.000Z`) : undefined,
         actorId: PEOPLE.raj.userId,
       },
     });

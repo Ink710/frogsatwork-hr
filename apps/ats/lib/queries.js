@@ -1,7 +1,13 @@
 import "server-only";
 import { prisma } from "@hris/database";
 import { getViewer, withViewer, isRecruiter } from "@hris/auth";
-import { APPLICATION_STAGES } from "@hris/recruiting";
+import {
+  APPLICATION_STAGES,
+  buildFunnel,
+  summariseSources,
+  daysBetween,
+  averageDays,
+} from "@hris/recruiting";
 
 // The active pipeline columns, in order. REJECTED / WITHDRAWN are shown separately (see `closed`).
 export const BOARD_STAGES = ["APPLIED", "SCREEN", "INTERVIEW", "OFFER", "HIRED"];
@@ -469,5 +475,159 @@ export async function getApplicationDetail(jobId, appId) {
     if (!app) return null;
     const canManage = await viewerCanManageJob(tx, jobId);
     return { app, canManage };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Reporting (M9).
+//
+// THE RULE FOR THIS WHOLE SECTION: every count, sum and average is computed INSIDE withViewer, so
+// Postgres RLS scopes the rows before any arithmetic happens. A recruiter's numbers cover the org;
+// a hiring manager's cover only the reqs they're on — from the SAME code, with no role branching.
+// Dropping to a bare `prisma` aggregate "for speed" would silently hand a hiring manager the whole
+// company's hiring data, which is exactly the kind of leak an aggregate makes hard to notice.
+// ---------------------------------------------------------------------------
+
+// Does this viewer manage ANY requisition? Gates the interviewer-load report — see below.
+async function viewerManagesAnyJob(tx) {
+  const [row] = await tx.$queryRaw`
+    SELECT EXISTS (SELECT 1 FROM "Job" j WHERE app_can_manage_job(j.id)) AS ok`;
+  return Boolean(row?.ok);
+}
+
+// The pipeline funnel: how many applications EVER REACHED each stage.
+//
+// Counted from the append-only ApplicationEvent trail, NOT from Application.stage — someone sitting
+// at OFFER also passed Screen and Interview, and counting them once (at the end) makes every
+// drop-off figure fiction. DISTINCT on applicationId matters too: a multi-round INTERVIEW advance
+// writes several INTERVIEW→INTERVIEW events, and that's one candidate, not three.
+export async function getFunnelReport() {
+  const viewer = await getViewer();
+  if (!viewer) return { funnel: buildFunnel({}), totalApplications: 0 };
+  return withViewer(viewer, async (tx) => {
+    const rows = await tx.$queryRaw`
+      SELECT "toStage"::text AS stage, count(DISTINCT "applicationId")::int AS reached
+      FROM "ApplicationEvent"
+      GROUP BY "toStage"`;
+    const reached = Object.fromEntries(rows.map((r) => [r.stage, Number(r.reached)]));
+    const totalApplications = await tx.application.count();
+    return { funnel: buildFunnel(reached), totalApplications };
+  });
+}
+
+// Where candidates come from, and which sources actually produce hires.
+export async function getSourceReport() {
+  const viewer = await getViewer();
+  if (!viewer) return [];
+  return withViewer(viewer, async (tx) => {
+    // Hires are counted from the HIRED EVENT, not from Application.stage — the same source of truth
+    // the funnel and the time metrics use, so the three can never contradict each other on one page.
+    // It's also the more honest definition: a hire is a historical fact. Current stage can be edited
+    // afterwards, which would silently erase a hire that really happened; the append-only event trail
+    // is precisely what stops that.
+    const rows = await tx.$queryRaw`
+      SELECT c.source,
+             count(*)::int AS applications,
+             count(*) FILTER (
+               WHERE EXISTS (
+                 SELECT 1 FROM "ApplicationEvent" e
+                 WHERE e."applicationId" = a.id AND e."toStage" = 'HIRED'
+               )
+             )::int AS hires
+      FROM "Application" a
+      JOIN "Candidate" c ON c.id = a."candidateId"
+      GROUP BY c.source`;
+    return summariseSources(
+      rows.map((r) => ({ source: r.source, applications: Number(r.applications), hires: Number(r.hires) })),
+    );
+  });
+}
+
+// Two different questions, deliberately reported separately:
+//   time-to-hire — applied → hired. The candidate's experience and the pipeline's speed.
+//   time-to-fill — req published → the hire that completed it. How long the business waited.
+// Both derived from event timestamps; neither is stored, so neither can drift (the same argument
+// the suite makes for overtime).
+export async function getTimeReport() {
+  const viewer = await getViewer();
+  const empty = { timeToHire: { days: null, sample: 0 }, timeToFill: { days: null, sample: 0 } };
+  if (!viewer) return empty;
+  return withViewer(viewer, async (tx) => {
+    const hires = await tx.$queryRaw`
+      SELECT a."appliedAt", j."publishedAt", MIN(e."occurredAt") AS "hiredAt"
+      FROM "Application" a
+      JOIN "Job" j ON j.id = a."jobId"
+      JOIN "ApplicationEvent" e ON e."applicationId" = a.id AND e."toStage" = 'HIRED'
+      GROUP BY a.id, a."appliedAt", j."publishedAt"`;
+
+    const toHire = hires.map((h) => daysBetween(h.appliedAt, h.hiredAt));
+    // Only reqs that were actually advertised have a meaningful "waiting" clock.
+    const toFill = hires.filter((h) => h.publishedAt).map((h) => daysBetween(h.publishedAt, h.hiredAt));
+    return { timeToHire: averageDays(toHire), timeToFill: averageDays(toFill) };
+  });
+}
+
+// OPEN requisitions and how long they've been open — surfaces reqs that are stalling before anyone
+// complains. DRAFT/PAUSED/CLOSED/FILLED are excluded: only a live vacancy is "aging".
+export async function getReqAgingReport() {
+  const viewer = await getViewer();
+  if (!viewer) return [];
+  return withViewer(viewer, async (tx) => {
+    const jobs = await tx.job.findMany({
+      where: { status: "OPEN" },
+      select: {
+        id: true, title: true, publishedAt: true, createdAt: true, openings: true,
+        _count: { select: { applications: true } },
+      },
+    });
+    const now = new Date();
+    return jobs
+      // publishedAt when advertised, else createdAt — an unadvertised req still ages internally.
+      .map((j) => ({
+        id: j.id,
+        title: j.title,
+        openings: j.openings,
+        inFlight: j._count.applications,
+        daysOpen: daysBetween(j.publishedAt ?? j.createdAt, now),
+        published: Boolean(j.publishedAt),
+      }))
+      .sort((a, b) => b.daysOpen - a.daysOpen);
+  });
+}
+
+// Scorecards submitted vs still in draft, per interviewer.
+//
+// GATED to viewers who manage at least one req. The M7 anchoring guard means an interviewer cannot
+// read colleagues' scorecards — so for them these totals would silently omit most of the data and
+// read as fact. A wrong number is worse than a hidden section, so they get null and the page hides
+// it (visibility follows capability — the M8 lesson).
+export async function getInterviewerLoadReport() {
+  const viewer = await getViewer();
+  if (!viewer) return null;
+  return withViewer(viewer, async (tx) => {
+    if (!(await viewerManagesAnyJob(tx))) return null;
+
+    const rows = await tx.$queryRaw`
+      SELECT s."authorEmployeeId" AS "employeeId",
+             count(*) FILTER (WHERE s.status = 'SUBMITTED')::int AS submitted,
+             count(*) FILTER (WHERE s.status = 'DRAFT')::int     AS drafts
+      FROM "Scorecard" s
+      GROUP BY s."authorEmployeeId"`;
+    if (rows.length === 0) return [];
+
+    // Names structurally — a recruiter has no employee-records access (the M5 lesson).
+    const directory = await orgDirectory(tx, viewer.orgId);
+    const byId = new Map(directory.map((p) => [p.id, p]));
+    return rows
+      .map((r) => {
+        const p = byId.get(r.employeeId);
+        return {
+          employeeId: r.employeeId,
+          name: p ? `${p.firstName} ${p.lastName}` : "—",
+          submitted: Number(r.submitted),
+          drafts: Number(r.drafts),
+        };
+      })
+      .sort((a, b) => b.submitted - a.submitted || a.name.localeCompare(b.name));
   });
 }

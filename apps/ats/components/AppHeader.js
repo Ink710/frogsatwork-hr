@@ -25,6 +25,7 @@ export async function AppHeader() {
       navItems={[
         { href: "/", label: t("nav.jobs") },
         { href: "/candidates", label: t("nav.candidates") },
+        { href: "/reports", label: t("nav.reports") },
       ]}
       userName={name}
       roleLabel={t(`enum.role.${role}`)}
