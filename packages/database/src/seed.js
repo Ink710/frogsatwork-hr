@@ -702,7 +702,19 @@ async function main() {
   for (const c of CANDIDATES) {
     await prisma.candidate.upsert({
       where: { id: c.id },
-      update: { firstName: c.firstName, lastName: c.lastName, email: c.email, source: c.source },
+      // Re-asserting the anonymisation columns makes the M10 erasure demo REPEATABLE: erase someone
+      // in the browser, reseed, and they're back. Without it the only way to undo a demo erasure is
+      // a full `prisma migrate reset`, which throws away everything else too.
+      update: {
+        firstName: c.firstName,
+        lastName: c.lastName,
+        email: c.email,
+        source: c.source,
+        phone: c.phone ?? null,
+        anonymisedAt: null,
+        anonymisedById: null,
+        anonymisationNote: null,
+      },
       create: { id: c.id, ...c, orgId: ORG_ID },
     });
   }
@@ -819,6 +831,60 @@ async function main() {
     });
   }
 
+  // 18. Compliance (M10) — EEO self-identification + one open erasure request.
+  //
+  // ⚠️ EeoResponse cannot be written through the Prisma CLIENT: the table has RLS with no policies
+  // and every privilege revoked from hris_app. The seed connects as the OWNER, so a raw INSERT works
+  // here and only here — which is itself the demonstration. A raw insert rather than
+  // app_submit_application because these applications already exist; the doorway writes a response
+  // as part of creating one.
+  const EEO = [
+    { id: "eeo-nora", app: "app-nora", job: "job-be", g: "FEMALE", e: "BLACK_OR_AFRICAN_AMERICAN", v: "NOT_A_VETERAN", d: "NO" },
+    { id: "eeo-owen", app: "app-owen", job: "job-be", g: "MALE", e: "WHITE", v: "PROTECTED_VETERAN", d: "NO" },
+    { id: "eeo-mei", app: "app-mei", job: "job-be", g: "FEMALE", e: "ASIAN", v: "NOT_A_VETERAN", d: "DECLINED" },
+    // Declining every question is a perfectly ordinary outcome, and the report has to show it.
+    { id: "eeo-luis", app: "app-luis", job: "job-be", g: "DECLINED", e: "DECLINED", v: "DECLINED", d: "DECLINED" },
+    { id: "eeo-owen-pd", app: "app-owen-pd", job: "job-pd", g: "MALE", e: "WHITE", v: "PROTECTED_VETERAN", d: "NO" },
+  ];
+  for (const r of EEO) {
+    await prisma.$executeRaw`
+      INSERT INTO "EeoResponse" (id, gender, ethnicity, "veteranStatus", "disabilityStatus",
+                                 "submittedAt", "orgId", "applicationId", "jobId")
+      VALUES (${r.id}, ${r.g}::"EeoGender", ${r.e}::"EeoEthnicity", ${r.v}::"EeoVeteranStatus",
+              ${r.d}::"EeoDisabilityStatus", now(), ${ORG_ID}, ${r.app}, ${r.job})
+      ON CONFLICT (id) DO NOTHING`;
+  }
+
+  // Nora has asked to be forgotten — so the compliance queue has something in it on first login, and
+  // the erase flow is demoable without first having to file a request from the public page.
+  await prisma.erasureRequest.upsert({
+    where: { id: "er-nora" },
+    // Reset to PENDING on reseed, for the same repeatability reason as the candidate upsert above:
+    // actioning this request in a demo shouldn't cost a full database reset to get it back.
+    update: { status: "PENDING", resolvedAt: null, resolvedById: null, decisionNote: null },
+    create: {
+      id: "er-nora",
+      email: "nora.adeyemi@example.com",
+      status: "PENDING",
+      reason: "I've accepted another role — please remove my details.",
+      requestedAt: new Date("2026-08-09T09:00:00.000Z"),
+      orgId: ORG_ID,
+      candidateId: "cand-nora",
+    },
+  });
+
+  // OPT-IN demo volume. `SEED_DEMO_VOLUME=1 pnpm --filter @hris/database db:seed` adds a cohort of
+  // extra applicants so the EEO aggregates clear the suppression threshold and the compliance report
+  // shows real numbers instead of a wall of dashes.
+  //
+  // It is opt-in on purpose. The integration tests assert EXACT counts against the fixture above
+  // (4 candidates, 5 applications, a specific funnel), and those numbers encode what M4 and M9
+  // actually verified. Making the demo dataset a separate tier keeps the tests deterministic and the
+  // demo interesting, instead of trading one for the other.
+  if (process.env.SEED_DEMO_VOLUME === "1") {
+    await seedEeoVolume();
+  }
+
   const counts = {
     organizations: await prisma.organization.count(),
     users: await prisma.user.count(),
@@ -844,8 +910,100 @@ async function main() {
     applicationEvents: await prisma.applicationEvent.count(),
     competencies: await prisma.jobCompetency.count(),
     scorecards: await prisma.scorecard.count(),
+    eeoResponses: Number(
+      (await prisma.$queryRaw`SELECT count(*)::int AS n FROM "EeoResponse"`)[0].n,
+    ),
+    erasureRequests: await prisma.erasureRequest.count(),
   };
   console.log("Seed complete:", counts);
+}
+
+// ── Opt-in demo volume for the EEO report (SEED_DEMO_VOLUME=1) ───────────────────────────────────
+//
+// A compliance report whose every figure is withheld demonstrates the suppression rule but shows
+// nothing else, and five applicants is nowhere near a threshold of five per CELL. This adds 21 more
+// applicants, bringing the pool to 26 responses — deliberately shaped so the report shows BOTH
+// behaviours at once:
+//
+//   • gender / ethnicity  → most groups clear the threshold and print real counts;
+//   • veteran status      → PROTECTED_VETERAN lands at 3, so it is withheld — and because it would
+//                           then be the ONLY withheld cell in that dimension, the complementary rule
+//                           hides a second one, which is the part worth seeing work.
+//
+// Distributions are fixed, not random: a reseed must produce the same report, or the screenshot in
+// the case study stops matching the app.
+async function seedEeoVolume() {
+  const fill = (value, n) => Array.from({ length: n }, () => value);
+
+  const NAMES = [
+    ["Amara", "Nwosu"], ["Ines", "Ferreira"], ["Tobias", "Kranz"], ["Yuki", "Sato"],
+    ["Sofia", "Marchetti"], ["Dev", "Sharma"], ["Noah", "Lindqvist"], ["Camila", "Vega"],
+    ["Ibrahim", "Toure"], ["Hannah", "O'Rourke"], ["Rafael", "Duarte"], ["Ling", "Zhao"],
+    ["Marta", "Kowalska"], ["Elias", "Bergström"], ["Priyanka", "Rao"], ["Omar", "Haddad"],
+    ["Freya", "Andersen"], ["Julien", "Moreau"], ["Nadia", "Petrova"], ["Kofi", "Mensah"],
+    ["Lucia", "Ortega"],
+  ];
+
+  const GENDERS = [...fill("MALE", 8), ...fill("FEMALE", 7), ...fill("NON_BINARY", 2), ...fill("DECLINED", 4)];
+  const ETHNICITIES = [
+    ...fill("WHITE", 6), ...fill("ASIAN", 5), ...fill("HISPANIC_OR_LATINO", 5),
+    ...fill("BLACK_OR_AFRICAN_AMERICAN", 3), ...fill("TWO_OR_MORE_RACES", 1), ...fill("DECLINED", 1),
+  ];
+  const VETERAN = [...fill("NOT_A_VETERAN", 16), ...fill("PROTECTED_VETERAN", 1), ...fill("DECLINED", 4)];
+  const DISABILITY = [...fill("NO", 14), ...fill("YES", 4), ...fill("DECLINED", 3)];
+  const SOURCES = ["Careers page", "Referral", "LinkedIn", "Careers page"];
+
+  for (const [i, [firstName, lastName]] of NAMES.entries()) {
+    const n = String(i + 1).padStart(2, "0");
+    const candidateId = `cand-vol-${n}`;
+    const applicationId = `app-vol-${n}`;
+    // Two thirds to the backend req, a third to the design req, so a per-job filter is meaningful.
+    const jobId = i % 3 === 2 ? "job-pd" : "job-be";
+    const appliedAt = new Date(`2026-07-${String((i % 28) + 1).padStart(2, "0")}T12:00:00.000Z`);
+
+    await prisma.candidate.upsert({
+      where: { id: candidateId },
+      update: {},
+      create: {
+        id: candidateId,
+        firstName,
+        lastName,
+        email: `${firstName.toLowerCase().replace(/[^a-z]/g, "")}.${lastName.toLowerCase().replace(/[^a-z]/g, "")}@example.com`,
+        source: SOURCES[i % SOURCES.length],
+        orgId: ORG_ID,
+      },
+    });
+
+    await prisma.application.upsert({
+      where: { id: applicationId },
+      update: {},
+      create: { id: applicationId, orgId: ORG_ID, jobId, candidateId, stage: "APPLIED", appliedAt },
+    });
+
+    await prisma.applicationEvent.upsert({
+      where: { id: `ae-vol-${n}` },
+      update: { occurredAt: appliedAt },
+      create: {
+        id: `ae-vol-${n}`,
+        applicationId,
+        jobId,
+        fromStage: null,
+        toStage: "APPLIED",
+        occurredAt: appliedAt,
+        actorId: SYSTEM_USER_ID, // they came in through the careers page, like a real public apply
+      },
+    });
+
+    await prisma.$executeRaw`
+      INSERT INTO "EeoResponse" (id, gender, ethnicity, "veteranStatus", "disabilityStatus",
+                                 "submittedAt", "orgId", "applicationId", "jobId")
+      VALUES (${`eeo-vol-${n}`}, ${GENDERS[i]}::"EeoGender", ${ETHNICITIES[i]}::"EeoEthnicity",
+              ${VETERAN[i]}::"EeoVeteranStatus", ${DISABILITY[i]}::"EeoDisabilityStatus",
+              now(), ${ORG_ID}, ${applicationId}, ${jobId})
+      ON CONFLICT (id) DO NOTHING`;
+  }
+
+  console.log(`Demo volume: +${NAMES.length} applicants with EEO responses (SEED_DEMO_VOLUME=1).`);
 }
 
 main()

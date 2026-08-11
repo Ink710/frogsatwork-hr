@@ -13,8 +13,12 @@ export const config = {
   //
   // That last exclusion is the switch that opens this app to the open internet: without it every
   // careers request 307s to /login. Everything reachable under /careers is therefore written on the
-  // assumption that the caller is anonymous and hostile — reads go through app_public_jobs() and the
-  // single write goes through app_submit_application(), both SECURITY DEFINER boundaries. Adding a
-  // route under /careers means adding it to that threat model.
+  // assumption that the caller is anonymous and hostile — reads go through app_public_jobs(), and
+  // the writes go through app_submit_application() and app_request_erasure(), all SECURITY DEFINER
+  // boundaries. Adding a route under /careers means adding it to that threat model.
+  //
+  // M10 added /careers/erasure under this same exclusion. It is the most sensitive of the three,
+  // because the question it is asked ("do you hold data for this address?") is one it must never
+  // answer — hence the always-'OK' return and the identical confirmation page for every outcome.
   matcher: ["/((?!api/auth|api/health|_next/static|_next/image|favicon.ico|login|brand|careers).*)"],
 };

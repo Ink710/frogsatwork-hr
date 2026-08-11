@@ -315,6 +315,97 @@ const es = {
   "err.atLastRound": "Ya está en la última ronda — avanza a Oferta.",
   "err.invalidInput": "Revisa el formulario e inténtalo de nuevo.",
   "err.moveFailed": "No se pudo actualizar la postulación. Inténtalo de nuevo.",
+
+  // ── Cumplimiento (M10) ─────────────────────────────────────────────────────
+  "eeo.legend": "Autoidentificación voluntaria",
+  "eeo.preamble":
+    "Estas preguntas son totalmente voluntarias y se usan solo para informes anonimizados de igualdad de oportunidades. Tus respuestas se guardan por separado de tu postulación, nunca se muestran al equipo de contratación y no influyen de ninguna manera en la evaluación de tu candidatura. Puedes no responder ninguna de ellas.",
+  "eeo.field.gender": "Género",
+  "eeo.field.ethnicity": "Raza / etnia",
+  "eeo.field.veteranStatus": "Condición de veterano",
+  "eeo.field.disabilityStatus": "Situación de discapacidad",
+
+  "enum.eeo.gender.MALE": "Hombre",
+  "enum.eeo.gender.FEMALE": "Mujer",
+  "enum.eeo.gender.NON_BINARY": "No binario",
+  "enum.eeo.gender.DECLINED": "Prefiero no responder",
+  "enum.eeo.ethnicity.HISPANIC_OR_LATINO": "Hispano o latino",
+  "enum.eeo.ethnicity.WHITE": "Blanco",
+  "enum.eeo.ethnicity.BLACK_OR_AFRICAN_AMERICAN": "Negro o afroamericano",
+  "enum.eeo.ethnicity.ASIAN": "Asiático",
+  "enum.eeo.ethnicity.NATIVE_HAWAIIAN_OR_PACIFIC_ISLANDER": "Nativo de Hawái o de las islas del Pacífico",
+  "enum.eeo.ethnicity.AMERICAN_INDIAN_OR_ALASKA_NATIVE": "Indígena americano o nativo de Alaska",
+  "enum.eeo.ethnicity.TWO_OR_MORE_RACES": "Dos o más razas",
+  "enum.eeo.ethnicity.DECLINED": "Prefiero no responder",
+  "enum.eeo.veteranStatus.PROTECTED_VETERAN": "Veterano protegido",
+  "enum.eeo.veteranStatus.NOT_A_VETERAN": "No soy veterano",
+  "enum.eeo.veteranStatus.DECLINED": "Prefiero no responder",
+  "enum.eeo.disabilityStatus.YES": "Sí, tengo una discapacidad",
+  "enum.eeo.disabilityStatus.NO": "No tengo una discapacidad",
+  "enum.eeo.disabilityStatus.DECLINED": "Prefiero no responder",
+
+  "erasure.title": "Solicitar la eliminación de tus datos",
+  "erasure.intro":
+    "Si te has postulado con nosotros, puedes pedirnos que eliminemos los datos personales que tenemos sobre ti. Indícanos el correo con el que te postulaste y nuestro equipo gestionará tu solicitud.",
+  "erasure.email": "Correo electrónico",
+  "erasure.reason": "Algo que quieras contarnos (opcional)",
+  "erasure.submit": "Enviar solicitud",
+  "erasure.submitting": "Enviando…",
+  "erasure.link": "Solicitar la eliminación de tus datos",
+  "erasure.submittedTitle": "Solicitud recibida",
+  "erasure.submittedBody":
+    "Si tenemos datos personales asociados a ese correo, nuestro equipo gestionará tu solicitud y te contactará ahí. No necesitas hacer nada más.",
+  "erasure.invalid": "Introduce un correo electrónico válido.",
+  "erasure.rateLimited": "Demasiadas solicitudes. Inténtalo más tarde.",
+  "erasure.failed": "No se pudo enviar tu solicitud. Inténtalo de nuevo.",
+
+  "nav.compliance": "Cumplimiento",
+  "compliance.title": "Cumplimiento",
+  "compliance.subtitle": "Informes de igualdad de oportunidades y solicitudes de eliminación de datos.",
+  "compliance.eeoTitle": "Demografía de las candidaturas",
+  "compliance.eeoHint":
+    "Autoidentificación voluntaria, agregada. Las respuestas individuales son ilegibles para todo el mundo, incluida tú — este informe es la única vista que existe de ellas.",
+  "compliance.eeoEmpty": "Todavía no hay respuestas de autoidentificación.",
+  "compliance.responses": "{n} respuesta(s)",
+  "compliance.suppressed": "—",
+  "compliance.suppressionNote":
+    "Los grupos con menos de {n} respuestas se ocultan (y un grupo más con ellos, para que la cifra oculta no pueda deducirse restando).",
+  "compliance.dimension.gender": "Género",
+  "compliance.dimension.ethnicity": "Raza / etnia",
+  "compliance.dimension.veteranStatus": "Condición de veterano",
+  "compliance.dimension.disabilityStatus": "Situación de discapacidad",
+
+  "compliance.queueTitle": "Solicitudes de eliminación",
+  "compliance.queueHint": "Solicitudes de candidatos que piden eliminar sus datos personales.",
+  "compliance.queueEmpty": "No hay solicitudes pendientes.",
+  "compliance.requestedOn": "Solicitado el {date}",
+  "compliance.reasonGiven": "Su motivo:",
+  "compliance.erase": "Eliminar datos personales",
+  "compliance.erasing": "Eliminando…",
+  "compliance.refuse": "Rechazar",
+  "compliance.noteLabel": "Nota de la decisión",
+  "compliance.notePlaceholder": "Por qué completas o rechazas esta solicitud",
+  "compliance.confirmLabel": "Escribe ERASE para confirmar",
+  "compliance.confirmWord": "ERASE",
+  "compliance.eraseWarning":
+    "Esto destruye de forma permanente su nombre, datos de contacto y currículum, y no se puede deshacer. Su historial de postulaciones se conserva, sin su identidad, para que los informes sigan siendo exactos.",
+  "compliance.hiredBlocked":
+    "Esta persona ahora es empleada. Su expediente se conserva por obligación laboral y no puede eliminarse aquí.",
+  "compliance.erasedLabel": "Datos personales eliminados",
+  "compliance.erasedOn": "Datos personales eliminados el {date}",
+  "compliance.erasedBy": "Eliminado por",
+  "compliance.tombstone": "Candidato eliminado",
+  "compliance.showErased": "Incluir candidatos eliminados",
+  "compliance.eraseFromProfile": "Eliminar los datos personales de este candidato",
+
+  "err.erasureForbidden": "Solo un administrador de RR. HH. puede eliminar datos de candidatos.",
+  "err.erasureNotFound": "Ese candidato ya no existe.",
+  "err.erasureHired": "Este candidato fue contratado — su expediente se conserva por obligación laboral.",
+  "err.erasureAlready": "Los datos de este candidato ya se eliminaron.",
+  "err.erasureConfirm": "Escribe ERASE para confirmar.",
+  "err.erasureFailed": "No se pudo completar la eliminación. Inténtalo de nuevo.",
+  "err.erasureFileLeft":
+    "El registro se eliminó, pero no se pudo borrar su currículum almacenado. Elimínalo manualmente e informa a un administrador.",
 };
 
 export default es;

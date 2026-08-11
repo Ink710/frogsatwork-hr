@@ -81,3 +81,34 @@ export async function allowApplyAttempt(identifier) {
   const { success } = await rl.limit(identifier);
   return success;
 }
+
+// The PUBLIC erasure-request endpoint (M10). Its own budget, and the tightest of the three: a real
+// person exercising their right to erasure does it once, so anything beyond a handful of attempts is
+// someone probing the endpoint. Tight limits are safe here precisely BECAUSE the endpoint reveals
+// nothing — it returns the same answer for every address — so a throttled attacker learns nothing
+// they weren't already going to learn, which is nothing.
+const ERASURE_ATTEMPTS = 4;
+const ERASURE_WINDOW = "10 m";
+let erasureLimiter = null;
+
+function getErasureLimiter() {
+  if (erasureLimiter) return erasureLimiter;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  erasureLimiter = new Ratelimit({
+    redis: new Redis({ url, token }),
+    limiter: Ratelimit.fixedWindow(ERASURE_ATTEMPTS, ERASURE_WINDOW),
+    analytics: false,
+    ephemeralCache: new Map(),
+    prefix: "tm:erasure",
+  });
+  return erasureLimiter;
+}
+
+export async function allowErasureAttempt(identifier) {
+  const rl = getErasureLimiter();
+  if (!rl) return true;
+  const { success } = await rl.limit(identifier);
+  return success;
+}

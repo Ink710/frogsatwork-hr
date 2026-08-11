@@ -51,6 +51,23 @@ export const RESUME_MIME_TYPES = [
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ] as const;
 
+// A PUBLIC request to erase a candidate's personal data (GDPR, M10). Submitted by someone with no
+// account, so it carries nothing that could aim it: no candidate id, no org — just an address, which
+// app_request_erasure resolves server-side. `reason` is optional because the right to erasure does
+// not require one; we ask only because it helps HR answer well.
+export const erasureRequestSchema = z.object({
+  email: z.string().trim().toLowerCase().email("Enter a valid email."),
+  reason: z.string().trim().max(1000).optional(),
+});
+export type ErasureRequestInput = z.infer<typeof erasureRequestSchema>;
+
+// HR's decision on a request, or a direct erasure from a candidate's profile. The note is required
+// on a REFUSAL — refusing a data-subject request without recording why is exactly the gap an
+// auditor looks for.
+export const erasureDecisionSchema = z.object({
+  note: z.string().trim().max(1000).optional(),
+});
+
 // Move an application to a new stage (the pipeline action). `rejectionReason` is used when moving to
 // REJECTED; `note` is an optional decision note recorded on the ApplicationEvent.
 export const stageTransitionSchema = z.object({

@@ -3,8 +3,9 @@ import { notFound } from "next/navigation";
 import { INTL_LOCALE, formatDate, initials } from "@hris/ui";
 import { Avatar, Card, Field, FieldGrid } from "@hris/ui/server";
 import { getT, getLocale } from "@/lib/i18n.server";
-import { getCandidateProfile } from "@/lib/queries";
+import { getCandidateProfile, canManageErasure } from "@/lib/queries";
 import { StageBadge } from "@/components/recruiting-ui";
+import { EraseCandidateForm } from "@/components/ErasureActions";
 
 // One person, every application. This is what the Candidate/Application split from M1 exists for:
 // "have we seen this person before?" is answerable at a glance, including past rejections.
@@ -16,6 +17,12 @@ export default async function CandidateProfilePage({ params }) {
   const candidate = await getCandidateProfile(id);
   if (!candidate) notFound();
 
+  const erased = Boolean(candidate.anonymisedAt);
+  // Whether this person became an employee. Resolved here so the erase control can explain the
+  // refusal up front rather than the database delivering it as an error after the fact.
+  const wasHired = candidate.applications.some((a) => a.hiredEmployeeId);
+  const canErase = await canManageErasure();
+
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8 sm:px-6">
       <Link href="/candidates" className="text-sm text-muted-foreground hover:text-foreground">
@@ -23,26 +30,59 @@ export default async function CandidateProfilePage({ params }) {
       </Link>
 
       <div className="mt-3 flex items-center gap-4">
-        <Avatar initials={initials(candidate.firstName, candidate.lastName)} className="h-14 w-14 text-lg" />
+        <Avatar
+          initials={erased ? "—" : initials(candidate.firstName, candidate.lastName)}
+          className="h-14 w-14 text-lg"
+        />
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
-            {candidate.firstName} {candidate.lastName}
+            {erased ? t("compliance.tombstone") : `${candidate.firstName} ${candidate.lastName}`}
           </h1>
-          <p className="mt-0.5 font-mono text-sm text-muted-foreground">{candidate.email}</p>
+          <p className="mt-0.5 font-mono text-sm text-muted-foreground">
+            {erased
+              ? t("compliance.erasedOn", { date: formatDate(candidate.anonymisedAt, locale) })
+              : candidate.email}
+          </p>
         </div>
       </div>
 
       <div className="mt-6 flex flex-col gap-6">
+        {/* The application history below survives an erasure intact — stages, dates and outcomes are
+            facts about the process, not about the person. Only the identity is gone. */}
         <Card title={t("profile.details")}>
           <FieldGrid>
-            <Field label={t("app.email")}>{candidate.email}</Field>
-            {candidate.phone && <Field label={t("app.phone")}>{candidate.phone}</Field>}
+            {erased ? (
+              <>
+                <Field label={t("compliance.erasedLabel")}>
+                  {formatDate(candidate.anonymisedAt, locale)}
+                </Field>
+                {candidate.anonymisationNote && (
+                  <Field label={t("compliance.noteLabel")}>{candidate.anonymisationNote}</Field>
+                )}
+              </>
+            ) : (
+              <>
+                <Field label={t("app.email")}>{candidate.email}</Field>
+                {candidate.phone && <Field label={t("app.phone")}>{candidate.phone}</Field>}
+              </>
+            )}
+            {/* `source` outlives an erasure on purpose: it describes a channel, not a person, and
+                every source-effectiveness figure on /reports depends on it. */}
             {candidate.source && <Field label={t("app.source")}>{candidate.source}</Field>}
             <Field label={t("profile.applicationsLabel")}>
               {t("candidates.applications", { n: candidate.applications.length })}
             </Field>
           </FieldGrid>
         </Card>
+
+        {/* Erasure lives behind the same HR_ADMIN gate as /compliance. Not shown once the record is
+            already a shell — there is nothing left to erase, and app_erase_candidate would answer
+            ALREADY_ERASED. */}
+        {canErase && !erased && (
+          <Card title={t("compliance.eraseFromProfile")}>
+            <EraseCandidateForm candidateId={candidate.id} blocked={wasHired} />
+          </Card>
+        )}
 
         <Card title={t("profile.history")}>
           {candidate.applications.length === 0 ? (

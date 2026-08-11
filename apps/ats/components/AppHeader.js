@@ -20,12 +20,19 @@ export async function AppHeader() {
     await signOut({ redirectTo: "/login" });
   }
 
+  // Compliance is the one role-gated link (M10). The page 404s for anyone else regardless — this
+  // only stops the app advertising a door that won't open. The gate is a plain role check rather
+  // than a DB round-trip because a nav bar rendered on every page shouldn't cost a query; the
+  // authority remains app_can_manage_erasure(), which the page itself calls.
+  const canSeeCompliance = role === "HR_ADMIN";
+
   return (
     <AppShellHeader
       navItems={[
         { href: "/", label: t("nav.jobs") },
         { href: "/candidates", label: t("nav.candidates") },
         { href: "/reports", label: t("nav.reports") },
+        ...(canSeeCompliance ? [{ href: "/compliance", label: t("nav.compliance") }] : []),
       ]}
       userName={name}
       roleLabel={t(`enum.role.${role}`)}

@@ -7,6 +7,7 @@ import {
   summariseSources,
   daysBetween,
   averageDays,
+  suppressSmallCells,
 } from "@hris/recruiting";
 
 // The active pipeline columns, in order. REJECTED / WITHDRAWN are shown separately (see `closed`).
@@ -322,12 +323,26 @@ function utcMidnight(value) {
 //
 // Rejected/withdrawn candidates are INCLUDED by design — this is a talent pool you re-search later,
 // and each row's stage badge tells the story.
-export async function getCandidates({ q, stage, jobId, source, appliedFrom, appliedTo, page = 1 } = {}) {
+export async function getCandidates({
+  q,
+  stage,
+  jobId,
+  source,
+  appliedFrom,
+  appliedTo,
+  includeAnonymised = false,
+  page = 1,
+} = {}) {
   const viewer = await getViewer();
   const empty = { rows: [], total: 0, page: 1, pageSize: CANDIDATE_PAGE_SIZE, pageCount: 1 };
   if (!viewer) return empty;
 
   const and = [];
+
+  // Erased candidates are hidden by DEFAULT. A shell has no name, no email and no phone, so to a
+  // recruiter searching the talent pool it is pure noise — but it is NOT deleted, and the totals on
+  // /reports still count it, so the filter exists to make the two views reconcilable on demand.
+  if (!includeAnonymised) and.push({ anonymisedAt: null });
 
   // Free-text: every whitespace token must match at least one field, so "Mei Tanaka" matches across
   // firstName + lastName without a dedicated full-name column (same trick as getEmployees).
@@ -390,6 +405,9 @@ export async function getCandidates({ q, stage, jobId, source, appliedFrom, appl
           name: `${c.firstName} ${c.lastName}`,
           email: c.email,
           source: c.source,
+          // Present on a shell so the row can render as a tombstone rather than as a person with an
+          // odd name and an undeliverable address.
+          anonymisedAt: c.anonymisedAt,
           applicationCount: c._count.applications,
           latest: latest && {
             id: latest.id,
@@ -424,6 +442,9 @@ export async function getCandidateProfile(candidateId) {
             stage: true,
             appliedAt: true,
             rejectionReason: true,
+            // Whether this application produced an employee (M8). The profile needs it to know
+            // whether erasure is even offerable — see app_erase_candidate's HIRED refusal.
+            hiredEmployeeId: true,
             job: { select: { id: true, title: true } },
             currentRound: { select: { name: true } },
           },
@@ -630,4 +651,88 @@ export async function getInterviewerLoadReport() {
       })
       .sort((a, b) => b.submitted - a.submitted || a.name.localeCompare(b.name));
   });
+}
+
+// ── Compliance (M10) ─────────────────────────────────────────────────────────────────────────────
+
+// May the viewer read EEO aggregates / action erasure requests? Both call the EXACT DB functions the
+// policies and doorways use, so what the page renders can never drift from what the database will
+// actually permit — the same single-source-of-truth argument as viewerCanManageJob.
+export async function canReadEeo() {
+  const viewer = await getViewer();
+  if (!viewer) return false;
+  return withViewer(viewer, async (tx) => {
+    const [row] = await tx.$queryRaw`SELECT app_can_read_eeo() AS ok`;
+    return Boolean(row?.ok);
+  });
+}
+
+export async function canManageErasure() {
+  const viewer = await getViewer();
+  if (!viewer) return false;
+  return withViewer(viewer, async (tx) => {
+    const [row] = await tx.$queryRaw`SELECT app_can_manage_erasure() AS ok`;
+    return Boolean(row?.ok);
+  });
+}
+
+// Aggregate EEO demographics for the viewer's organisation.
+//
+// Note what is NOT here: any way to read one person's answers. The table itself is unreadable (RLS
+// with no policies + REVOKE), so this goes through app_eeo_summary, which returns counts and only
+// counts, and only to HR_ADMIN. Suppression is then applied in pure code.
+//
+// Returns null — not an empty array — when the viewer isn't permitted, so the page can say "you
+// don't have access" instead of "no data". Those are different sentences and only one of them is
+// true (the M7 hiddenCount lesson).
+export async function getEeoSummary({ jobId } = {}) {
+  const viewer = await getViewer();
+  if (!viewer) return null;
+  return withViewer(viewer, async (tx) => {
+    const [gate] = await tx.$queryRaw`SELECT app_can_read_eeo() AS ok`;
+    if (!gate?.ok) return null;
+
+    const rows = await tx.$queryRaw`
+      SELECT dimension, value, responses FROM app_eeo_summary(${jobId ?? null})`;
+    const dimensions = suppressSmallCells(
+      rows.map((r) => ({ dimension: r.dimension, value: r.value, responses: Number(r.responses) })),
+    );
+    // Every dimension stores DECLINED explicitly, so any one of them sums to the response total.
+    return { dimensions, totalResponses: dimensions[0]?.total ?? 0 };
+  });
+}
+
+// The erasure queue. RLS already restricts this table to HR_ADMIN, but the page gates on
+// canManageErasure() too: a screen offering an irreversible action should never render for someone
+// who can't perform it (the M8 lesson — visibility follows capability).
+export async function getErasureRequests({ status = "PENDING" } = {}) {
+  const viewer = await getViewer();
+  if (!viewer) return [];
+  return withViewer(viewer, async (tx) =>
+    tx.erasureRequest.findMany({
+      where: status ? { status } : {},
+      orderBy: { requestedAt: "asc" }, // oldest first: a compliance queue is a deadline, not a feed
+      select: {
+        id: true,
+        email: true,
+        status: true,
+        reason: true,
+        decisionNote: true,
+        requestedAt: true,
+        resolvedAt: true,
+        candidateId: true,
+        candidate: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            anonymisedAt: true,
+            // Whether this person became an employee — the one case the doorway will refuse. Shown
+            // in the queue so HR knows BEFORE they click, rather than learning from an error.
+            applications: { where: { hiredEmployeeId: { not: null } }, select: { id: true }, take: 1 },
+          },
+        },
+      },
+    }),
+  );
 }

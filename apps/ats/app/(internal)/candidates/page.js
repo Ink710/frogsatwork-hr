@@ -19,6 +19,9 @@ export default async function CandidatesPage({ searchParams }) {
     source: sp?.source ?? "",
     appliedFrom: sp?.appliedFrom ?? "",
     appliedTo: sp?.appliedTo ?? "",
+    // Erased candidates are excluded unless explicitly asked for. Kept in the URL like every other
+    // filter, so "the pool minus the shells" and "everything /reports counts" are both one link away.
+    includeAnonymised: sp?.includeAnonymised === "1",
     page: Number(sp?.page ?? 1),
   };
 
@@ -31,7 +34,8 @@ export default async function CandidatesPage({ searchParams }) {
   const buildHref = (overrides) => {
     const params = new URLSearchParams();
     for (const [k, v] of Object.entries({ ...filters, ...overrides })) {
-      if (v && !(k === "page" && v === 1)) params.set(k, String(v));
+      if (!v || (k === "page" && v === 1)) continue;
+      params.set(k, v === true ? "1" : String(v)); // booleans ride the URL as "1", like the checkbox
     }
     const qs = params.toString();
     return qs ? `/candidates?${qs}` : "/candidates";
@@ -92,6 +96,16 @@ export default async function CandidatesPage({ searchParams }) {
           {t("candidates.appliedTo")}
           <input type="date" name="appliedTo" defaultValue={filters.appliedTo} className={`${inputCls} mt-1`} />
         </label>
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            name="includeAnonymised"
+            value="1"
+            defaultChecked={filters.includeAnonymised}
+            className="h-4 w-4 rounded border-input"
+          />
+          {t("compliance.showErased")}
+        </label>
         <button type="submit" className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">
           {t("candidates.filter")}
         </button>
@@ -120,9 +134,25 @@ export default async function CandidatesPage({ searchParams }) {
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="font-medium">{c.name}</p>
-                    <p className="font-mono text-xs text-muted-foreground">{c.email}</p>
-                    {c.source && <p className="mt-0.5 text-xs text-muted-foreground">{c.source}</p>}
+                    {/* An erased shell shows as a tombstone, not as a person with a strange name and
+                        an undeliverable address — the row still exists because the reports still
+                        count it, and saying so plainly is the honest way to show that. */}
+                    {c.anonymisedAt ? (
+                      <>
+                        <p className="font-medium text-muted-foreground italic">
+                          {t("compliance.tombstone")}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {t("compliance.erasedOn", { date: formatDate(c.anonymisedAt, locale) })}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="font-medium">{c.name}</p>
+                        <p className="font-mono text-xs text-muted-foreground">{c.email}</p>
+                        {c.source && <p className="mt-0.5 text-xs text-muted-foreground">{c.source}</p>}
+                      </>
+                    )}
                   </div>
                   <div className="text-right">
                     {c.latest ? (

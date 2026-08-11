@@ -316,6 +316,102 @@ const en = {
   "err.atLastRound": "Already at the last interview round — advance to Offer instead.",
   "err.invalidInput": "Please check the form and try again.",
   "err.moveFailed": "Couldn’t update the application. Please try again.",
+
+  // ── Compliance (M10) ───────────────────────────────────────────────────────
+  // Voluntary EEO self-identification, shown on the public apply form.
+  "eeo.legend": "Voluntary self-identification",
+  "eeo.preamble":
+    "These questions are entirely voluntary and are used only for anonymised equal-opportunity reporting. Your answers are stored separately from your application, are never shown to the hiring team, and have no effect whatsoever on how your application is considered. You may decline any question.",
+  "eeo.field.gender": "Gender",
+  "eeo.field.ethnicity": "Race / ethnicity",
+  "eeo.field.veteranStatus": "Veteran status",
+  "eeo.field.disabilityStatus": "Disability status",
+
+  "enum.eeo.gender.MALE": "Male",
+  "enum.eeo.gender.FEMALE": "Female",
+  "enum.eeo.gender.NON_BINARY": "Non-binary",
+  "enum.eeo.gender.DECLINED": "I prefer not to answer",
+  "enum.eeo.ethnicity.HISPANIC_OR_LATINO": "Hispanic or Latino",
+  "enum.eeo.ethnicity.WHITE": "White",
+  "enum.eeo.ethnicity.BLACK_OR_AFRICAN_AMERICAN": "Black or African American",
+  "enum.eeo.ethnicity.ASIAN": "Asian",
+  "enum.eeo.ethnicity.NATIVE_HAWAIIAN_OR_PACIFIC_ISLANDER": "Native Hawaiian or Pacific Islander",
+  "enum.eeo.ethnicity.AMERICAN_INDIAN_OR_ALASKA_NATIVE": "American Indian or Alaska Native",
+  "enum.eeo.ethnicity.TWO_OR_MORE_RACES": "Two or more races",
+  "enum.eeo.ethnicity.DECLINED": "I prefer not to answer",
+  "enum.eeo.veteranStatus.PROTECTED_VETERAN": "Protected veteran",
+  "enum.eeo.veteranStatus.NOT_A_VETERAN": "Not a veteran",
+  "enum.eeo.veteranStatus.DECLINED": "I prefer not to answer",
+  "enum.eeo.disabilityStatus.YES": "Yes, I have a disability",
+  "enum.eeo.disabilityStatus.NO": "No, I don’t have a disability",
+  "enum.eeo.disabilityStatus.DECLINED": "I prefer not to answer",
+
+  // The public erasure request.
+  "erasure.title": "Request erasure of your data",
+  "erasure.intro":
+    "If you have applied to us, you can ask us to erase the personal data we hold about you. Tell us the email address you applied with and our team will action your request.",
+  "erasure.email": "Email address",
+  "erasure.reason": "Anything you’d like us to know (optional)",
+  "erasure.submit": "Send request",
+  "erasure.submitting": "Sending…",
+  "erasure.link": "Request erasure of your data",
+  // Shown for EVERY submission, matched or not — the page must not reveal whether we hold a record.
+  "erasure.submittedTitle": "Request received",
+  "erasure.submittedBody":
+    "If we hold personal data matching that address, our team will action your request and contact you at it. You don’t need to do anything else.",
+  "erasure.invalid": "Enter a valid email address.",
+  "erasure.rateLimited": "Too many requests. Please try again later.",
+  "erasure.failed": "Couldn’t send your request. Please try again.",
+
+  // The internal compliance screen (HR_ADMIN only).
+  "nav.compliance": "Compliance",
+  "compliance.title": "Compliance",
+  "compliance.subtitle": "Equal-opportunity reporting and data-erasure requests.",
+  "compliance.eeoTitle": "Applicant demographics",
+  "compliance.eeoHint":
+    "Voluntary self-identification, aggregated. Individual answers are unreadable to everyone, including you — this report is the only view of them that exists.",
+  "compliance.eeoEmpty": "No self-identification responses yet.",
+  "compliance.responses": "{n} response(s)",
+  "compliance.suppressed": "—",
+  "compliance.suppressionNote":
+    "Groups smaller than {n} are withheld (and one further group with them, so a withheld figure can’t be worked out by subtraction).",
+  "compliance.dimension.gender": "Gender",
+  "compliance.dimension.ethnicity": "Race / ethnicity",
+  "compliance.dimension.veteranStatus": "Veteran status",
+  "compliance.dimension.disabilityStatus": "Disability status",
+
+  "compliance.queueTitle": "Erasure requests",
+  "compliance.queueHint": "Requests from candidates asking us to erase their personal data.",
+  "compliance.queueEmpty": "No pending erasure requests.",
+  "compliance.requestedOn": "Requested {date}",
+  "compliance.reasonGiven": "Their reason:",
+  "compliance.erase": "Erase personal data",
+  "compliance.erasing": "Erasing…",
+  "compliance.refuse": "Refuse",
+  "compliance.noteLabel": "Decision note",
+  "compliance.notePlaceholder": "Why you are completing or refusing this request",
+  "compliance.confirmLabel": "Type ERASE to confirm",
+  "compliance.confirmWord": "ERASE",
+  "compliance.eraseWarning":
+    "This permanently destroys their name, contact details and résumé, and cannot be undone. Their application history is kept, without their identity, so reporting stays accurate.",
+  "compliance.hiredBlocked":
+    "This person is now an employee. Their record is retained under employment law and cannot be erased here.",
+  "compliance.erasedLabel": "Personal data erased",
+  "compliance.erasedOn": "Personal data erased {date}",
+  "compliance.erasedBy": "Erased by",
+  "compliance.tombstone": "Erased candidate",
+  "compliance.showErased": "Include erased candidates",
+  "compliance.eraseFromProfile": "Erase this candidate’s personal data",
+
+  "err.erasureForbidden": "Only an HR administrator can erase candidate data.",
+  "err.erasureNotFound": "That candidate no longer exists.",
+  "err.erasureHired": "This candidate was hired — their record is retained under employment law.",
+  "err.erasureAlready": "This candidate’s data has already been erased.",
+  "err.erasureConfirm": "Type ERASE to confirm.",
+  "err.erasureFailed": "Couldn’t complete the erasure. Please try again.",
+  // Surfaced, never swallowed: the DB row is gone but the file is not, and only a human can fix it.
+  "err.erasureFileLeft":
+    "The record was erased, but their stored résumé could not be deleted. Please remove it manually and tell an administrator.",
 };
 
 export default en;

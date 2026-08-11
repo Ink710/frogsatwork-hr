@@ -7,11 +7,13 @@ import { prisma } from "@hris/database";
 import { createStorage } from "@hris/storage";
 import {
   publicApplicationSchema,
+  erasureRequestSchema,
+  eeoResponseSchema,
   RESUME_MAX_BYTES,
   RESUME_EXTENSIONS,
   RESUME_MIME_TYPES,
 } from "@hris/recruiting";
-import { allowApplyAttempt } from "@/lib/rate-limit";
+import { allowApplyAttempt, allowErasureAttempt } from "@/lib/rate-limit";
 import { getT } from "@/lib/i18n.server";
 
 const storage = createStorage();
@@ -53,6 +55,18 @@ export async function submitApplication(jobId, _prevState, formData) {
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? t("apply.invalid") };
   const d = parsed.data;
 
+  // 3b. The VOLUNTARY EEO section. Parsed with a schema that coerces anything unrecognised to
+  //     DECLINED and never throws — a demographic question the applicant didn't have to answer must
+  //     not be able to fail their application. Note there is no branch here on whether they answered:
+  //     "declined" is recorded exactly like any other answer, because a refusal rate is itself a
+  //     figure the compliance report needs.
+  const eeo = eeoResponseSchema.parse({
+    gender: formData.get("eeoGender") || undefined,
+    ethnicity: formData.get("eeoEthnicity") || undefined,
+    veteranStatus: formData.get("eeoVeteranStatus") || undefined,
+    disabilityStatus: formData.get("eeoDisabilityStatus") || undefined,
+  });
+
   // 4. Résumé: validate BEFORE storing. The object key is server-generated from a UUID, so a
   //    malicious filename can never influence the storage path (LocalStorage also rejects "..").
   //    Only the extension is carried over, and only from an allow-list.
@@ -82,7 +96,8 @@ export async function submitApplication(jobId, _prevState, formData) {
     const rows = await prisma.$queryRaw`
       SELECT result, application_id FROM app_submit_application(
         ${jobId}, ${d.firstName}, ${d.lastName}, ${d.email},
-        ${d.phone ?? null}, ${"Careers page"}, ${resumeKey}, ${resumeName})`;
+        ${d.phone ?? null}, ${"Careers page"}, ${resumeKey}, ${resumeName},
+        ${eeo.gender}, ${eeo.ethnicity}, ${eeo.veteranStatus}, ${eeo.disabilityStatus})`;
     result = rows[0]?.result;
   } catch {
     if (resumeKey) await storage.remove(resumeKey).catch(() => {});
@@ -96,4 +111,50 @@ export async function submitApplication(jobId, _prevState, formData) {
   if (result === "CLOSED") return { error: t("apply.closed") };
 
   redirect(`/careers/${jobId}/applied`);
+}
+
+// ── The public "erase my data" request (M10) ─────────────────────────────────────────────────────
+//
+// The GDPR right to erasure needs a door a data subject can actually walk through, so this sits
+// alongside the careers site with no account required. What it must NOT do is erase anything:
+// anyone can type any address, and a request that executes itself is a way to delete a rival
+// candidate's record.
+//
+// It is also, deliberately, a DEAD END for anyone probing it. Whatever happens inside — a match, no
+// match, a duplicate request — this returns the same neutral confirmation, because "we have no
+// record of that address" is itself information about someone. The same discipline as the bare
+// DUPLICATE sentinel on the apply endpoint; here it matters more, because the question being asked
+// is "is this person in your database?".
+export async function requestErasure(_prevState, formData) {
+  const t = await getT();
+
+  // Honeypot first (free), same field name and same silent-success as the apply form.
+  if (String(formData.get("website") ?? "").trim() !== "") {
+    redirect("/careers/erasure/submitted");
+  }
+
+  const forwarded = (await headers()).get("x-forwarded-for") ?? "";
+  const ip = forwarded.split(",")[0].trim() || "unknown";
+  if (!(await allowErasureAttempt(ip))) return { error: t("erasure.rateLimited") };
+
+  const parsed = erasureRequestSchema.safeParse({
+    email: formData.get("email"),
+    reason: formData.get("reason") || undefined,
+  });
+  // The one thing worth reporting back: a malformed address. Telling someone their email is invalid
+  // reveals nothing about our data, and silently swallowing it would strand a real request.
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? t("erasure.invalid") };
+
+  try {
+    // Bare prisma — there is no viewer. app_request_erasure is the boundary: it derives the org from
+    // whatever candidate the address matches, writes nothing when there's no match, and always
+    // answers 'OK'.
+    await prisma.$queryRaw`SELECT app_request_erasure(${parsed.data.email}, ${parsed.data.reason ?? null})`;
+  } catch {
+    // Even a failure must not become a signal, so this reports a generic problem rather than
+    // anything that could be read as "that address exists / doesn't exist".
+    return { error: t("erasure.failed") };
+  }
+
+  redirect("/careers/erasure/submitted");
 }
