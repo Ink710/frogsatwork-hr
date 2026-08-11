@@ -406,6 +406,24 @@ const es = {
   "err.erasureFailed": "No se pudo completar la eliminación. Inténtalo de nuevo.",
   "err.erasureFileLeft":
     "El registro se eliminó, pero no se pudo borrar su currículum almacenado. Elimínalo manualmente e informa a un administrador.",
+
+  // ── Archivo / retención (M11) ──────────────────────────────────────────────
+  "archive.title": "Cantera de talento",
+  "archive.badge": "Archivado",
+  "archive.archive": "Archivar candidato",
+  "archive.archiving": "Archivando…",
+  "archive.restore": "Devolver a la lista activa",
+  "archive.restoring": "Restaurando…",
+  "archive.archiveHint":
+    "Lo quita de la lista de candidatos activos. No se elimina nada, los informes no cambian y puedes restaurarlo cuando quieras.",
+  "archive.restoreHint": "Lo devuelve a la lista de candidatos activos.",
+  "archive.showArchived": "Incluir candidatos archivados",
+  "archive.archivedByPerson": "Archivado el {date} por {name}.",
+  "archive.archivedByPolicy": "Archivado el {date} por la política de retención.",
+
+  "err.archiveForbidden": "Solo reclutadores y RR. HH. pueden archivar candidatos.",
+  "err.archiveNotFound": "Ese candidato no se puede archivar.",
+  "err.archiveFailed": "No se pudo actualizar el candidato. Inténtalo de nuevo.",
 };
 
 export default es;

@@ -22,6 +22,7 @@ export default async function CandidatesPage({ searchParams }) {
     // Erased candidates are excluded unless explicitly asked for. Kept in the URL like every other
     // filter, so "the pool minus the shells" and "everything /reports counts" are both one link away.
     includeAnonymised: sp?.includeAnonymised === "1",
+    includeArchived: sp?.includeArchived === "1",
     page: Number(sp?.page ?? 1),
   };
 
@@ -99,6 +100,16 @@ export default async function CandidatesPage({ searchParams }) {
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
           <input
             type="checkbox"
+            name="includeArchived"
+            value="1"
+            defaultChecked={filters.includeArchived}
+            className="h-4 w-4 rounded border-input"
+          />
+          {t("archive.showArchived")}
+        </label>
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
             name="includeAnonymised"
             value="1"
             defaultChecked={filters.includeAnonymised}
@@ -148,7 +159,16 @@ export default async function CandidatesPage({ searchParams }) {
                       </>
                     ) : (
                       <>
-                        <p className="font-medium">{c.name}</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium">{c.name}</p>
+                          {/* A pill, not a tombstone: an archived person is entirely intact — they
+                              just aren't part of the active pool any more. */}
+                          {c.archivedAt && (
+                            <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
+                              {t("archive.badge")}
+                            </span>
+                          )}
+                        </div>
                         <p className="font-mono text-xs text-muted-foreground">{c.email}</p>
                         {c.source && <p className="mt-0.5 text-xs text-muted-foreground">{c.source}</p>}
                       </>

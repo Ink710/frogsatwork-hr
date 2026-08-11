@@ -873,6 +873,15 @@ async function main() {
     },
   });
 
+  // Retention policy (M11). The migration inserts this too; asserting it here means the TEST
+  // database — which is reseeded, not re-migrated, between tests — always starts from a known
+  // window rather than whatever a previous test left behind.
+  await prisma.appSetting.upsert({
+    where: { key: "candidateRetentionDays" },
+    update: { value: "365" },
+    create: { key: "candidateRetentionDays", value: "365" },
+  });
+
   // OPT-IN demo volume. `SEED_DEMO_VOLUME=1 pnpm --filter @hris/database db:seed` adds a cohort of
   // extra applicants so the EEO aggregates clear the suppression threshold and the compliance report
   // shows real numbers instead of a wall of dashes.
@@ -1003,7 +1012,60 @@ async function seedEeoVolume() {
       ON CONFLICT (id) DO NOTHING`;
   }
 
-  console.log(`Demo volume: +${NAMES.length} applicants with EEO responses (SEED_DEMO_VOLUME=1).`);
+  // Three long-cold applicants so the M11 retention sweep has something to catch in a demo. All
+  // REJECTED (never an active stage) and dated well beyond the 365-day window, with BOTH createdAt
+  // and their event backdated — the sweep takes the LATER of the two, so backdating only one would
+  // leave them looking recent.
+  //
+  // These live in the opt-in tier deliberately: adding them to the base fixture would move the
+  // exact counts that candidates.itest.js and reports.itest.js assert, and those numbers encode what
+  // M4 and M9 actually verified. The sweep's own tests build their fixtures inline instead.
+  const COLD = [
+    ["Vera", "Rubin", "2023-11-02"],
+    ["Grace", "Hopper", "2024-01-18"],
+    ["Katherine", "Johnson", "2024-03-07"],
+  ];
+  for (const [i, [firstName, lastName, on]] of COLD.entries()) {
+    const n = String(i + 1).padStart(2, "0");
+    const at = new Date(`${on}T12:00:00.000Z`);
+    const candidateId = `cand-cold-${n}`;
+    const applicationId = `app-cold-${n}`;
+
+    await prisma.candidate.upsert({
+      where: { id: candidateId },
+      update: { archivedAt: null, archivedById: null }, // repeatable: reseed un-archives them
+      create: {
+        id: candidateId,
+        firstName,
+        lastName,
+        email: `${firstName.toLowerCase()}.${lastName.toLowerCase()}@example.com`,
+        source: "Careers page",
+        orgId: ORG_ID,
+        createdAt: at,
+      },
+    });
+    await prisma.application.upsert({
+      where: { id: applicationId },
+      update: {},
+      create: {
+        id: applicationId, orgId: ORG_ID, jobId: "job-pd", candidateId,
+        stage: "REJECTED", appliedAt: at, createdAt: at,
+      },
+    });
+    await prisma.applicationEvent.upsert({
+      where: { id: `ae-cold-${n}` },
+      update: { occurredAt: at },
+      create: {
+        id: `ae-cold-${n}`, applicationId, jobId: "job-pd",
+        fromStage: null, toStage: "APPLIED", occurredAt: at, actorId: SYSTEM_USER_ID,
+      },
+    });
+  }
+
+  console.log(
+    `Demo volume: +${NAMES.length} applicants with EEO responses, +${COLD.length} long-cold ` +
+      `applicants for the retention sweep (SEED_DEMO_VOLUME=1).`,
+  );
 }
 
 main()

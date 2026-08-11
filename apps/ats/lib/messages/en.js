@@ -412,6 +412,24 @@ const en = {
   // Surfaced, never swallowed: the DB row is gone but the file is not, and only a human can fix it.
   "err.erasureFileLeft":
     "The record was erased, but their stored résumé could not be deleted. Please remove it manually and tell an administrator.",
+
+  // ── Archive / retention (M11) ──────────────────────────────────────────────
+  "archive.title": "Talent pool",
+  "archive.badge": "Archived",
+  "archive.archive": "Archive candidate",
+  "archive.archiving": "Archiving…",
+  "archive.restore": "Restore to the active pool",
+  "archive.restoring": "Restoring…",
+  "archive.archiveHint":
+    "Removes them from the active candidate list. Nothing is deleted, reporting is unaffected, and you can restore them at any time.",
+  "archive.restoreHint": "Puts them back in the active candidate list.",
+  "archive.showArchived": "Include archived candidates",
+  "archive.archivedByPerson": "Archived {date} by {name}.",
+  "archive.archivedByPolicy": "Archived {date} by the retention policy.",
+
+  "err.archiveForbidden": "Only recruiters and HR can archive candidates.",
+  "err.archiveNotFound": "That candidate can’t be archived.",
+  "err.archiveFailed": "Couldn’t update the candidate. Please try again.",
 };
 
 export default en;

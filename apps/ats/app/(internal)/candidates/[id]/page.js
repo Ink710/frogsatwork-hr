@@ -2,10 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { INTL_LOCALE, formatDate, initials } from "@hris/ui";
 import { Avatar, Card, Field, FieldGrid } from "@hris/ui/server";
+import { getViewer } from "@hris/auth";
 import { getT, getLocale } from "@/lib/i18n.server";
-import { getCandidateProfile, canManageErasure } from "@/lib/queries";
+import { getCandidateProfile, canManageErasure, canArchiveCandidate } from "@/lib/queries";
 import { StageBadge } from "@/components/recruiting-ui";
 import { EraseCandidateForm } from "@/components/ErasureActions";
+import { ArchiveControl } from "@/components/ArchiveControl";
 
 // One person, every application. This is what the Candidate/Application split from M1 exists for:
 // "have we seen this person before?" is answerable at a glance, including past rejections.
@@ -21,7 +23,9 @@ export default async function CandidateProfilePage({ params }) {
   // Whether this person became an employee. Resolved here so the erase control can explain the
   // refusal up front rather than the database delivering it as an error after the fact.
   const wasHired = candidate.applications.some((a) => a.hiredEmployeeId);
-  const canErase = await canManageErasure();
+  const archived = Boolean(candidate.archivedAt);
+  const [canErase, viewer] = await Promise.all([canManageErasure(), getViewer()]);
+  const canArchive = canArchiveCandidate(viewer);
 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8 sm:px-6">
@@ -78,6 +82,26 @@ export default async function CandidateProfilePage({ params }) {
         {/* Erasure lives behind the same HR_ADMIN gate as /compliance. Not shown once the record is
             already a shell — there is nothing left to erase, and app_erase_candidate would answer
             ALREADY_ERASED. */}
+        {/* Archiving sits ABOVE erasure on purpose: it's the reversible option, and the one a
+            recruiter reaching for "get this out of my way" actually wants. Hidden for erased shells
+            — the tombstone is already out of the pool. */}
+        {canArchive && !erased && (
+          <Card title={t("archive.title")}>
+            {archived && (
+              <p className="mb-3 text-xs text-muted-foreground">
+                {candidate.archivedByName
+                  ? t("archive.archivedByPerson", {
+                      date: formatDate(candidate.archivedAt, locale),
+                      name: candidate.archivedByName,
+                    })
+                  : // No person recorded ⇒ the retention sweep did it.
+                    t("archive.archivedByPolicy", { date: formatDate(candidate.archivedAt, locale) })}
+              </p>
+            )}
+            <ArchiveControl candidateId={candidate.id} archived={archived} />
+          </Card>
+        )}
+
         {canErase && !erased && (
           <Card title={t("compliance.eraseFromProfile")}>
             <EraseCandidateForm candidateId={candidate.id} blocked={wasHired} />

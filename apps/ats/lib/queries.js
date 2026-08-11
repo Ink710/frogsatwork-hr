@@ -8,6 +8,7 @@ import {
   daysBetween,
   averageDays,
   suppressSmallCells,
+  resolveRetentionDays,
 } from "@hris/recruiting";
 
 // The active pipeline columns, in order. REJECTED / WITHDRAWN are shown separately (see `closed`).
@@ -331,6 +332,7 @@ export async function getCandidates({
   appliedFrom,
   appliedTo,
   includeAnonymised = false,
+  includeArchived = false,
   page = 1,
 } = {}) {
   const viewer = await getViewer();
@@ -343,6 +345,11 @@ export async function getCandidates({
   // recruiter searching the talent pool it is pure noise — but it is NOT deleted, and the totals on
   // /reports still count it, so the filter exists to make the two views reconcilable on demand.
   if (!includeAnonymised) and.push({ anonymisedAt: null });
+
+  // Archived candidates are hidden by default too, but for a different reason than erased ones: an
+  // archived person is entirely intact, just no longer part of the ACTIVE pool. Both filters exist
+  // so the list can be reconciled against /reports on demand — the reports count everyone.
+  if (!includeArchived) and.push({ archivedAt: null });
 
   // Free-text: every whitespace token must match at least one field, so "Mei Tanaka" matches across
   // firstName + lastName without a dedicated full-name column (same trick as getEmployees).
@@ -408,6 +415,8 @@ export async function getCandidates({
           // Present on a shell so the row can render as a tombstone rather than as a person with an
           // odd name and an undeliverable address.
           anonymisedAt: c.anonymisedAt,
+          // Archived people render normally with a muted pill — they're intact, just not active.
+          archivedAt: c.archivedAt,
           applicationCount: c._count.applications,
           latest: latest && {
             id: latest.id,
@@ -451,7 +460,18 @@ export async function getCandidateProfile(candidateId) {
         },
       },
     });
-    return candidate ?? null;
+    if (!candidate) return null;
+
+    // Who archived them, resolved STRUCTURALLY through the org directory rather than an Employee
+    // relation — a RECRUITER has no employee-records access, so `include: { archivedBy: true }`
+    // would come back null for exactly the people who use this screen (the M5 lesson).
+    // A null archivedById means the retention sweep did it, not a person.
+    let archivedByName = null;
+    if (candidate.archivedById) {
+      const person = (await orgDirectory(tx, viewer.orgId)).find((p) => p.id === candidate.archivedById);
+      archivedByName = person ? `${person.firstName} ${person.lastName}` : null;
+    }
+    return { ...candidate, archivedByName };
   });
 }
 
@@ -735,4 +755,47 @@ export async function getErasureRequests({ status = "PENDING" } = {}) {
       },
     }),
   );
+}
+
+// ── Retention / archive (M11) ────────────────────────────────────────────────────────────────────
+
+// May the viewer archive and restore candidates?
+//
+// ⚠️ App-layer only, and deliberately so. `candidate_visibility` is a FOR ALL policy, so anyone who
+// can SEE a candidate can technically UPDATE them — a hiring manager included. Erasure is gated in
+// the DATABASE because it is irreversible and destroys evidence; archiving is reversible
+// housekeeping, so a server-side role check is the proportionate weight. The asymmetry is the point:
+// the strength of the guard should match the cost of getting it wrong.
+export function canArchiveCandidate(viewer) {
+  return Boolean(viewer) && isRecruiter(viewer.role);
+}
+
+// How many idle days before the sweep archives someone. Stored in AppSetting so HR can change the
+// policy without a deploy — the same runtime-settings pattern as employee-records' storage folder.
+//
+// AppSetting is a GLOBAL table (no orgId, no RLS), so this is a deployment-wide policy. A bare
+// prisma read is therefore correct here: there is no viewer, and nothing to scope it to.
+export async function getRetentionDays() {
+  const row = await prisma.appSetting.findUnique({ where: { key: "candidateRetentionDays" } });
+  return resolveRetentionDays(row?.value);
+}
+
+// Every candidate in one org with the two facts the retention rule needs: when they were last
+// touched, and what stages they're sitting in. Must be called inside a withViewer tx.
+//
+// `lastActivityAt` falls back to the candidate's own createdAt, so someone who applied and then had
+// nothing happen to them still has a clock running. Without that fallback they'd return
+// UNKNOWN_ACTIVITY forever and never be archived — the exact people you most want swept.
+export async function getArchiveCandidates(tx) {
+  const rows = await tx.$queryRaw`
+    SELECT c.id,
+           GREATEST(c."createdAt", COALESCE(MAX(e."occurredAt"), c."createdAt")) AS "lastActivityAt",
+           c."archivedAt",
+           c."anonymisedAt",
+           COALESCE(array_agg(DISTINCT a.stage::text) FILTER (WHERE a.id IS NOT NULL), '{}') AS stages
+      FROM "Candidate" c
+      LEFT JOIN "Application" a ON a."candidateId" = c.id
+      LEFT JOIN "ApplicationEvent" e ON e."applicationId" = a.id
+     GROUP BY c.id, c."createdAt", c."archivedAt", c."anonymisedAt"`;
+  return rows.map((r) => ({ ...r, stages: r.stages ?? [] }));
 }

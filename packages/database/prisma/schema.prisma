@@ -447,6 +447,8 @@ model Employee {
   // Compliance (ATS M10): the erasures this person carried out, and the requests they resolved.
   candidatesAnonymised    Candidate[]            @relation("CandidateAnonymisedBy")
   erasureRequestsResolved ErasureRequest[]       @relation("ErasureResolvedBy")
+  // Retention (ATS M11): candidates this person archived by hand (the sweep leaves this null).
+  candidatesArchived      Candidate[]            @relation("CandidateArchivedBy")
 
   // Employee numbers are unique within an organization, not globally.
   @@unique([orgId, employeeNumber])
@@ -1043,6 +1045,21 @@ model Candidate {
   anonymisedBy      Employee? @relation("CandidateAnonymisedBy", fields: [anonymisedById], references: [id])
   anonymisationNote String?
 
+  // ── Archive (M11) ─────────────────────────────────────────────────────────────────────────────
+  // Stale-but-lawful records moved out of the hot path. Deliberately NOT a separate cold-storage
+  // table: `Application.candidateId` is a REQUIRED FK, so relocating the row would mean relocating
+  // Application → ApplicationEvent → Scorecard → ScorecardRating → EeoResponse with it, or dropping
+  // the constraint. A nullable timestamp buys the same thing for none of that risk — and because
+  // an archived candidate is still THE SAME ROW, an erasure covers it automatically, so "the
+  // archive is a second place PII hides" is structurally impossible rather than a hazard to police.
+  //
+  // Fully reversible (restore = set back to NULL), which is why the retention sweep is allowed to
+  // act on its own and why these actions are gated in the app layer rather than the database.
+  // `archivedById` is NULL when the sweep did it rather than a person.
+  archivedAt   DateTime?
+  archivedById String?
+  archivedBy   Employee? @relation("CandidateArchivedBy", fields: [archivedById], references: [id])
+
   orgId String
   org   Organization @relation(fields: [orgId], references: [id])
 
@@ -1050,12 +1067,19 @@ model Candidate {
   erasureRequests ErasureRequest[]
 
   @@unique([orgId, email])
-  // The candidate list hides anonymised shells by default, so this index keeps the hot path off
-  // them. It matters more than it looks: the RLS policy on this table calls a SECURITY DEFINER
-  // function once per row SCANNED, so narrowing the scan narrows the function calls too.
-  // (Declared here rather than hand-written as a PARTIAL index, so Prisma owns it and no future
-  //  `migrate diff` tries to drop an index it doesn't know about.)
+  // The candidate list hides anonymised shells and archived people by default, so these indexes
+  // keep the hot path off both. It matters more than it looks: the RLS policy on this table calls a
+  // SECURITY DEFINER function once per row SCANNED, so narrowing the scan narrows the function
+  // calls too. (Declared here rather than hand-written as PARTIAL indexes, so Prisma owns them and
+  // no future `migrate diff` tries to drop an index it doesn't know about.)
   @@index([orgId, anonymisedAt])
+  @@index([orgId, archivedAt])
+  // Trigram index for the candidate search. `getCandidates` matches with `contains` +
+  // mode:"insensitive", which Prisma emits as ILIKE '%token%' — a pattern a normal B-tree cannot
+  // serve at all, so the search was a guaranteed sequential scan. GIN + gin_trgm_ops is the index
+  // type that CAN serve a leading-wildcard match. Declared here (rather than hand-written SQL) so
+  // Prisma owns it, for the same anti-drift reason as the two above.
+  @@index([firstName(ops: raw("gin_trgm_ops")), lastName(ops: raw("gin_trgm_ops")), email(ops: raw("gin_trgm_ops"))], type: Gin)
 }
 
 // One candidate's application to one job — the pipeline unit. `stage` is the fixed top-level pipeline;

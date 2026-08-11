@@ -20,5 +20,10 @@ export const config = {
   // M10 added /careers/erasure under this same exclusion. It is the most sensitive of the three,
   // because the question it is asked ("do you hold data for this address?") is one it must never
   // answer — hence the always-'OK' return and the identical confirmation page for every outcome.
-  matcher: ["/((?!api/auth|api/health|_next/static|_next/image|favicon.ico|login|brand|careers).*)"],
+  //
+  // `api/cron` is excluded for M11's retention sweep. It is NOT unprotected: the route authenticates
+  // with CRON_SECRET and a constant-time compare, and fails closed when no secret is configured.
+  // Without this exclusion the proxy would 307 every scheduled request to /login and the sweep would
+  // silently never run — a scheduled job that fails by doing nothing is the worst kind.
+  matcher: ["/((?!api/auth|api/health|api/cron|_next/static|_next/image|favicon.ico|login|brand|careers).*)"],
 };
