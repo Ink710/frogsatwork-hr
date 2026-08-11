@@ -2,6 +2,7 @@
 // mirror the Prisma enums in @hris/database as local `as const` tuples so this package stays
 // dependency-light (only zod) — the same pattern as @hris/workable-hours and @hris/types.
 import { z } from "zod";
+import { EEO_JOB_CATEGORIES } from "./eeo";
 
 export const JOB_STATUSES = ["DRAFT", "OPEN", "PAUSED", "CLOSED", "FILLED"] as const;
 export const JOB_MEMBER_ROLES = ["RECRUITER", "HIRING_MANAGER", "INTERVIEWER"] as const;
@@ -20,6 +21,8 @@ export const jobSchema = z.object({
   status: z.enum(JOB_STATUSES).default("DRAFT"),
   openings: z.coerce.number().int().min(1, "At least one opening."),
   departmentId: z.string().min(1).optional(),
+  // EEO-1 category (M12). Optional, and never given a default: see the EeoJobCategory enum.
+  eeoJobCategory: z.enum(EEO_JOB_CATEGORIES).optional(),
 });
 export type JobInput = z.infer<typeof jobSchema>;
 

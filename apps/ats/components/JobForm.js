@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { useT } from "@hris/ui/client";
+import { EEO_JOB_CATEGORIES } from "@hris/recruiting";
 import { createJob, updateJob } from "@/app/(internal)/jobs/actions";
 
 const INPUT =
@@ -76,6 +77,27 @@ export function JobForm({ job = null, departments = [], employmentTypes = [] }) 
               </option>
             ))}
           </select>
+        </div>
+        {/* EEO-1 job category (M12). Starts UNSET and is never defaulted — a guessed category
+            produces a misfiled regulatory return, so the filing export reports the gap instead. */}
+        <div>
+          <label className="block text-sm font-medium" htmlFor="eeoJobCategory">
+            {t("jobForm.eeoJobCategory")}
+          </label>
+          <select
+            id="eeoJobCategory"
+            name="eeoJobCategory"
+            defaultValue={job?.eeoJobCategory ?? ""}
+            className={INPUT}
+          >
+            <option value="">{t("jobForm.noEeoJobCategory")}</option>
+            {EEO_JOB_CATEGORIES.map((c) => (
+              <option key={c} value={c}>
+                {t(`enum.eeoJobCategory.${c}`)}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-muted-foreground">{t("jobForm.eeoJobCategoryHint")}</p>
         </div>
       </div>
 

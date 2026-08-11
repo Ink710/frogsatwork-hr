@@ -68,11 +68,45 @@ export const erasureDecisionSchema = z.object({
   note: z.string().trim().max(1000).optional(),
 });
 
-// Move an application to a new stage (the pipeline action). `rejectionReason` is used when moving to
-// REJECTED; `note` is an optional decision note recorded on the ApplicationEvent.
-export const stageTransitionSchema = z.object({
-  toStage: z.enum(APPLICATION_STAGES),
-  note: z.string().trim().optional(),
-  rejectionReason: z.string().trim().optional(),
-});
+// The structured reasons a candidate can be rejected for (M12). Fixed and org-wide: per-requisition
+// values can't be compared across requisitions, and comparison is the whole point.
+export const REJECTION_REASONS = [
+  "SKILLS_MISMATCH",
+  "EXPERIENCE_LEVEL",
+  "COMPENSATION_EXPECTATIONS",
+  "STRONGER_CANDIDATE",
+  "CANDIDATE_WITHDREW",
+  "POSITION_CLOSED",
+  "OTHER",
+] as const;
+export type RejectionReasonValue = (typeof REJECTION_REASONS)[number];
+
+/**
+ * Move an application to a new stage (the pipeline action).
+ *
+ * `rejectionCategory` (structured) is REQUIRED when moving to REJECTED; `rejectionReason` (free
+ * text) stays optional and carries the specifics. The pairing is deliberate — an erasure blanks the
+ * prose and keeps the category, which is what lets the rejection report survive someone being
+ * forgotten.
+ *
+ * The requirement lives here, in the shared schema, rather than in the server action or the form,
+ * so the three cannot drift apart about when a category is needed. A rule enforced in one of three
+ * places is a rule that will eventually be enforced in none.
+ */
+export const stageTransitionSchema = z
+  .object({
+    toStage: z.enum(APPLICATION_STAGES),
+    note: z.string().trim().optional(),
+    rejectionReason: z.string().trim().optional(),
+    rejectionCategory: z.enum(REJECTION_REASONS).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.toStage === "REJECTED" && !value.rejectionCategory) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["rejectionCategory"],
+        message: "Choose a reason for rejecting this candidate.",
+      });
+    }
+  });
 export type StageTransitionInput = z.infer<typeof stageTransitionSchema>;

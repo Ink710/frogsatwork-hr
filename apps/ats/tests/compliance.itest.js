@@ -121,8 +121,16 @@ describe("EEO aggregates", () => {
     expect(new Set(dimensions.map((d) => d.total))).toEqual(new Set([5]));
   });
 
-  it("are refused for a recruiter, an HR generalist, a hiring manager and an interviewer", async () => {
-    for (const persona of [V.raj, V.bianca, V.marcus, V.diego]) {
+  it("are returned to an HR generalist too (WIDENED in M12)", async () => {
+    // M10 kept this HR_ADMIN-only on the explicit grounds that no task in the app required a
+    // generalist to see it. M12 built that task — the EEO-1 export — so the gate widened by one
+    // role. This assertion CHANGED deliberately; it is not a regression.
+    as(V.bianca);
+    expect(await getEeoSummary()).not.toBeNull();
+  });
+
+  it("are still refused for a recruiter, a hiring manager and an interviewer", async () => {
+    for (const persona of [V.raj, V.marcus, V.diego]) {
       as(persona);
       // null, NOT an empty summary — "you may not see this" and "there is no data" are different
       // sentences, and a compliance report must never confuse them.

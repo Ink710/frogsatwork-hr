@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { nextStage, nextRound } from "@hris/recruiting";
+import { nextStage, nextRound, REJECTION_REASONS } from "@hris/recruiting";
 import { getLocale, getT } from "@/lib/i18n.server";
 import { INTL_LOCALE, formatDate } from "@hris/ui";
 import { BOARD_STAGES } from "@/lib/queries";
@@ -26,9 +26,17 @@ function cardButtons(card, rounds, t) {
       });
     }
   }
-  buttons.push({ kind: "move", toStage: "REJECTED", label: t("action.reject"), tone: "danger" });
+  // Reject is `kind: "reject"`, not a plain move: since M12 a rejection must carry a structured
+  // reason, so the button expands into a small form instead of firing immediately.
+  buttons.push({ kind: "reject", label: t("action.reject"), tone: "danger" });
   buttons.push({ kind: "move", toStage: "WITHDRAWN", label: t("action.withdraw"), tone: "muted" });
   return buttons;
+}
+
+// Reason options prepared server-side and already translated, so the client component stays a dumb
+// renderer and @hris/recruiting never ships to the browser (the same discipline as cardButtons).
+function rejectionOptions(t) {
+  return REJECTION_REASONS.map((value) => ({ value, label: t(`enum.rejectionReason.${value}`) }));
 }
 
 // The pipeline board (server component): a column per active stage, cards grouped into them, plus a
@@ -69,7 +77,17 @@ export async function PipelineBoard({ jobId, board }) {
                       {t("board.appliedOn", { date: formatDate(card.appliedAt, locale) })}
                     </p>
                   </Link>
-                  {canManage && <StageMoveActions jobId={jobId} appId={card.id} buttons={cardButtons(card, rounds, t)} />}
+                  {canManage && <StageMoveActions
+                      jobId={jobId}
+                      appId={card.id}
+                      buttons={cardButtons(card, rounds, t)}
+                      rejectionOptions={rejectionOptions(t)}
+                      labels={{
+                        reasonLabel: t("reject.reasonLabel"),
+                        confirm: t("reject.confirm"),
+                        cancel: t("reject.cancel"),
+                      }}
+                    />}
                 </li>
               ))}
             </ul>

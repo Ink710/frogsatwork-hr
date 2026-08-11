@@ -23,8 +23,13 @@ export async function AppHeader() {
   // Compliance is the one role-gated link (M10). The page 404s for anyone else regardless — this
   // only stops the app advertising a door that won't open. The gate is a plain role check rather
   // than a DB round-trip because a nav bar rendered on every page shouldn't cost a query; the
-  // authority remains app_can_manage_erasure(), which the page itself calls.
-  const canSeeCompliance = role === "HR_ADMIN";
+  // authority remains the DB functions the page itself calls.
+  //
+  // Widened to HR_GENERALIST in M12, matching app_can_read_eeo(): a generalist can now see the
+  // suppressed aggregates and file the EEO-1's summary half. What they still cannot do — download
+  // exact counts, erase a candidate — is gated per SECTION on the page, not by hiding the whole
+  // thing from them.
+  const canSeeCompliance = role === "HR_ADMIN" || role === "HR_GENERALIST";
 
   return (
     <AppShellHeader

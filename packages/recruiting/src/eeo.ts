@@ -28,6 +28,31 @@ export type EeoVeteranStatus = (typeof EEO_VETERAN_STATUSES)[number];
 export const EEO_DISABILITY_STATUSES = ["YES", "NO", "DECLINED"] as const;
 export type EeoDisabilityStatus = (typeof EEO_DISABILITY_STATUSES)[number];
 
+/**
+ * The ten EEO-1 Component 1 job categories (M12), in the order the form lists them.
+ *
+ * A requisition's category is nullable and never defaulted: an EEO-1 filed with a guessed category
+ * is a misfiled EEO-1, so an unset one is surfaced as a warning on the export rather than quietly
+ * bucketed somewhere plausible.
+ */
+export const EEO_JOB_CATEGORIES = [
+  "EXECUTIVE_SENIOR_OFFICIALS",
+  "FIRST_MID_OFFICIALS",
+  "PROFESSIONALS",
+  "TECHNICIANS",
+  "SALES_WORKERS",
+  "ADMINISTRATIVE_SUPPORT",
+  "CRAFT_WORKERS",
+  "OPERATIVES",
+  "LABORERS_HELPERS",
+  "SERVICE_WORKERS",
+] as const;
+export type EeoJobCategory = (typeof EEO_JOB_CATEGORIES)[number];
+
+/** The two export artifacts. See the eeo_export migration for why there are two. */
+export const EEO_EXPORT_VARIANTS = ["SUMMARY", "FILING"] as const;
+export type EeoExportVariant = (typeof EEO_EXPORT_VARIANTS)[number];
+
 /** The four dimensions, in the order the form asks them and the report renders them. */
 export const EEO_DIMENSIONS = ["gender", "ethnicity", "veteranStatus", "disabilityStatus"] as const;
 export type EeoDimension = (typeof EEO_DIMENSIONS)[number];

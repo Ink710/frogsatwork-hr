@@ -9,6 +9,7 @@ import {
   averageDays,
   suppressSmallCells,
   resolveRetentionDays,
+  summariseRejections,
 } from "@hris/recruiting";
 
 // The active pipeline columns, in order. REJECTED / WITHDRAWN are shown separately (see `closed`).
@@ -798,4 +799,113 @@ export async function getArchiveCandidates(tx) {
       LEFT JOIN "ApplicationEvent" e ON e."applicationId" = a.id
      GROUP BY c.id, c."createdAt", c."archivedAt", c."anonymisedAt"`;
   return rows.map((r) => ({ ...r, stages: r.stages ?? [] }));
+}
+
+// Why candidates are rejected (M12), from the STRUCTURED category.
+//
+// The point of this report is that it still works after someone is forgotten: an erasure blanks
+// `rejectionReason` (free text is where names hide) but leaves `rejectionCategory` alone, because a
+// category describes a decision rather than a person. Counting the enum instead of the prose is the
+// difference between a report that survives the GDPR path and one that quietly empties out.
+//
+// RLS-scoped like every other figure on /reports: a recruiter sees the organisation, a hiring
+// manager sees their own reqs, from the same code with no role branching.
+export async function getRejectionReport() {
+  const viewer = await getViewer();
+  if (!viewer) return { rows: [], categorised: 0, uncategorised: 0 };
+  return withViewer(viewer, async (tx) => {
+    const grouped = await tx.application.groupBy({
+      by: ["rejectionCategory"],
+      where: { stage: "REJECTED" },
+      _count: { _all: true },
+    });
+    return summariseRejections(
+      grouped.map((g) => ({ category: g.rejectionCategory, count: g._count._all })),
+    );
+  });
+}
+
+// ── EEO export (M12) ─────────────────────────────────────────────────────────────────────────────
+
+// May the viewer obtain UNSUPPRESSED demographic counts? A deliberately separate question from
+// canReadEeo(): one asks "may you see the report", the other "may you see the exact numbers", and
+// keeping them separate is what let the report widen to HR_GENERALIST without the filing following.
+export async function canFileEeo() {
+  const viewer = await getViewer();
+  if (!viewer) return false;
+  return withViewer(viewer, async (tx) => {
+    const [row] = await tx.$queryRaw`SELECT app_can_file_eeo() AS ok`;
+    return Boolean(row?.ok);
+  });
+}
+
+// The EEO-1 cross-tab, exact. Returns null when the viewer may not file — the same
+// "refused ≠ empty" distinction the summary makes, so the UI can say which it is.
+//
+// `uncategorisedJobs` is counted alongside, because a filing missing a category is a data-quality
+// problem the person filing needs to see BEFORE they submit, not after a regulator asks.
+export async function getEeoFiling() {
+  const viewer = await getViewer();
+  if (!viewer) return null;
+  return withViewer(viewer, async (tx) => {
+    const [gate] = await tx.$queryRaw`SELECT app_can_file_eeo() AS ok`;
+    if (!gate?.ok) return null;
+
+    const rows = await tx.$queryRaw`
+      SELECT job_category, gender, ethnicity, headcount FROM app_eeo_filing()`;
+    const uncategorisedJobs = await tx.job.count({ where: { eeoJobCategory: null } });
+
+    return {
+      rows: rows.map((r) => ({
+        jobCategory: r.job_category,
+        gender: r.gender,
+        ethnicity: r.ethnicity,
+        headcount: Number(r.headcount),
+      })),
+      uncategorisedJobs,
+    };
+  });
+}
+
+// Record that an export happened. INSERT-only by policy and by privilege — see the eeo_export
+// migration — so this can add to the trail and nothing in the app can ever rewrite it.
+export async function recordEeoExport({ variant, rowCount, uncategorisedJobs = 0 }) {
+  const viewer = await getViewer();
+  if (!viewer) return;
+  await withViewer(viewer, (tx) =>
+    tx.eeoExportLog.create({
+      data: { variant, rowCount, uncategorisedJobs, orgId: viewer.orgId, actorId: viewer.userId },
+    }),
+  );
+}
+
+// The export trail, newest first.
+//
+// Actor names come from a plain `employee.findMany` here, NOT the app_org_chart directory the rest
+// of this file uses. The directory exists because a RECRUITER has no employee-records access (the
+// M5 lesson) — but this table is only readable by HR_ADMIN and HR_GENERALIST, and both are in
+// ALL_RECORDS_ROLES, so for this audience the ordinary relation works and the workaround would be
+// cargo-culting.
+export async function getEeoExportHistory({ take = 10 } = {}) {
+  const viewer = await getViewer();
+  if (!viewer) return [];
+  return withViewer(viewer, async (tx) => {
+    const rows = await tx.eeoExportLog.findMany({
+      orderBy: { exportedAt: "desc" },
+      take,
+      select: {
+        id: true, variant: true, exportedAt: true, rowCount: true,
+        uncategorisedJobs: true, actorId: true,
+      },
+    });
+    if (rows.length === 0) return [];
+
+    const people = await tx.employee.findMany({
+      where: { userId: { in: rows.map((r) => r.actorId) } },
+      select: { userId: true, firstName: true, lastName: true },
+    });
+    const byUserId = new Map(people.map((p) => [p.userId, `${p.firstName} ${p.lastName}`]));
+
+    return rows.map((r) => ({ ...r, actorName: byUserId.get(r.actorId) ?? "\u2014" }));
+  });
 }

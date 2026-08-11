@@ -88,3 +88,54 @@ export function summariseSources(
     }))
     .sort((a, b) => b.hires - a.hires || b.applications - a.applications || a.source.localeCompare(b.source));
 }
+
+/**
+ * "Why candidates are rejected", from the structured category (M12).
+ *
+ * Counts only rejections that HAVE a category. Applications rejected before the field existed are
+ * reported separately as `uncategorised` rather than folded into OTHER — "we didn't ask" and "the
+ * recruiter chose Other" are different facts, and merging them would invent data.
+ *
+ * The share is of CATEGORISED rejections, so the percentages always total 100 and don't drift as
+ * the historical backlog ages out. Ranked by count, ties broken by name so the order is stable.
+ *
+ * Note what makes this report possible at all: the category survives an erasure, while the free
+ * text it sits beside does not.
+ */
+export interface RejectionCount {
+  category: string | null;
+  count: number;
+}
+
+export interface RejectionRow {
+  category: string;
+  count: number;
+  /** Percent of categorised rejections, to one decimal. */
+  share: number;
+}
+
+export function summariseRejections(rows: RejectionCount[]): {
+  rows: RejectionRow[];
+  categorised: number;
+  uncategorised: number;
+} {
+  const uncategorised = rows
+    .filter((r) => !r.category)
+    .reduce((sum, r) => sum + r.count, 0);
+
+  const named = rows.filter((r) => r.category);
+  const categorised = named.reduce((sum, r) => sum + r.count, 0);
+
+  return {
+    categorised,
+    uncategorised,
+    rows: named
+      .map((r) => ({
+        category: r.category as string,
+        count: r.count,
+        // Guard the divide: an all-uncategorised history is a real state, not an error.
+        share: categorised === 0 ? 0 : Math.round((r.count / categorised) * 1000) / 10,
+      }))
+      .sort((a, b) => b.count - a.count || a.category.localeCompare(b.category)),
+  };
+}

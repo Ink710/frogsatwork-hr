@@ -291,6 +291,49 @@ enum EeoDisabilityStatus {
   DECLINED
 }
 
+// Why a candidate was rejected, as a STRUCTURED value (M12).
+//
+// Sits alongside the free-text `Application.rejectionReason` rather than replacing it, and that
+// pairing is the point: the prose is blanked by an erasure (it is where names hide — see
+// app_erase_candidate), while this enum survives, because a category identifies nobody. It is the
+// only reason the "why do people get rejected?" report still balances after someone is forgotten.
+//
+// Fixed and org-wide ON PURPOSE. Per-requisition reasons — the JobCompetency pattern — cannot be
+// compared across requisitions, and comparability is the entire reason this field exists.
+enum RejectionReason {
+  SKILLS_MISMATCH
+  EXPERIENCE_LEVEL
+  COMPENSATION_EXPECTATIONS
+  STRONGER_CANDIDATE
+  CANDIDATE_WITHDREW
+  POSITION_CLOSED
+  OTHER
+}
+
+// The ten EEO-1 Component 1 job categories (M12). A real filing reports headcounts BY category, so
+// without this the export would be EEO-1-shaped without being an EEO-1.
+enum EeoJobCategory {
+  EXECUTIVE_SENIOR_OFFICIALS
+  FIRST_MID_OFFICIALS
+  PROFESSIONALS
+  TECHNICIANS
+  SALES_WORKERS
+  ADMINISTRATIVE_SUPPORT
+  CRAFT_WORKERS
+  OPERATIVES
+  LABORERS_HELPERS
+  SERVICE_WORKERS
+}
+
+// Which of the two EEO export artifacts was produced. They exist separately because they answer to
+// different audiences: SUMMARY carries the same small-cell suppression as the on-screen report and
+// is for internal circulation; FILING contains EXACT headcounts because a regulator is entitled to
+// them, is HR_ADMIN-only, and is the reason EeoExportLog exists at all.
+enum EeoExportVariant {
+  SUMMARY
+  FILING
+}
+
 // An erasure request only ever ends one of two ways, and both are recorded: COMPLETED (the data was
 // destroyed) or REFUSED (with a note — e.g. the person is now an employee and retention applies).
 // There is no "cancelled" — a request that was made is a fact, and silently dropping it is exactly
@@ -322,6 +365,8 @@ model Organization {
   // Compliance (ATS M10).
   eeoResponses    EeoResponse[]
   erasureRequests ErasureRequest[]
+  // Compliance (ATS M12): the audit trail for EEO exports.
+  eeoExportLogs   EeoExportLog[]
 }
 
 model User {
@@ -376,6 +421,8 @@ model User {
   jobsCreated            Job[]                  @relation("JobCreatedBy")
   jobMembersAdded        JobMember[]            @relation("JobMemberAddedBy")
   applicationEvents      ApplicationEvent[]     @relation("ApplicationEventActor")
+  // Compliance (ATS M12): EEO exports this user produced.
+  eeoExports             EeoExportLog[]         @relation("EeoExportActor")
 
   @@index([orgId])
 }
@@ -943,20 +990,24 @@ model AppSetting {
 
 // A job requisition. Org-scoped; management gated to the job's hiring managers + recruiters/HR.
 model Job {
-  id             String         @id @default(uuid())
+  id             String          @id @default(uuid())
   title          String
   description    String?
   location       String?
-  employmentType EmploymentType @default(FULL_TIME)
-  status         JobStatus      @default(DRAFT)
-  openings       Int            @default(1)
+  employmentType EmploymentType  @default(FULL_TIME)
+  status         JobStatus       @default(DRAFT)
+  openings       Int             @default(1)
   // When this req was POSTED PUBLICLY. null = not advertised — a job can be OPEN internally without
   // appearing on the careers site (confidential backfills, exec searches). A nullable timestamp
   // rather than a boolean: it carries the same yes/no plus the "posted on" date the listing shows.
   // The public apply path refuses any job that isn't OPEN *and* published.
   publishedAt    DateTime?
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  // EEO-1 job category (M12). NULLABLE and deliberately never defaulted: guessing a category would
+  // silently mis-file a regulatory return, so an unset one is surfaced as a warning on the filing
+  // export instead of being quietly bucketed somewhere plausible.
+  eeoJobCategory EeoJobCategory?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
   orgId String
   org   Organization @relation(fields: [orgId], references: [id])
@@ -1085,12 +1136,17 @@ model Candidate {
 // One candidate's application to one job — the pipeline unit. `stage` is the fixed top-level pipeline;
 // while stage = INTERVIEW, `currentRoundId` points at the job round they're in. RLS = app_can_see_job(jobId).
 model Application {
-  id              String           @id @default(uuid())
-  stage           ApplicationStage @default(APPLIED)
-  appliedAt       DateTime         @default(now())
-  rejectionReason String?
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  id                String           @id @default(uuid())
+  stage             ApplicationStage @default(APPLIED)
+  appliedAt         DateTime         @default(now())
+  // Free text: the specifics, and the field an erasure blanks.
+  rejectionReason   String?
+  // Structured (M12): required by validation when moving to REJECTED, but NULLABLE in the schema —
+  // every application rejected before this field existed has no category, and back-filling one
+  // would be inventing a decision nobody made. Survives erasure; see the RejectionReason enum.
+  rejectionCategory RejectionReason?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 
   // Denormalized so org-scoped reads/aggregations skip a join (and future public-apply inserts carry it).
   orgId String
@@ -1289,4 +1345,35 @@ model ErasureRequest {
   resolvedBy   Employee? @relation("ErasureResolvedBy", fields: [resolvedById], references: [id])
 
   @@index([orgId, status])
+}
+
+// A record that someone produced an EEO export (M12).
+//
+// Exists because the FILING variant is the one path in the system that returns EXACT demographic
+// counts — the numbers the on-screen report deliberately withholds. That path has to be narrow and
+// it has to leave a trace, otherwise the suppression rule everywhere else is decoration.
+//
+// APPEND-ONLY at the database: UPDATE and DELETE are revoked from hris_app, the same guarantee as
+// ApplicationEvent and EmployeeAuditLog. An audit trail that its subject can edit is not one.
+//
+// ⚠️ Deliberately NOT EmployeeAuditLog: that table's `employeeId` is a REQUIRED foreign key, and an
+// org-wide export is not *about* any one employee. Writing the actor's own id there would be a lie,
+// and it would pollute their profile timeline with events that never happened to them.
+model EeoExportLog {
+  id                String           @id @default(uuid())
+  variant           EeoExportVariant
+  exportedAt        DateTime         @default(now())
+  // What the file actually contained, so the log answers "how much" as well as "who and when".
+  rowCount          Int              @default(0)
+  // How many requisitions had no EEO job category at export time — a data-quality figure that
+  // matters most in hindsight, when someone asks why a filed return didn't add up.
+  uncategorisedJobs Int              @default(0)
+
+  orgId String
+  org   Organization @relation(fields: [orgId], references: [id])
+
+  actorId String
+  actor   User   @relation("EeoExportActor", fields: [actorId], references: [id])
+
+  @@index([orgId, exportedAt])
 }

@@ -6,5 +6,6 @@ export * from "./candidate";
 export * from "./scorecard";
 export * from "./reporting";
 export * from "./eeo";
+export * from "./eeo-csv";
 export * from "./retention";
 export * from "./rules";

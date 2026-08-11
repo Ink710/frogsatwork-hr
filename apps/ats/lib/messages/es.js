@@ -424,6 +424,57 @@ const es = {
   "err.archiveForbidden": "Solo reclutadores y RR. HH. pueden archivar candidatos.",
   "err.archiveNotFound": "Ese candidato no se puede archivar.",
   "err.archiveFailed": "No se pudo actualizar el candidato. Inténtalo de nuevo.",
+
+  // ── Motivos de rechazo + exportación EEO-1 (M12) ───────────────────────────
+  "enum.rejectionReason.SKILLS_MISMATCH": "Competencias no coinciden",
+  "enum.rejectionReason.EXPERIENCE_LEVEL": "Nivel de experiencia",
+  "enum.rejectionReason.COMPENSATION_EXPECTATIONS": "Expectativas salariales",
+  "enum.rejectionReason.STRONGER_CANDIDATE": "Se eligió a otra persona",
+  "enum.rejectionReason.CANDIDATE_WITHDREW": "La persona se retiró",
+  "enum.rejectionReason.POSITION_CLOSED": "Vacante cerrada",
+  "enum.rejectionReason.OTHER": "Otro",
+
+  "reject.reasonLabel": "Motivo del rechazo",
+  "reject.confirm": "Rechazar",
+  "reject.cancel": "Cancelar",
+
+  "reports.rejections": "Por qué se rechaza a las personas",
+  "reports.rejectionsHint":
+    "Según el motivo registrado al tomar la decisión. A diferencia de las notas de entrevista, estas categorías sobreviven a una solicitud de eliminación de datos, así que este informe sigue siendo exacto.",
+  "reports.rejectionReason": "Motivo",
+  "reports.count": "Total",
+  "reports.share": "Porcentaje",
+  "reports.rejectionsUncategorised": "Además, {n} rechazo(s) registrados antes de que se capturaran motivos.",
+  "reports.rejectionsAllUncategorised":
+    "Los {n} rechazo(s) son anteriores al registro de motivos. Los nuevos aparecerán aquí.",
+
+  "jobForm.eeoJobCategory": "Categoría laboral EEO-1",
+  "jobForm.noEeoJobCategory": "Sin definir",
+  "jobForm.eeoJobCategoryHint": "Solo se usa para informes de igualdad de oportunidades. Déjalo sin definir si no estás seguro — la exportación lo señalará en vez de adivinar.",
+  "enum.eeoJobCategory.EXECUTIVE_SENIOR_OFFICIALS": "Dirección ejecutiva y alta gerencia",
+  "enum.eeoJobCategory.FIRST_MID_OFFICIALS": "Mandos intermedios",
+  "enum.eeoJobCategory.PROFESSIONALS": "Profesionales",
+  "enum.eeoJobCategory.TECHNICIANS": "Técnicos",
+  "enum.eeoJobCategory.SALES_WORKERS": "Personal de ventas",
+  "enum.eeoJobCategory.ADMINISTRATIVE_SUPPORT": "Personal administrativo",
+  "enum.eeoJobCategory.CRAFT_WORKERS": "Personal de oficios",
+  "enum.eeoJobCategory.OPERATIVES": "Operarios",
+  "enum.eeoJobCategory.LABORERS_HELPERS": "Peones y ayudantes",
+  "enum.eeoJobCategory.SERVICE_WORKERS": "Personal de servicios",
+
+  "export.title": "Exportar",
+  "export.summary": "Descargar resumen (CSV)",
+  "export.summaryHint": "El informe de arriba, tal cual — con los grupos pequeños ocultos. Se puede compartir internamente.",
+  "export.filing": "Descargar declaración EEO-1 (CSV)",
+  "export.filingHint":
+    "Cifras exactas por categoría laboral, sexo y raza, para presentar ante la EEOC. No está suprimida, así que no debe circular internamente. Cada descarga queda registrada abajo.",
+  "export.historyTitle": "Historial de exportaciones",
+  "export.historyHint": "Todas las exportaciones EEO generadas desde este sistema. Este registro no se puede editar ni borrar.",
+  "export.historyEmpty": "Todavía no hay exportaciones.",
+  "export.rows": "{n} fila(s)",
+  "export.uncategorisedWarning": "{n} vacante(s) no tenían categoría laboral EEO-1 y se agrupan como «sin categoría».",
+  "enum.eeoExportVariant.SUMMARY": "Resumen (suprimido)",
+  "enum.eeoExportVariant.FILING": "Declaración EEO-1 (exacta)",
 };
 
 export default es;

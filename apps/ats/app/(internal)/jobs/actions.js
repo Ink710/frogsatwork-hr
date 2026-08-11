@@ -36,6 +36,7 @@ function parseJob(formData) {
     employmentType: formData.get("employmentType"),
     openings: formData.get("openings"),
     departmentId: formData.get("departmentId") || undefined,
+    eeoJobCategory: formData.get("eeoJobCategory") || undefined,
   });
 }
 
@@ -67,9 +68,11 @@ export async function createJob(_prevState, formData) {
       // workaround createEmployee uses in employee-records for exactly the same reason.
       await tx.$executeRaw`
         INSERT INTO "Job" (id, title, description, location, "employmentType", status, openings,
-                           "createdAt", "updatedAt", "orgId", "departmentId", "createdById")
+                           "eeoJobCategory", "createdAt", "updatedAt", "orgId", "departmentId",
+                           "createdById")
         VALUES (${newId}, ${d.title}, ${d.description ?? null}, ${d.location ?? null},
                 ${d.employmentType}::"EmploymentType", 'DRAFT', ${d.openings},
+                ${d.eeoJobCategory ?? null}::"EeoJobCategory",
                 now(), now(), ${viewer.orgId}, ${d.departmentId ?? null}, ${viewer.userId})`;
       // Now the row exists, so app_can_manage_job can find it and the normal client works again.
       // Only when the creator has an employee record (an HR user might not).
@@ -108,6 +111,7 @@ export async function updateJob(jobId, _prevState, formData) {
           employmentType: d.employmentType,
           openings: d.openings,
           departmentId: d.departmentId ?? null,
+          eeoJobCategory: d.eeoJobCategory ?? null,
         },
       });
     });
@@ -401,9 +405,10 @@ export async function moveApplication(jobId, appId, _prevState, formData) {
     toStage: formData.get("toStage"),
     note: formData.get("note") || undefined,
     rejectionReason: formData.get("rejectionReason") || undefined,
+    rejectionCategory: formData.get("rejectionCategory") || undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? t("err.invalidInput") };
-  const { toStage, note, rejectionReason } = parsed.data;
+  const { toStage, note, rejectionReason, rejectionCategory } = parsed.data;
 
   try {
     await withViewer(viewer, async (tx) => {
@@ -419,7 +424,14 @@ export async function moveApplication(jobId, appId, _prevState, formData) {
         data: {
           stage: toStage,
           currentRoundId: entering ? (first?.id ?? null) : null,
+          // Both rejection fields are set together and cleared together.
+          //
+          // The clearing branch is currently UNREACHABLE: REJECTED is terminal in
+          // ALLOWED_STAGE_TRANSITIONS, so nothing can move out of it. It is written this way anyway
+          // so that if reversal is ever allowed, a stale reason cannot survive the move and quietly
+          // misreport why someone back in the pipeline was once rejected.
           rejectionReason: toStage === "REJECTED" ? (rejectionReason ?? null) : null,
+          rejectionCategory: toStage === "REJECTED" ? (rejectionCategory ?? null) : null,
         },
       });
       await tx.applicationEvent.create({

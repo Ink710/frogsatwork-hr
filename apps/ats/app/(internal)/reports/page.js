@@ -8,6 +8,7 @@ import {
   getTimeReport,
   getReqAgingReport,
   getInterviewerLoadReport,
+  getRejectionReport,
 } from "@/lib/queries";
 
 // Recruiting analytics. Every figure below was computed inside withViewer, so RLS already narrowed
@@ -15,13 +16,14 @@ import {
 // The scope note in the header exists so nobody misreads their subset as company-wide.
 export default async function ReportsPage() {
   const t = await getT();
-  const [viewer, funnelReport, sources, times, aging, load] = await Promise.all([
+  const [viewer, funnelReport, sources, times, aging, load, rejections] = await Promise.all([
     getViewer(),
     getFunnelReport(),
     getSourceReport(),
     getTimeReport(),
     getReqAgingReport(),
     getInterviewerLoadReport(),
+    getRejectionReport(),
   ]);
 
   const { funnel, totalApplications } = funnelReport;
@@ -127,6 +129,48 @@ export default async function ReportsPage() {
                   </li>
                 ))}
               </ul>
+            </Card>
+          )}
+
+          {/* Why candidates are rejected (M12). Counted from the STRUCTURED category, not the free
+              text — which is exactly why this section still has data after someone exercises their
+              right to erasure: the prose is blanked, the category isn't. */}
+          {(rejections.categorised > 0 || rejections.uncategorised > 0) && (
+            <Card title={t("reports.rejections")}>
+              <p className="text-xs text-muted-foreground">{t("reports.rejectionsHint")}</p>
+              {rejections.categorised === 0 ? (
+                <p className="mt-4 text-sm text-muted-foreground">
+                  {t("reports.rejectionsAllUncategorised", { n: rejections.uncategorised })}
+                </p>
+              ) : (
+                <>
+                  <table className="mt-4 w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+                        <th className="pb-2">{t("reports.rejectionReason")}</th>
+                        <th className="pb-2 text-right">{t("reports.count")}</th>
+                        <th className="pb-2 text-right">{t("reports.share")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rejections.rows.map((r) => (
+                        <tr key={r.category} className="border-t border-border">
+                          <td className="py-2">{t(`enum.rejectionReason.${r.category}`)}</td>
+                          <td className="py-2 text-right font-mono">{r.count}</td>
+                          <td className="py-2 text-right font-mono">{r.share}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {/* Pre-M12 rejections are reported separately rather than folded into "Other" —
+                      "we never asked" and "the recruiter chose Other" are different facts. */}
+                  {rejections.uncategorised > 0 && (
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      {t("reports.rejectionsUncategorised", { n: rejections.uncategorised })}
+                    </p>
+                  )}
+                </>
+              )}
             </Card>
           )}
 

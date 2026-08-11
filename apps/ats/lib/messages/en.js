@@ -430,6 +430,57 @@ const en = {
   "err.archiveForbidden": "Only recruiters and HR can archive candidates.",
   "err.archiveNotFound": "That candidate can’t be archived.",
   "err.archiveFailed": "Couldn’t update the candidate. Please try again.",
+
+  // ── Structured rejection reasons + EEO-1 export (M12) ──────────────────────
+  "enum.rejectionReason.SKILLS_MISMATCH": "Skills mismatch",
+  "enum.rejectionReason.EXPERIENCE_LEVEL": "Experience level",
+  "enum.rejectionReason.COMPENSATION_EXPECTATIONS": "Compensation expectations",
+  "enum.rejectionReason.STRONGER_CANDIDATE": "Stronger candidate chosen",
+  "enum.rejectionReason.CANDIDATE_WITHDREW": "Candidate withdrew",
+  "enum.rejectionReason.POSITION_CLOSED": "Position closed",
+  "enum.rejectionReason.OTHER": "Other",
+
+  "reject.reasonLabel": "Reason for rejecting",
+  "reject.confirm": "Reject",
+  "reject.cancel": "Cancel",
+
+  "reports.rejections": "Why candidates are rejected",
+  "reports.rejectionsHint":
+    "From the reason recorded at the time of the decision. Unlike interview notes, these categories survive a data-erasure request, so this report stays accurate.",
+  "reports.rejectionReason": "Reason",
+  "reports.count": "Count",
+  "reports.share": "Share",
+  "reports.rejectionsUncategorised": "Plus {n} rejection(s) recorded before reasons were captured.",
+  "reports.rejectionsAllUncategorised":
+    "All {n} rejection(s) predate reason tracking. New rejections will appear here.",
+
+  "jobForm.eeoJobCategory": "EEO-1 job category",
+  "jobForm.noEeoJobCategory": "Not set",
+  "jobForm.eeoJobCategoryHint": "Used only for equal-opportunity reporting. Leave unset if unsure — the filing export will flag it rather than guess.",
+  "enum.eeoJobCategory.EXECUTIVE_SENIOR_OFFICIALS": "Executive / senior officials and managers",
+  "enum.eeoJobCategory.FIRST_MID_OFFICIALS": "First / mid-level officials and managers",
+  "enum.eeoJobCategory.PROFESSIONALS": "Professionals",
+  "enum.eeoJobCategory.TECHNICIANS": "Technicians",
+  "enum.eeoJobCategory.SALES_WORKERS": "Sales workers",
+  "enum.eeoJobCategory.ADMINISTRATIVE_SUPPORT": "Administrative support workers",
+  "enum.eeoJobCategory.CRAFT_WORKERS": "Craft workers",
+  "enum.eeoJobCategory.OPERATIVES": "Operatives",
+  "enum.eeoJobCategory.LABORERS_HELPERS": "Laborers and helpers",
+  "enum.eeoJobCategory.SERVICE_WORKERS": "Service workers",
+
+  "export.title": "Export",
+  "export.summary": "Download summary (CSV)",
+  "export.summaryHint": "The report above, exactly as shown — small groups withheld. Safe to circulate internally.",
+  "export.filing": "Download EEO-1 filing (CSV)",
+  "export.filingHint":
+    "Exact headcounts by job category, sex and race, for submission to the EEOC. Not suppressed, so it must not be circulated internally. Every download is recorded below.",
+  "export.historyTitle": "Export history",
+  "export.historyHint": "Every EEO export produced from this system. This log cannot be edited or deleted.",
+  "export.historyEmpty": "No exports yet.",
+  "export.rows": "{n} row(s)",
+  "export.uncategorisedWarning": "{n} requisition(s) had no EEO-1 job category and are grouped as “uncategorised”.",
+  "enum.eeoExportVariant.SUMMARY": "Summary (suppressed)",
+  "enum.eeoExportVariant.FILING": "EEO-1 filing (exact)",
 };
 
 export default en;

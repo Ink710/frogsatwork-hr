@@ -635,8 +635,10 @@ async function main() {
   //     as the OWNER, which bypasses RLS and the ApplicationEvent append-only revoke, so it writes freely.
   const JOBS = [
     { id: "job-be", title: "Senior Backend Engineer", status: "OPEN", dept: DEPT.eng, openings: 2,
-      location: "Remote (US)", employmentType: "FULL_TIME",
+      location: "Remote (US)", employmentType: "FULL_TIME", eeoJobCategory: "PROFESSIONALS",
       description: "Own core services on our Postgres + Node stack. Strong SQL and API design." },
+    // Left WITHOUT an EEO-1 category on purpose, so the filing export's "uncategorised" warning is
+    // demoable — the gap it exists to surface is more interesting than a tidy dataset.
     { id: "job-pd", title: "Product Designer", status: "OPEN", dept: DEPT.eng, openings: 1,
       location: "San Francisco, CA", employmentType: "FULL_TIME",
       description: "Shape the product's look and flows end to end." },
@@ -647,10 +649,14 @@ async function main() {
     const publishedAt = j.status === "OPEN" ? new Date("2026-06-01T09:00:00.000Z") : null;
     await prisma.job.upsert({
       where: { id: j.id },
-      update: { title: j.title, status: j.status, openings: j.openings, location: j.location, description: j.description, publishedAt },
+      update: {
+        title: j.title, status: j.status, openings: j.openings, location: j.location,
+        description: j.description, publishedAt, eeoJobCategory: j.eeoJobCategory ?? null,
+      },
       create: {
         id: j.id, title: j.title, description: j.description, location: j.location,
         employmentType: j.employmentType, status: j.status, openings: j.openings, publishedAt,
+        eeoJobCategory: j.eeoJobCategory ?? null,
         orgId: ORG_ID, departmentId: j.dept, createdById: PEOPLE.raj.userId,
       },
     });
@@ -728,16 +734,22 @@ async function main() {
     { id: "app-owen", cand: "cand-owen", job: "job-be", stage: "SCREEN", round: null, applied: "2026-07-28" },
     { id: "app-mei", cand: "cand-mei", job: "job-be", stage: "INTERVIEW", round: "ir-be-design", applied: "2026-07-20" },
     { id: "app-luis", cand: "cand-luis", job: "job-be", stage: "OFFER", round: null, applied: "2026-07-10" },
-    { id: "app-owen-pd", cand: "cand-owen", job: "job-pd", stage: "REJECTED", round: null, applied: "2026-06-15" },
+    { id: "app-owen-pd", cand: "cand-owen", job: "job-pd", stage: "REJECTED", round: null,
+      applied: "2026-06-15", rejectionCategory: "STRONGER_CANDIDATE" },
   ];
   for (const a of APPLICATIONS) {
     await prisma.application.upsert({
       where: { id: a.id },
-      update: { stage: a.stage, currentRoundId: a.round, appliedAt: new Date(`${a.applied}T12:00:00.000Z`) },
+      update: {
+        stage: a.stage, currentRoundId: a.round,
+        appliedAt: new Date(`${a.applied}T12:00:00.000Z`),
+        rejectionCategory: a.rejectionCategory ?? null,
+      },
       create: {
         id: a.id, orgId: ORG_ID, jobId: a.job, candidateId: a.cand,
         stage: a.stage, currentRoundId: a.round,
         appliedAt: new Date(`${a.applied}T12:00:00.000Z`),
+        rejectionCategory: a.rejectionCategory ?? null,
       },
     });
   }
