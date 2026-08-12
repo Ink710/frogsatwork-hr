@@ -145,14 +145,23 @@ export async function getPendingTimesheets() {
 
   return withViewer(viewer, async (tx) => {
     const subtreeIds = viewer.role === "MANAGER" ? await getSubtreeIds(viewer.employeeId, tx) : undefined;
+    // ONE relation inline, the other fetched after. Two sibling relations in a single include make
+    // Prisma fire both sub-queries concurrently on this transaction's pinned pg client, which trips
+    // "Calling client.query() when the client is already executing a query" — benign on pg@8, an
+    // error in pg@9.
     const sheets = await tx.timesheet.findMany({
       where: { status: "SUBMITTED" }, // RLS already limits to visible subjects
       orderBy: { periodStart: "asc" },
-      include: {
-        entries: { select: { workDate: true, hours: true } },
-        employee: { select: { id: true, firstName: true, lastName: true, employeeNumber: true } },
-      },
+      include: { entries: { select: { workDate: true, hours: true } } },
     });
+    const sheetEmployees = sheets.length
+      ? await tx.employee.findMany({
+          where: { id: { in: [...new Set(sheets.map((s) => s.employeeId))] } },
+          select: { id: true, firstName: true, lastName: true, employeeNumber: true },
+        })
+      : [];
+    const employeeById = new Map(sheetEmployees.map((e) => [e.id, e]));
+    for (const s of sheets) s.employee = employeeById.get(s.employeeId) ?? null;
     const actionable = sheets.filter((s) => canApproveForEmployee(viewer, s.employeeId, { subtreeIds }));
 
     // Batch the FLSA classification for the distinct subjects (drives overtime eligibility).

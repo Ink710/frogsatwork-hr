@@ -3,16 +3,31 @@
 // actions (which also enforce authorization + persistence on top of these decisions).
 import type { ApplicationStage } from "./candidate";
 
-// The fixed pipeline. From any ACTIVE stage you may also REJECT or WITHDRAW. Terminal stages
-// (HIRED / REJECTED / WITHDRAWN) have no outgoing transitions.
+// The pipeline. Three rules, and the asymmetry between the first two is deliberate:
+//
+//   1. FORWARD, one step at a time. You cannot skip to OFFER without an interview — that gate is a
+//      real hiring control, not an accident of the data model.
+//   2. BACKWARD, to ANY earlier active stage. Added in Polish B, because "actually, let's re-screen
+//      them" is something recruiters do constantly and the pipeline had no way to express it. Every
+//      such move still writes an ApplicationEvent, so a reversal is visible in the trail rather than
+//      looking like the candidate was never there.
+//   3. HIRED and REJECTED are PERMANENT — no outgoing transitions. That is what makes a rejection's
+//      recorded reason permanent (M12): re-considering someone means a new application, not an
+//      edited one.
+//   4. WITHDRAWN is REVERSIBLE (M13), and the asymmetry with REJECTED is the point. A withdrawal is
+//      the CANDIDATE's decision, and candidates change their minds — "actually, I'm still
+//      interested" is an ordinary thing to hear. A rejection is the COMPANY's decision, and letting
+//      it be undone would let its recorded reason drift away from the decision it explains.
+//
+// From any active stage you may also REJECT or WITHDRAW.
 export const ALLOWED_STAGE_TRANSITIONS: Record<ApplicationStage, readonly ApplicationStage[]> = {
   APPLIED: ["SCREEN", "REJECTED", "WITHDRAWN"],
-  SCREEN: ["INTERVIEW", "REJECTED", "WITHDRAWN"],
-  INTERVIEW: ["OFFER", "REJECTED", "WITHDRAWN"],
-  OFFER: ["HIRED", "REJECTED", "WITHDRAWN"],
+  SCREEN: ["APPLIED", "INTERVIEW", "REJECTED", "WITHDRAWN"],
+  INTERVIEW: ["APPLIED", "SCREEN", "OFFER", "REJECTED", "WITHDRAWN"],
+  OFFER: ["APPLIED", "SCREEN", "INTERVIEW", "HIRED", "REJECTED", "WITHDRAWN"],
   HIRED: [],
   REJECTED: [],
-  WITHDRAWN: [],
+  WITHDRAWN: ["APPLIED", "SCREEN", "INTERVIEW", "OFFER"],
 };
 
 // May an application move from `from` to `to`?
@@ -59,4 +74,20 @@ export function nextRound<T extends Round>(
   const idx = ordered.findIndex((r) => r.id === currentRoundId);
   if (idx === -1) return ordered[0] ?? null;
   return ordered[idx + 1] ?? null;
+}
+
+/**
+ * Are there interview rounds still to run for this application?
+ *
+ * The guard on leaving INTERVIEW for OFFER (Polish B). The stage buttons have always expressed this
+ * implicitly — while rounds remain the card offers "Next round" and never "Advance to Offer" — but a
+ * DRAG has no such implicit path, so the rule has to become something both surfaces can ask.
+ *
+ * A job with no rounds defined returns false: nothing to wait for, go straight to Offer.
+ */
+export function hasRemainingRounds<T extends Round>(
+  rounds: readonly T[],
+  currentRoundId: string | null,
+): boolean {
+  return rounds.length > 0 && nextRound(rounds, currentRoundId) !== null;
 }

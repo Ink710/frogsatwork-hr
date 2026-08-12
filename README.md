@@ -188,10 +188,10 @@ paths end-to-end across both apps.
 
 ## Paid services: the seam ships, the account is yours
 
-Two capabilities need a third-party account that costs money at real volume. Rather than pretend
+Some capabilities need a third-party account that costs money at real volume. Rather than pretend
 otherwise, the suite ships the **integration seam** fully wired and leaves the credentials to whoever
-runs the app. Both degrade honestly: unconfigured, they either no-op or fail with an actionable error —
-never silently.
+runs the app. They all degrade honestly: unconfigured, they either no-op or fail with an actionable
+error — never silently, and never by appearing to work.
 
 **Object storage** (`@hris/storage`) — one interface, `put` / `getStream` / `remove`, selected with
 `STORAGE_DRIVER`:
@@ -206,8 +206,32 @@ The local driver is the right choice for development but **cannot** be used on s
 résumé uploads needs a cloud driver. Implementing one is a single file against the existing interface —
 no calling code changes.
 
-**Login / apply rate limiting** — the minimal Upstash Redis limiter (see *Architecture highlights*).
-Without `UPSTASH_REDIS_REST_URL` / `_TOKEN` it is a transparent no-op and Redis is never contacted.
+**Rate limiting** — the minimal Upstash Redis limiter (see *Architecture highlights*). Without
+`UPSTASH_REDIS_REST_URL` / `_TOKEN` every limiter is a transparent no-op and Redis is never contacted.
+There are four, each with its own key prefix and budget, because they defend different things:
+
+| Limiter | Prefix | Budget | Why |
+| --- | --- | --- | --- |
+| Login (time-management) | `tm:login` | 5 / 60s | Password guessing. |
+| Login (ATS) | `ats:login` | 5 / 60s | Same, separately counted. |
+| Careers apply | `ats:apply` | 8 / 10min | Public and unauthenticated; a real applicant may retry or apply to several roles. |
+| Erasure request | `ats:erasure` | 4 / 10min | Public; the tightest, since a genuine request happens once. |
+
+Prefixes are namespaced **per app** so the three apps can share one Upstash database without sharing
+a counter — a shared prefix would mean one person's login attempts on one app throttling them on
+another.
+
+**Scheduled jobs** — not a paid service, but a deployment needs it and the failure is silent, which
+makes it worth listing here. Two Vercel Crons authenticate with a shared `CRON_SECRET`
+(constant-time compared, and the route **fails closed** when the variable is unset):
+
+| Job | App | Schedule |
+| --- | --- | --- |
+| `/api/cron/accrue` | time-management | Monthly — PTO accrual. |
+| `/api/cron/archive-stale` | ATS | Weekly — candidate retention sweep. |
+
+Without `CRON_SECRET` these return 401 and simply never run: no error surfaces anywhere, PTO stops
+accruing and the talent pool stops being tidied. Set it.
 
 ## Environment & secrets
 

@@ -66,12 +66,20 @@ export async function getJobBoard(jobId) {
     });
     if (!job) return null;
 
+    // ONE relation, deliberately. Two or more relations in a single include make Prisma fire their
+    // sub-queries CONCURRENTLY on this transaction's pinned pg client, which is exactly the
+    // "client.query() when the client is already executing a query" deprecation (an error in pg@9).
+    //
+    // `currentRound` used to be the second relation here — dropped rather than split, because the
+    // job's rounds are already loaded above and the round is always one of them. A lookup beats a
+    // query.
+    const roundsById = new Map(job.interviewRounds.map((r) => [r.id, r]));
+
     const applications = await tx.application.findMany({
       where: { jobId },
       orderBy: { appliedAt: "asc" },
       include: {
         candidate: { select: { id: true, firstName: true, lastName: true, source: true } },
-        currentRound: { select: { id: true, name: true } },
       },
     });
 
@@ -85,7 +93,7 @@ export async function getJobBoard(jobId) {
         source: a.candidate.source,
         appliedAt: a.appliedAt,
         currentRoundId: a.currentRoundId,
-        currentRound: a.currentRound?.name ?? null,
+        currentRound: roundsById.get(a.currentRoundId)?.name ?? null,
       };
       if (CLOSED_STAGES.includes(a.stage)) closed.push(card);
       else columns[a.stage].push(card);
@@ -137,17 +145,19 @@ export async function getMyScorecard(applicationId) {
     });
     if (!application) return null; // RLS hid it → not on this job
 
-    const [competencies, scorecard] = await Promise.all([
-      tx.jobCompetency.findMany({
-        where: { jobId: application.jobId },
-        orderBy: { position: "asc" },
-        select: { id: true, name: true },
-      }),
-      tx.scorecard.findFirst({
-        where: { applicationId, authorEmployeeId: viewer.employeeId },
-        include: { ratings: { select: { competencyId: true, rating: true, comment: true } } },
-      }),
-    ]);
+    // Sequential (not Promise.all): queries on one tx/connection can't run concurrently.
+    // An interactive transaction pins a single pg client, so issuing both at once triggers
+    // "Calling client.query() when the client is already executing a query is deprecated and will be
+    // removed in pg@9.0" — benign today, a hard error on the next major.
+    const competencies = await tx.jobCompetency.findMany({
+      where: { jobId: application.jobId },
+      orderBy: { position: "asc" },
+      select: { id: true, name: true },
+    });
+    const scorecard = await tx.scorecard.findFirst({
+      where: { applicationId, authorEmployeeId: viewer.employeeId },
+      include: { ratings: { select: { competencyId: true, rating: true, comment: true } } },
+    });
 
     return { application, competencies, scorecard };
   });
@@ -262,21 +272,32 @@ export async function getJobForManage(jobId) {
   const viewer = await getViewer();
   if (!viewer) return null;
   return withViewer(viewer, async (tx) => {
-    const job = await tx.job.findFirst({
-      where: { id: jobId },
-      include: {
-        interviewRounds: { orderBy: { position: "asc" }, select: { id: true, name: true, position: true } },
-        competencies: { orderBy: { position: "asc" }, select: { id: true, name: true, position: true } },
-        // Deliberately NOT `include: { employee }` — that relation is Employee-RLS-filtered, so a
-        // recruiter would see null for every teammate. Names come from the directory below.
-        members: { orderBy: { createdAt: "asc" }, select: { id: true, role: true, employeeId: true } },
-      },
-    });
+    const job = await tx.job.findFirst({ where: { id: jobId } });
     if (!job) return null;
+
+    // SEQUENTIAL, not a three-relation include: concurrent sub-queries on one transaction's pinned
+    // client trip pg's "already executing a query" deprecation (a hard error in pg@9).
+    const interviewRounds = await tx.interviewRound.findMany({
+      where: { jobId },
+      orderBy: { position: "asc" },
+      select: { id: true, name: true, position: true },
+    });
+    const competencies = await tx.jobCompetency.findMany({
+      where: { jobId },
+      orderBy: { position: "asc" },
+      select: { id: true, name: true, position: true },
+    });
+    // Deliberately NOT `include: { employee }` — that relation is Employee-RLS-filtered, so a
+    // recruiter would see null for every teammate. Names come from the directory below.
+    const jobMembers = await tx.jobMember.findMany({
+      where: { jobId },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, role: true, employeeId: true },
+    });
 
     const directory = await orgDirectory(tx, viewer.orgId);
     const byId = new Map(directory.map((p) => [p.id, p]));
-    const members = job.members.map((m) => {
+    const members = jobMembers.map((m) => {
       const p = byId.get(m.employeeId);
       return {
         id: m.id,
@@ -288,7 +309,7 @@ export async function getJobForManage(jobId) {
     });
 
     const canManage = await viewerCanManageJob(tx, jobId);
-    return { job: { ...job, members }, canManage };
+    return { job: { ...job, interviewRounds, competencies, members }, canManage };
   });
 }
 
@@ -394,20 +415,45 @@ export async function getCandidates({
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
       skip: (safePage - 1) * CANDIDATE_PAGE_SIZE,
       take: CANDIDATE_PAGE_SIZE,
-      include: {
-        _count: { select: { applications: true } },
-        // Just the newest application, for the row's badge.
-        applications: {
-          orderBy: { appliedAt: "desc" },
-          take: 1,
-          select: { id: true, stage: true, appliedAt: true, job: { select: { id: true, title: true } } },
-        },
-      },
     });
+
+    // SEQUENTIAL follow-ups rather than `include: { _count, applications }`. Two relations (a count
+    // aggregate counts) in one include run concurrently on this transaction's pinned client, which
+    // trips pg's "already executing a query" deprecation.
+    //
+    // Scoped to the CURRENT PAGE's ids, so this is two small queries regardless of pool size.
+    const pageIds = rows.map((c) => c.id);
+    const pageApplications = pageIds.length
+      ? await tx.application.findMany({
+          where: { candidateId: { in: pageIds } },
+          orderBy: { appliedAt: "desc" },
+          select: {
+            id: true,
+            stage: true,
+            appliedAt: true,
+            candidateId: true,
+            job: { select: { id: true, title: true } },
+          },
+        })
+      : [];
+    const counts = pageIds.length
+      ? await tx.application.groupBy({
+          by: ["candidateId"],
+          where: { candidateId: { in: pageIds } },
+          _count: { _all: true },
+        })
+      : [];
+
+    // Ordered newest-first above, so the first hit per candidate IS the newest.
+    const newestByCandidate = new Map();
+    for (const a of pageApplications) {
+      if (!newestByCandidate.has(a.candidateId)) newestByCandidate.set(a.candidateId, a);
+    }
+    const countByCandidate = new Map(counts.map((c) => [c.candidateId, c._count._all]));
 
     return {
       rows: rows.map((c) => {
-        const latest = c.applications[0] ?? null;
+        const latest = newestByCandidate.get(c.id) ?? null;
         return {
           id: c.id,
           name: `${c.firstName} ${c.lastName}`,
@@ -418,7 +464,7 @@ export async function getCandidates({
           anonymisedAt: c.anonymisedAt,
           // Archived people render normally with a muted pill — they're intact, just not active.
           archivedAt: c.archivedAt,
-          applicationCount: c._count.applications,
+          applicationCount: countByCandidate.get(c.id) ?? 0,
           latest: latest && {
             id: latest.id,
             stage: latest.stage,
@@ -442,26 +488,37 @@ export async function getCandidateProfile(candidateId) {
   const viewer = await getViewer();
   if (!viewer) return null;
   return withViewer(viewer, async (tx) => {
-    const candidate = await tx.candidate.findFirst({
-      where: { id: candidateId },
-      include: {
-        applications: {
-          orderBy: { appliedAt: "desc" },
-          select: {
-            id: true,
-            stage: true,
-            appliedAt: true,
-            rejectionReason: true,
-            // Whether this application produced an employee (M8). The profile needs it to know
-            // whether erasure is even offerable — see app_erase_candidate's HIRED refusal.
-            hiredEmployeeId: true,
-            job: { select: { id: true, title: true } },
-            currentRound: { select: { name: true } },
-          },
-        },
+    const candidate = await tx.candidate.findFirst({ where: { id: candidateId } });
+    if (!candidate) return null;
+
+    // SEQUENTIAL, and note the nesting is what mattered: `job` and `currentRound` were two SIBLING
+    // relations inside the applications select, so Prisma fired them concurrently on this
+    // transaction's pinned client (pg's "already executing a query" deprecation). Keeping `job`
+    // inline leaves exactly one relation; the round names come from a second query.
+    const applications = await tx.application.findMany({
+      where: { candidateId },
+      orderBy: { appliedAt: "desc" },
+      select: {
+        id: true,
+        stage: true,
+        appliedAt: true,
+        rejectionReason: true,
+        currentRoundId: true,
+        // Whether this application produced an employee (M8). The profile needs it to know
+        // whether erasure is even offerable — see app_erase_candidate's HIRED refusal.
+        hiredEmployeeId: true,
+        job: { select: { id: true, title: true } },
       },
     });
-    if (!candidate) return null;
+
+    const roundIds = applications.map((a) => a.currentRoundId).filter(Boolean);
+    const rounds = roundIds.length
+      ? await tx.interviewRound.findMany({
+          where: { id: { in: roundIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const roundsById = new Map(rounds.map((r) => [r.id, r]));
 
     // Who archived them, resolved STRUCTURALLY through the org directory rather than an Employee
     // relation — a RECRUITER has no employee-records access, so `include: { archivedBy: true }`
@@ -472,7 +529,15 @@ export async function getCandidateProfile(candidateId) {
       const person = (await orgDirectory(tx, viewer.orgId)).find((p) => p.id === candidate.archivedById);
       archivedByName = person ? `${person.firstName} ${person.lastName}` : null;
     }
-    return { ...candidate, archivedByName };
+    return {
+      ...candidate,
+      // Shaped exactly as the include produced it, so the profile page is untouched.
+      applications: applications.map((a) => ({
+        ...a,
+        currentRound: a.currentRoundId ? (roundsById.get(a.currentRoundId) ?? null) : null,
+      })),
+      archivedByName,
+    };
   });
 }
 
@@ -498,25 +563,39 @@ export async function getApplicationDetail(jobId, appId) {
   const viewer = await getViewer();
   if (!viewer) return null;
   return withViewer(viewer, async (tx) => {
+    // FIVE sibling relations used to hang off this one query — the worst offender for pg's
+    // "already executing a query" deprecation, since Prisma fired all five sub-queries at once onto
+    // this transaction's single pinned client. Split into sequential fetches; the returned SHAPE is
+    // identical, so the detail page is untouched.
     const app = await tx.application.findFirst({
       where: { id: appId, jobId },
       include: {
-        // M8: set once HR has actually created this person's employee record.
-        hiredEmployee: { select: { id: true, employeeNumber: true } },
         candidate: {
           select: { firstName: true, lastName: true, email: true, phone: true, source: true },
-        },
-        currentRound: { select: { name: true } },
-        job: { select: { id: true, title: true } },
-        events: {
-          orderBy: { occurredAt: "asc" },
-          select: { id: true, fromStage: true, toStage: true, roundName: true, note: true, occurredAt: true },
         },
       },
     });
     if (!app) return null;
+
+    const job = await tx.job.findFirst({ where: { id: app.jobId }, select: { id: true, title: true } });
+    const events = await tx.applicationEvent.findMany({
+      where: { applicationId: appId },
+      orderBy: { occurredAt: "asc" },
+      select: { id: true, fromStage: true, toStage: true, roundName: true, note: true, occurredAt: true },
+    });
+    const currentRound = app.currentRoundId
+      ? await tx.interviewRound.findFirst({ where: { id: app.currentRoundId }, select: { name: true } })
+      : null;
+    // M8: set once HR has actually created this person's employee record.
+    const hiredEmployee = app.hiredEmployeeId
+      ? await tx.employee.findFirst({
+          where: { id: app.hiredEmployeeId },
+          select: { id: true, employeeNumber: true },
+        })
+      : null;
+
     const canManage = await viewerCanManageJob(tx, jobId);
-    return { app, canManage };
+    return { app: { ...app, job, events, currentRound, hiredEmployee }, canManage };
   });
 }
 

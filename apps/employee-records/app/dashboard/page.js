@@ -5,6 +5,7 @@ import { getViewer } from "@hris/auth";
 import { getDashboardStats, getDepartmentBudgets, getOnboardingQueue } from "@/lib/queries";
 import { getT, getLocale } from "@/lib/i18n.server";
 import { INTL_LOCALE } from "@hris/ui";
+import { StatCard } from "@hris/ui/server";
 import { BudgetPie } from "@/components/BudgetPie";
 
 export async function generateMetadata() {
@@ -12,26 +13,10 @@ export async function generateMetadata() {
   return { title: `${t("dash.title")} · FrogsAtWorkHR` };
 }
 
-function StatCard({ label, value, hint, href, icon: Icon }) {
-  const body = (
-    <>
-      <div className="flex items-start justify-between">
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
-        {Icon && <Icon className="h-4 w-4 text-muted-foreground/70" aria-hidden="true" />}
-      </div>
-      <p className="mt-1 text-3xl font-semibold tracking-tight">{value}</p>
-      {hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
-    </>
-  );
-  const cls = "block rounded-xl border border-border bg-card p-5";
-  return href ? (
-    <Link href={href} className={`${cls} transition-colors hover:border-ring`}>
-      {body}
-    </Link>
-  ) : (
-    <div className={cls}>{body}</div>
-  );
-}
+// StatCard now comes from @hris/ui/server. It was EXTRACTED from this file in M3 and the original
+// was never deleted, so the two drifted apart in location only — they were byte-identical. The
+// shared one is what time-management already renders, which is what makes the two dashboards read
+// as one product rather than two apps that happen to look similar.
 
 // Charts use the brand categorical palette (green / aqua / navy / yellow) — one hue per chart.
 function Bars({ title, data, emptyText, barClass = "bg-primary", format = (x) => x }) {

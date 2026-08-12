@@ -8,6 +8,7 @@ import { moveApplication, advanceRound } from "@/app/(internal)/jobs/actions";
 //   { kind: "move", toStage, label, tone }  → moveApplication (hidden toStage)
 //   { kind: "round", label, tone }          → advanceRound
 //   { kind: "reject", label, tone }         → expands into the reason form below
+//   { kind: "withdraw", label, tone }       → expands into a plain confirm (M13)
 // Only rendered when the viewer can manage the job (interviewers never see it).
 const TONE = {
   primary: "border-primary/40 text-primary hover:bg-primary/10",
@@ -24,7 +25,29 @@ export function StageMoveActions({ jobId, appId, buttons, rejectionOptions = [],
   // structured reason, so the button reveals a small form instead of firing. Every other move is
   // unchanged — the friction is added exactly where the data requirement is, and nowhere else.
   const [rejecting, setRejecting] = useState(false);
+  // Withdrawing also confirms now (M13). It was a single click that could not be undone — the
+  // application landed in Closed with nothing to drag back. Reversibility is the real fix; this is
+  // the speed bump that stops the accident in the first place.
+  const [withdrawing, setWithdrawing] = useState(false);
   const error = moveState?.error || roundState?.error;
+
+  if (withdrawing) {
+    return (
+      <form action={moveAction} className="mt-2 flex flex-col gap-1.5">
+        <input type="hidden" name="toStage" value="WITHDRAWN" />
+        <p className="text-xs text-muted-foreground">{labels.withdrawConfirmHint}</p>
+        <div className="flex flex-wrap gap-1">
+          <button type="submit" disabled={movePending} className={`${BTN} ${TONE.muted}`}>
+            {labels.withdrawConfirm}
+          </button>
+          <button type="button" onClick={() => setWithdrawing(false)} className={`${BTN} ${TONE.muted}`}>
+            {labels.cancel}
+          </button>
+        </div>
+        {error && <p className="text-xs text-destructive">{error}</p>}
+      </form>
+    );
+  }
 
   if (rejecting) {
     return (
@@ -66,11 +89,11 @@ export function StageMoveActions({ jobId, appId, buttons, rejectionOptions = [],
     <div className="mt-2 flex flex-col gap-1">
       <div className="flex flex-wrap gap-1">
         {buttons.map((b, i) =>
-          b.kind === "reject" ? (
+          b.kind === "reject" || b.kind === "withdraw" ? (
             <button
               key={i}
               type="button"
-              onClick={() => setRejecting(true)}
+              onClick={() => (b.kind === "reject" ? setRejecting(true) : setWithdrawing(true))}
               className={`${BTN} ${TONE[b.tone] ?? TONE.muted}`}
             >
               {b.label}

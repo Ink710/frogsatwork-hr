@@ -9,3 +9,4 @@ export { NotFoundBox } from "./NotFoundBox";
 export { LoadingPage } from "./Skeletons";
 export { StatusBadge, Avatar, Card, Field, FieldGrid, CardSkeleton, Pill } from "./profile-ui";
 export { StatCard, Section } from "./dashboard-ui";
+export { ThemeScript } from "./ThemeScript";

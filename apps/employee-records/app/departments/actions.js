@@ -114,10 +114,9 @@ export async function deleteDepartment(departmentId, _prevState) {
 
   try {
     await withViewer(viewer, async (tx) => {
-      const [employeeCount, childCount] = await Promise.all([
-        tx.employee.count({ where: { departmentId } }),
-        tx.department.count({ where: { parentDepartmentId: departmentId } }),
-      ]);
+      // Sequential (not Promise.all): queries on one tx/connection can't run concurrently.
+      const employeeCount = await tx.employee.count({ where: { departmentId } });
+      const childCount = await tx.department.count({ where: { parentDepartmentId: departmentId } });
       if (employeeCount > 0 || childCount > 0) {
         throw new Error("Reassign this department's employees and sub-departments before deleting it.");
       }

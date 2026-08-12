@@ -35,7 +35,8 @@ function getLimiter() {
     limiter: Ratelimit.fixedWindow(ATTEMPTS, WINDOW),
     analytics: false,
     ephemeralCache: new Map(),
-    prefix: "tm:login", // namespaced so it can't collide with other keys on the DB
+    prefix: "ats:login", // namespaced PER APP: employee-records, time-management and the ATS
+    // may share one Upstash database, and a shared prefix would mean a shared counter.
   });
   return limiter;
 }
@@ -70,7 +71,7 @@ function getApplyLimiter() {
     limiter: Ratelimit.fixedWindow(APPLY_ATTEMPTS, APPLY_WINDOW),
     analytics: false,
     ephemeralCache: new Map(),
-    prefix: "tm:apply",
+    prefix: "ats:apply",
   });
   return applyLimiter;
 }
@@ -101,7 +102,7 @@ function getErasureLimiter() {
     limiter: Ratelimit.fixedWindow(ERASURE_ATTEMPTS, ERASURE_WINDOW),
     analytics: false,
     ephemeralCache: new Map(),
-    prefix: "tm:erasure",
+    prefix: "ats:erasure",
   });
   return erasureLimiter;
 }

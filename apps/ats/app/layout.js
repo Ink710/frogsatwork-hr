@@ -1,6 +1,7 @@
 import { Manrope, Inter, IBM_Plex_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeWatcher, LocaleProvider } from "@hris/ui/client";
+import { ThemeScript } from "@hris/ui/server";
 import { getLocale } from "@/lib/i18n.server";
 import { messagesFor } from "@/lib/messages/index.js";
 
@@ -15,25 +16,20 @@ export const metadata = {
   description: "FAW HR — applicant tracking. Let’s jump into it.",
 };
 
-// Runs synchronously in <head> BEFORE first paint, so the correct theme is applied with no
-// flash of the wrong colors. Self-contained (can't import modules this early). Mirrors
-// lib/theme.js: read the saved preference, fall back to "system" → the OS setting.
-const THEME_SCRIPT = `(function(){try{var t=localStorage.getItem('theme');if(t!=='light'&&t!=='dark')t='system';var d=t==='dark'||(t==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);var e=document.documentElement;e.classList.toggle('dark',d);e.style.colorScheme=d?'dark':'light';}catch(_){}})();`;
-
 export default async function RootLayout({ children }) {
   const locale = await getLocale();
   const messages = messagesFor(locale);
 
   return (
-    // suppressHydrationWarning: the script above sets the `dark` class before React hydrates,
-    // which would otherwise be flagged as a server/client attribute mismatch on <html>.
+    // suppressHydrationWarning: <ThemeScript> sets the `dark` class before React hydrates, which
+    // would otherwise be flagged as a server/client attribute mismatch on <html>.
     <html
       lang={locale}
       suppressHydrationWarning
       className={`${manrope.variable} ${inter.variable} ${plexSans.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        <ThemeScript />
       </head>
       {/* The root layout holds ONLY the document shell + providers. The app header lives in the
           (internal) route group, so the public careers site never renders internal navigation. */}

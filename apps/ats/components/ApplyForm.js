@@ -18,13 +18,18 @@ const EEO_FIELD_NAMES = {
   disabilityStatus: "eeoDisabilityStatus",
 };
 
-// The public apply form. encType is multipart so the résumé file reaches the server action.
+// The public apply form.
+//
+// No encType here, deliberately: React sets multipart/form-data automatically for a form whose
+// action is a function, and specifying it manually is both redundant and overridden — it logs
+// "Cannot specify a encType or method for a form that specifies a function as the action". The
+// résumé still reaches the server action; React handles the encoding.
 export function ApplyForm({ jobId }) {
   const t = useT();
   const [state, action, pending] = useActionState(submitApplication.bind(null, jobId), undefined);
 
   return (
-    <form action={action} encType="multipart/form-data" className="flex flex-col gap-4">
+    <form action={action} className="flex flex-col gap-4">
       {/* Honeypot: visually hidden, not display:none (some bots skip hidden inputs), never focusable
           or announced. A human never fills this; a bot fills every field it finds. */}
       <div aria-hidden="true" className="absolute left-[-9999px] h-0 w-0 overflow-hidden">

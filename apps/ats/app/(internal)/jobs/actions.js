@@ -9,6 +9,7 @@ import {
   canTransition,
   firstRound,
   nextRound,
+  hasRemainingRounds,
   jobSchema,
   interviewRoundSchema,
   jobMemberSchema,
@@ -166,6 +167,64 @@ export async function setJobPublished(jobId, publish, _prevState) {
   }
   revalidatePath(`/jobs/${jobId}/manage`);
   revalidatePath("/careers");
+  return { ok: true };
+}
+
+/**
+ * Reopen a WITHDRAWN application (M13).
+ *
+ * Exists because a withdrawal was a one-click, unrecoverable action with nothing to drag back —
+ * withdrawn cards sit in the Closed list, not a column. Only WITHDRAWN can be reopened; REJECTED
+ * stays permanent (see ALLOWED_STAGE_TRANSITIONS for why the two differ).
+ *
+ * It restores the stage the candidate was AT when they withdrew, read from the append-only trail:
+ * the `fromStage` of their most recent withdrawal event. Dropping someone back to APPLIED when they
+ * were mid-interview would be its own small data loss, and the trail already knows the answer.
+ * APPLIED is the fallback when no such event exists (e.g. seeded data).
+ */
+export async function reopenApplication(jobId, appId, _prevState) {
+  const t = await getT();
+  const viewer = await getViewer();
+  if (!viewer) return { error: t("err.notAuthorized") };
+
+  try {
+    await withViewer(viewer, async (tx) => {
+      const app = await requireManageableApplication(tx, viewer, jobId, appId, t);
+      if (app.stage !== "WITHDRAWN") throw new Error(t("err.notWithdrawn"));
+
+      const lastWithdrawal = await tx.applicationEvent.findFirst({
+        where: { applicationId: appId, toStage: "WITHDRAWN" },
+        orderBy: { occurredAt: "desc" },
+        select: { fromStage: true },
+      });
+      const toStage = lastWithdrawal?.fromStage ?? "APPLIED";
+      // The trail is data like any other; if it somehow names a stage we can no longer return to,
+      // fall back rather than write something the rules forbid.
+      const target = canTransition("WITHDRAWN", toStage) ? toStage : "APPLIED";
+
+      const entering = target === "INTERVIEW";
+      const first = entering ? firstRound(app.job.interviewRounds) : null;
+
+      await tx.application.update({
+        where: { id: appId },
+        data: { stage: target, currentRoundId: entering ? (first?.id ?? null) : null },
+      });
+      await tx.applicationEvent.create({
+        data: {
+          applicationId: appId,
+          jobId,
+          fromStage: "WITHDRAWN",
+          toStage: target,
+          roundName: entering ? (first?.name ?? null) : null,
+          actorId: viewer.userId,
+        },
+      });
+    });
+  } catch (e) {
+    return { error: errorMessage(e) ?? t("err.moveFailed") };
+  }
+
+  revalidatePath(`/jobs/${jobId}`);
   return { ok: true };
 }
 
@@ -415,7 +474,26 @@ export async function moveApplication(jobId, appId, _prevState, formData) {
       const app = await requireManageableApplication(tx, viewer, jobId, appId, t);
       if (!canTransition(app.stage, toStage)) throw new Error(t("err.invalidTransition"));
 
+      // You may not leave INTERVIEW for OFFER with rounds still to run.
+      //
+      // The buttons always expressed this implicitly — while rounds remain, a card offers "Next
+      // round" and never "Advance to Offer" — but a DRAG has no implicit path, so the rule has to be
+      // enforced explicitly here. The board dims Offer as a drop target for the same reason, using
+      // this same predicate: the affordance and the enforcement must not be able to disagree, and
+      // the server is the one that decides.
+      if (
+        app.stage === "INTERVIEW" &&
+        toStage === "OFFER" &&
+        hasRemainingRounds(app.job.interviewRounds, app.currentRoundId)
+      ) {
+        throw new Error(t("err.roundsRemaining"));
+      }
+
       // Entering INTERVIEW seeds the first round; leaving it clears the pointer.
+      //
+      // Note what a BACKWARD move into INTERVIEW does (possible since Polish B): it re-seeds round 1,
+      // so a re-interview restarts the sequence. The rounds the candidate already sat are not lost —
+      // they are in the append-only trail with their roundName snapshots.
       const entering = toStage === "INTERVIEW";
       const first = entering ? firstRound(app.job.interviewRounds) : null;
 
