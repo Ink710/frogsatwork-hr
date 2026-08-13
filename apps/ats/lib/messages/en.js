@@ -38,6 +38,7 @@ const en = {
   "nav.home": "Jobs",
   "nav.jobs": "Jobs",
   "nav.candidates": "Candidates",
+  "nav.leads": "Leads",
   "nav.preferences": "Preferences",
   "nav.signOut": "Sign out",
 
@@ -428,6 +429,36 @@ const en = {
   // ── Archive / retention (M11) ──────────────────────────────────────────────
   "archive.title": "Talent pool",
   "archive.badge": "Archived",
+
+  // Great leads (M16)
+  "lead.title": "Great lead",
+  "lead.badge": "Lead",
+  "lead.hint":
+    "Strong candidate, wrong role? Mark them so they surface when the next requisition opens.",
+  "lead.note": "Why they're worth revisiting",
+  "lead.notePlaceholder": "e.g. Excellent systems depth — revisit for a staff backend role.",
+  "lead.mark": "Mark as a great lead",
+  "lead.marking": "Marking…",
+  "lead.unmark": "Remove from leads",
+  "lead.unmarking": "Removing…",
+  "lead.markedBy": "Marked by {name}",
+  "lead.markedByUnknown": "Marked as a great lead",
+  "lead.markedOn": "Marked {date}",
+  "lead.poolTitle": "Great leads",
+  "lead.poolSubtitle":
+    "People worth calling when the next role opens. Leads still follow the retention policy, so some may be archived — they stay listed here on purpose.",
+  "lead.backToCandidates": "← All candidates",
+  "lead.searchPlaceholder": "Search name, email or note",
+  "lead.searchButton": "Search",
+  "lead.count": "{n} lead(s)",
+  "lead.empty":
+    "No leads yet. Open a candidate you rated highly and mark them — this is where they'll be waiting.",
+  "lead.noMatch": "No leads match that search.",
+
+  "err.leadForbidden": "Only someone managing one of this candidate's requisitions can mark them.",
+  "err.leadHired": "This person was hired — their record lives in employee records now.",
+  "err.leadNotFound": "That candidate can't be marked.",
+  "err.leadFailed": "Couldn’t update the lead. Please try again.",
   "archive.archive": "Archive candidate",
   "archive.archiving": "Archiving…",
   "archive.restore": "Restore to the active pool",

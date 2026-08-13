@@ -513,6 +513,8 @@ model Employee {
   erasureRequestsResolved ErasureRequest[]       @relation("ErasureResolvedBy")
   // Retention (ATS M11): candidates this person archived by hand (the sweep leaves this null).
   candidatesArchived      Candidate[]            @relation("CandidateArchivedBy")
+  // Great leads (ATS M16): candidates this person flagged as worth revisiting.
+  candidatesMarkedAsLeads Candidate[]            @relation("CandidateLeadMarkedBy")
 
   // Employee numbers are unique within an organization, not globally.
   @@unique([orgId, employeeNumber])
@@ -1132,6 +1134,24 @@ model Candidate {
   archivedById String?
   archivedBy   Employee? @relation("CandidateArchivedBy", fields: [archivedById], references: [id])
 
+  // ── Great leads (M16) ─────────────────────────────────────────────────────────────────────────
+  // "Strong, wrong role — call them when the next one opens." Same shape as the two states above: a
+  // nullable timestamp plus who set it, because this table already expresses "a state a person is
+  // in" that way and a boolean would throw away when the judgement was made.
+  //
+  // ⚠️ A LEAD IS STILL SWEPT BY THE RETENTION POLICY (see isEligibleForArchive, which deliberately
+  // does NOT check these columns). Keeping someone in the ACTIVE pool forever because we once liked
+  // them is exactly the indefinite retention the policy exists to bound. The pool at
+  // /candidates/leads is what keeps them findable, and it shows archived leads on purpose — without
+  // that, the sweep would silently empty the feature about a year after launch.
+  //
+  // ⚠️ ALL THREE ARE CLEARED BY app_erase_candidate. leadNote is free text that can name a person,
+  // and a shell has no name, email or phone — so an erased lead is both a privacy leak and useless.
+  leadMarkedAt   DateTime?
+  leadMarkedById String?
+  leadMarkedBy   Employee? @relation("CandidateLeadMarkedBy", fields: [leadMarkedById], references: [id])
+  leadNote       String?
+
   orgId String
   org   Organization @relation(fields: [orgId], references: [id])
 
@@ -1146,6 +1166,9 @@ model Candidate {
   // no future `migrate diff` tries to drop an index it doesn't know about.)
   @@index([orgId, anonymisedAt])
   @@index([orgId, archivedAt])
+  // The leads pool filters on "marked" and orders by it — and unlike the two above it is a SMALL
+  // subset of a large table, which is the case an index helps most.
+  @@index([orgId, leadMarkedAt])
   // Trigram index for the candidate search. `getCandidates` matches with `contains` +
   // mode:"insensitive", which Prisma emits as ILIKE '%token%' — a pattern a normal B-tree cannot
   // serve at all, so the search was a guaranteed sequential scan. GIN + gin_trgm_ops is the index

@@ -1,4 +1,4 @@
-import { auth, signOut } from "@hris/auth";
+import { auth, signOut, isRecruiter } from "@hris/auth";
 import { getT } from "@/lib/i18n.server";
 import { AppShellHeader } from "@hris/ui/server";
 
@@ -31,11 +31,28 @@ export async function AppHeader() {
   // thing from them.
   const canSeeCompliance = role === "HR_ADMIN" || role === "HR_GENERALIST";
 
+  // The leads pool is a SOURCING tool, and sourcing is a recruiter's job (M16, revised).
+  //
+  // ⚠️ WHY THIS IS ROLE-GATED WHERE THE JOBS AND CANDIDATES LINKS ARE NOT. Those two are honest when
+  // RLS narrows them: a hiring manager's job list IS their jobs, and it says so. The leads pool is
+  // different — its value is finding someone from a req you were NOT on, so an RLS-narrowed pool
+  // shows a manager a fraction while looking like the whole thing. Someone seeing 3 leads and
+  // concluding that's all there is, when there are 40, is the trap M9 avoided by hiding the
+  // interviewer-load report outright: a wrong number is worse than a hidden section.
+  //
+  // Managers still MARK leads — their judgement is exactly what fills this list. They just aren't
+  // its audience. (Mirrors compliance: the page 404s regardless; this only stops advertising a door
+  // that won't open.)
+  // `isRecruiter` is a pure role predicate (no DB round-trip), so reusing it here costs nothing and
+  // keeps "who is a recruiter" in one place rather than restating the role list.
+  const canSeeLeads = isRecruiter(role);
+
   return (
     <AppShellHeader
       navItems={[
         { href: "/", label: t("nav.jobs") },
         { href: "/candidates", label: t("nav.candidates") },
+        ...(canSeeLeads ? [{ href: "/candidates/leads", label: t("nav.leads") }] : []),
         { href: "/reports", label: t("nav.reports") },
         ...(canSeeCompliance ? [{ href: "/compliance", label: t("nav.compliance") }] : []),
       ]}

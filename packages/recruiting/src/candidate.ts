@@ -68,6 +68,19 @@ export const erasureDecisionSchema = z.object({
   note: z.string().trim().max(1000).optional(),
 });
 
+/**
+ * Marking someone as a great lead (M16) — "strong, wrong role, call them next time".
+ *
+ * The note is OPTIONAL: the mark alone is a useful signal, and forcing a sentence out of someone in
+ * a hurry produces "good" and "nice" rather than nothing, which is worse than nothing because it
+ * looks like information. When it IS written it becomes searchable alongside name and email, which
+ * is what makes the pool answer "who did we like for backend work?" rather than just listing people.
+ */
+export const leadSchema = z.object({
+  note: z.string().trim().max(500, "Keep the note under 500 characters.").optional(),
+});
+export type LeadInput = z.infer<typeof leadSchema>;
+
 // The structured reasons a candidate can be rejected for (M12). Fixed and org-wide: per-requisition
 // values can't be compared across requisitions, and comparison is the whole point.
 export const REJECTION_REASONS = [

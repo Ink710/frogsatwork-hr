@@ -37,6 +37,7 @@ const es = {
   "nav.home": "Vacantes",
   "nav.jobs": "Vacantes",
   "nav.candidates": "Candidatos",
+  "nav.leads": "Prospectos",
   "nav.preferences": "Preferencias",
   "nav.signOut": "Cerrar sesión",
 
@@ -422,6 +423,36 @@ const es = {
   // ── Archivo / retención (M11) ──────────────────────────────────────────────
   "archive.title": "Cantera de talento",
   "archive.badge": "Archivado",
+
+  // Prospectos destacados (M16)
+  "lead.title": "Prospecto destacado",
+  "lead.badge": "Prospecto",
+  "lead.hint":
+    "¿Buena candidatura, puesto equivocado? Márcala para que aparezca cuando se abra la próxima vacante.",
+  "lead.note": "Por qué vale la pena retomarla",
+  "lead.notePlaceholder": "p. ej. Gran profundidad en sistemas: retomar para un puesto staff de backend.",
+  "lead.mark": "Marcar como prospecto destacado",
+  "lead.marking": "Marcando…",
+  "lead.unmark": "Quitar de prospectos",
+  "lead.unmarking": "Quitando…",
+  "lead.markedBy": "Marcado por {name}",
+  "lead.markedByUnknown": "Marcado como prospecto destacado",
+  "lead.markedOn": "Marcado el {date}",
+  "lead.poolTitle": "Prospectos destacados",
+  "lead.poolSubtitle":
+    "Personas a las que llamar cuando se abra el próximo puesto. Los prospectos siguen la política de retención, así que algunos pueden estar archivados: aparecen aquí a propósito.",
+  "lead.backToCandidates": "← Todos los candidatos",
+  "lead.searchPlaceholder": "Buscar nombre, correo o nota",
+  "lead.searchButton": "Buscar",
+  "lead.count": "{n} prospecto(s)",
+  "lead.empty":
+    "Todavía no hay prospectos. Abre una candidatura que te haya gustado y márcala: aquí te estará esperando.",
+  "lead.noMatch": "Ningún prospecto coincide con esa búsqueda.",
+
+  "err.leadForbidden": "Solo alguien que gestione una de las vacantes de esta candidatura puede marcarla.",
+  "err.leadHired": "Esta persona fue contratada: su expediente ya vive en registros de empleados.",
+  "err.leadNotFound": "Esa candidatura no se puede marcar.",
+  "err.leadFailed": "No se pudo actualizar el prospecto. Inténtalo de nuevo.",
   "archive.archive": "Archivar candidato",
   "archive.archiving": "Archivando…",
   "archive.restore": "Devolver a la lista activa",

@@ -402,6 +402,11 @@ export async function getCandidates({
         { firstName: { contains: token, mode: "insensitive" } },
         { lastName: { contains: token, mode: "insensitive" } },
         { email: { contains: token, mode: "insensitive" } },
+        // M16: the lead note is searchable too, so "who did we like for backend work?" is a query
+        // rather than a memory. Note this field is NOT covered by the trigram index above — it's a
+        // small, sparse column (only marked candidates have one), so the planner is welcome to scan
+        // it; adding a fourth GIN column would cost every write for a rare read.
+        { leadNote: { contains: token, mode: "insensitive" } },
       ],
     });
   }
@@ -485,6 +490,8 @@ export async function getCandidates({
           anonymisedAt: c.anonymisedAt,
           // Archived people render normally with a muted pill — they're intact, just not active.
           archivedAt: c.archivedAt,
+          // M16: a small pill on the row, so a lead is recognisable without opening the profile.
+          leadMarkedAt: c.leadMarkedAt,
           applicationCount: countByCandidate.get(c.id) ?? 0,
           latest: latest && {
             id: latest.id,
@@ -550,6 +557,20 @@ export async function getCandidateProfile(candidateId) {
       const person = (await orgDirectory(tx, viewer.orgId)).find((p) => p.id === candidate.archivedById);
       archivedByName = person ? `${person.firstName} ${person.lastName}` : null;
     }
+    // Same structural resolution for who marked them as a lead (M16).
+    let leadMarkedByName = null;
+    if (candidate.leadMarkedById) {
+      const person = (await orgDirectory(tx, viewer.orgId)).find((p) => p.id === candidate.leadMarkedById);
+      leadMarkedByName = person ? `${person.firstName} ${person.lastName}` : null;
+    }
+
+    // May this viewer mark them? Two conditions, and they answer different questions: the first is
+    // authority (do you manage a req they applied to — which excludes interviewers), the second is
+    // whether the mark makes any sense (someone already hired is not a future lead, they're staff).
+    const canMarkLead =
+      (await viewerManagesCandidateReq(tx, candidateId)) &&
+      !applications.some((a) => a.stage === "HIRED");
+
     return {
       ...candidate,
       // Shaped exactly as the include produced it, so the profile page is untouched.
@@ -558,6 +579,120 @@ export async function getCandidateProfile(candidateId) {
         currentRound: a.currentRoundId ? (roundsById.get(a.currentRoundId) ?? null) : null,
       })),
       archivedByName,
+      leadMarkedByName,
+      canMarkLead,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Great leads (M16) — "strong, wrong role; call them when the next one opens."
+// ---------------------------------------------------------------------------
+
+/**
+ * Does the viewer MANAGE at least one requisition this candidate applied to?
+ *
+ * The mark is per-PERSON but the authority is per-JOB, and a candidate may have applied to several
+ * reqs — so the question has to be asked across their applications. Reuses `app_can_manage_job`, the
+ * same function the RLS write policies call, rather than inventing a parallel rule.
+ *
+ * ⚠️ THIS CHECK IS LEAD-MARKING'S ONLY REAL GATE, and it must not be skipped anywhere. RLS on
+ * Candidate is `FOR ALL USING app_can_see_candidate`, which correctly stops a hiring manager
+ * touching someone outside their reqs — but an INTERVIEWER can see those same rows, so the database
+ * alone would let them mark. Verified in psql, not assumed: Diego's raw UPDATE returns "UPDATE 1".
+ * App-layer is the right strength here for M11's reason — marking is undone by pressing the other
+ * button — but it means the check has to actually be called.
+ */
+export async function viewerManagesCandidateReq(tx, candidateId) {
+  const [row] = await tx.$queryRaw`
+    SELECT EXISTS (
+      SELECT 1 FROM "Application" a
+      WHERE a."candidateId" = ${candidateId} AND app_can_manage_job(a."jobId")
+    ) AS ok`;
+  return Boolean(row?.ok);
+}
+
+// May this viewer BROWSE the leads pool? Recruiters and HR — see getLeadPool for why this is a role
+// check rather than "whoever can see the candidates".
+export function canBrowseLeadPool(viewer) {
+  return Boolean(viewer) && isRecruiter(viewer.role);
+}
+
+/**
+ * The leads pool.
+ *
+ * ⚠️ ARCHIVED LEADS ARE INCLUDED, DELIBERATELY, and this is the milestone's central decision made
+ * concrete. Leads are swept by the retention policy like everyone else (isEligibleForArchive does
+ * not know about them), so about a year after launch the pool would quietly empty itself if it
+ * inherited the candidate list's "hide archived" default. Showing them here — with a pill saying
+ * they're archived — is what keeps the retention promise AND the feature at the same time.
+ *
+ * ⚠️ READING IS RESTRICTED TO RECRUITERS AND HR, WHICH IS NOT THE SAME AS WHO MAY MARK. Hiring
+ * managers mark leads — their judgement is what fills this list — but they are not its audience, and
+ * letting them browse it would be actively misleading rather than merely generous: RLS would narrow
+ * the pool to candidates who applied to THEIR reqs, and the whole value of a leads pool is finding
+ * someone from a req you were not on. A manager seeing 3 leads would have no way to tell there are
+ * 40. That is the trap M9 avoided by hiding the interviewer-load report outright rather than showing
+ * a silently partial one — a wrong number is worse than a hidden section.
+ *
+ * It also keeps a lead note — a manager's private read on someone — away from interviewers, who
+ * could otherwise carry "Raj rates this person highly" into an interview for a different req: the
+ * anchoring M7 exists to prevent, arriving by another route.
+ *
+ * Erased shells are excluded, and cannot appear anyway: app_erase_candidate clears the mark.
+ */
+export async function getLeadPool({ q, page = 1 } = {}) {
+  const viewer = await getViewer();
+  const empty = { rows: [], total: 0, page: 1, pageSize: CANDIDATE_PAGE_SIZE, pageCount: 1 };
+  if (!canBrowseLeadPool(viewer)) return empty;
+
+  const and = [{ leadMarkedAt: { not: null } }, { anonymisedAt: null }];
+  for (const token of (q ?? "").trim().split(/\s+/).filter(Boolean)) {
+    and.push({
+      OR: [
+        { firstName: { contains: token, mode: "insensitive" } },
+        { lastName: { contains: token, mode: "insensitive" } },
+        { email: { contains: token, mode: "insensitive" } },
+        { leadNote: { contains: token, mode: "insensitive" } },
+      ],
+    });
+  }
+  const where = { AND: and };
+
+  return withViewer(viewer, async (tx) => {
+    const total = await tx.candidate.count({ where });
+    const pageCount = Math.max(1, Math.ceil(total / CANDIDATE_PAGE_SIZE));
+    const safePage = Math.min(Math.max(1, page | 0 || 1), pageCount);
+
+    const rows = await tx.candidate.findMany({
+      where,
+      // Newest judgement first: the pool is a worklist, and the freshest opinion is the most useful.
+      orderBy: { leadMarkedAt: "desc" },
+      skip: (safePage - 1) * CANDIDATE_PAGE_SIZE,
+      take: CANDIDATE_PAGE_SIZE,
+    });
+
+    // Marker names resolved structurally (a recruiter has no employee-records access), in ONE
+    // directory read for the whole page rather than per row.
+    const directory = rows.some((c) => c.leadMarkedById) ? await orgDirectory(tx, viewer.orgId) : [];
+    const byId = new Map(directory.map((p) => [p.id, p]));
+
+    return {
+      rows: rows.map((c) => ({
+        id: c.id,
+        name: `${c.firstName} ${c.lastName}`,
+        email: c.email,
+        leadNote: c.leadNote,
+        leadMarkedAt: c.leadMarkedAt,
+        leadMarkedByName: byId.get(c.leadMarkedById)
+          ? `${byId.get(c.leadMarkedById).firstName} ${byId.get(c.leadMarkedById).lastName}`
+          : null,
+        archivedAt: c.archivedAt,
+      })),
+      total,
+      page: safePage,
+      pageSize: CANDIDATE_PAGE_SIZE,
+      pageCount,
     };
   });
 }

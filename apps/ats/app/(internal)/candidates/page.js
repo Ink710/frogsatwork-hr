@@ -168,6 +168,12 @@ export default async function CandidatesPage({ searchParams }) {
                               {t("archive.badge")}
                             </span>
                           )}
+                          {/* M16: recognisable as a lead without opening the profile. */}
+                          {c.leadMarkedAt && (
+                            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                              {t("lead.badge")}
+                            </span>
+                          )}
                         </div>
                         <p className="font-mono text-xs text-muted-foreground">{c.email}</p>
                         {c.source && <p className="mt-0.5 text-xs text-muted-foreground">{c.source}</p>}

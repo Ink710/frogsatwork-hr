@@ -701,7 +701,10 @@ async function main() {
   // Candidates (people) — deduped by email within the org.
   const CANDIDATES = [
     { id: "cand-nora", firstName: "Nora", lastName: "Adeyemi", email: "nora.adeyemi@example.com", source: "LinkedIn" },
-    { id: "cand-owen", firstName: "Owen", lastName: "Zhang", email: "owen.zhang@example.com", source: "Referral" },
+    // Owen is REJECTED on the design req but strong — the exact person the great-leads pool (M16)
+    // exists for, and already the cross-job persona, so the demo needs no extra candidate.
+    { id: "cand-owen", firstName: "Owen", lastName: "Zhang", email: "owen.zhang@example.com", source: "Referral",
+      lead: "Excellent systems depth and communication — revisit for a staff backend role." },
     { id: "cand-mei", firstName: "Mei", lastName: "Tanaka", email: "mei.tanaka@example.com", source: "Careers page" },
     { id: "cand-luis", firstName: "Luis", lastName: "Romero", email: "luis.romero@example.com", source: "Referral" },
   ];
@@ -720,8 +723,25 @@ async function main() {
         anonymisedAt: null,
         anonymisedById: null,
         anonymisationNote: null,
+        // Same re-assertion for the M16 lead mark: mark or unmark someone in the browser, reseed,
+        // and the fixture is back. Raj is the marker so the profile shows a real name rather than
+        // the "marked by nobody" path.
+        leadMarkedAt: c.lead ? new Date("2026-08-01T10:00:00.000Z") : null,
+        leadMarkedById: c.lead ? PEOPLE.raj.empId : null,
+        leadNote: c.lead ?? null,
       },
-      create: { id: c.id, ...c, orgId: ORG_ID },
+      create: {
+        id: c.id,
+        firstName: c.firstName,
+        lastName: c.lastName,
+        email: c.email,
+        source: c.source,
+        phone: c.phone ?? null,
+        orgId: ORG_ID,
+        leadMarkedAt: c.lead ? new Date("2026-08-01T10:00:00.000Z") : null,
+        leadMarkedById: c.lead ? PEOPLE.raj.empId : null,
+        leadNote: c.lead ?? null,
+      },
     });
   }
 
@@ -999,6 +1019,7 @@ async function main() {
     erasureRequests: await prisma.erasureRequest.count(),
     salaryBands: await prisma.salaryBand.count(),
     offers: await prisma.offer.count(),
+    greatLeads: await prisma.candidate.count({ where: { leadMarkedAt: { not: null } } }),
   };
   console.log("Seed complete:", counts);
 }
@@ -1096,12 +1117,17 @@ async function seedEeoVolume() {
   // These live in the opt-in tier deliberately: adding them to the base fixture would move the
   // exact counts that candidates.itest.js and reports.itest.js assert, and those numbers encode what
   // M4 and M9 actually verified. The sweep's own tests build their fixtures inline instead.
+  //
+  // Vera also carries a LEAD MARK (M16), which makes the milestone's central decision demoable in
+  // one screen: she is old enough for the sweep to archive, and once it does she DISAPPEARS from
+  // /candidates but REMAINS in /candidates/leads with an "Archived" pill. That pairing is the whole
+  // argument for the pool being its own page rather than a filter.
   const COLD = [
-    ["Vera", "Rubin", "2023-11-02"],
-    ["Grace", "Hopper", "2024-01-18"],
-    ["Katherine", "Johnson", "2024-03-07"],
+    ["Vera", "Rubin", "2023-11-02", "Outstanding data work — worth a call if an analytics req opens."],
+    ["Grace", "Hopper", "2024-01-18", null],
+    ["Katherine", "Johnson", "2024-03-07", null],
   ];
-  for (const [i, [firstName, lastName, on]] of COLD.entries()) {
+  for (const [i, [firstName, lastName, on, lead]] of COLD.entries()) {
     const n = String(i + 1).padStart(2, "0");
     const at = new Date(`${on}T12:00:00.000Z`);
     const candidateId = `cand-cold-${n}`;
@@ -1109,7 +1135,14 @@ async function seedEeoVolume() {
 
     await prisma.candidate.upsert({
       where: { id: candidateId },
-      update: { archivedAt: null, archivedById: null }, // repeatable: reseed un-archives them
+      // Repeatable: reseed un-archives them and restores the lead mark.
+      update: {
+        archivedAt: null,
+        archivedById: null,
+        leadMarkedAt: lead ? at : null,
+        leadMarkedById: lead ? PEOPLE.raj.empId : null,
+        leadNote: lead ?? null,
+      },
       create: {
         id: candidateId,
         firstName,
@@ -1118,6 +1151,9 @@ async function seedEeoVolume() {
         source: "Careers page",
         orgId: ORG_ID,
         createdAt: at,
+        leadMarkedAt: lead ? at : null,
+        leadMarkedById: lead ? PEOPLE.raj.empId : null,
+        leadNote: lead ?? null,
       },
     });
     await prisma.application.upsert({

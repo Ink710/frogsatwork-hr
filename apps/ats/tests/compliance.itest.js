@@ -300,6 +300,25 @@ describe("erasing a candidate", () => {
     expect(offer.bandMinSnapshot.toString()).toBe("120000");
   });
 
+  it("destroys the great-lead mark AND its note (M16)", async () => {
+    // The lead mark is the ONE thing here that isn't process data: it's a standing instruction to
+    // CONTACT THIS PERSON AGAIN. Once identity is gone there is nobody to contact, so leaving the
+    // flag set would park an empty shell in a recruiter's call list forever. The note goes for the
+    // ordinary reason — free text that can name someone.
+    await withViewer(V.ana, (tx) => tx.$executeRaw`
+      UPDATE "Candidate" SET "leadMarkedAt" = now(),
+                             "leadMarkedById" = ${V.raj.employeeId},
+                             "leadNote" = 'Mei is close friends with Marcus — he vouched for her'
+       WHERE id = 'cand-mei'`);
+
+    await erase("cand-mei");
+
+    const shell = await withViewer(V.ana, (tx) => tx.candidate.findUnique({ where: { id: "cand-mei" } }));
+    expect(shell.leadMarkedAt).toBeNull();
+    expect(shell.leadMarkedById).toBeNull();
+    expect(shell.leadNote).toBeNull();
+  });
+
   it("leaves the append-only history itself intact — stages, timestamps and ratings all survive", async () => {
     const before = await withViewer(V.ana, (tx) =>
       tx.applicationEvent.findMany({ where: { applicationId: "app-mei" }, orderBy: { occurredAt: "asc" } }),

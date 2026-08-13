@@ -8,6 +8,7 @@ import { getCandidateProfile, canManageErasure, canArchiveCandidate } from "@/li
 import { StageBadge } from "@/components/recruiting-ui";
 import { EraseCandidateForm } from "@/components/ErasureActions";
 import { ArchiveControl } from "@/components/ArchiveControl";
+import { LeadControl } from "@/components/LeadControl";
 
 // One person, every application. This is what the Candidate/Application split from M1 exists for:
 // "have we seen this person before?" is answerable at a glance, including past rejections.
@@ -85,6 +86,20 @@ export default async function CandidateProfilePage({ params }) {
         {/* Archiving sits ABOVE erasure on purpose: it's the reversible option, and the one a
             recruiter reaching for "get this out of my way" actually wants. Hidden for erased shells
             — the tombstone is already out of the pool. */}
+        {/* Great leads (M16) sits above archiving: it's the constructive act, and the one worth
+            reaching for while the rejection is still fresh in mind. Hidden for erased shells (there
+            is nobody left to call) and for anyone the viewer doesn't manage a req for. */}
+        {candidate.canMarkLead && !erased && (
+          <Card title={t("lead.title")}>
+            <LeadControl
+              candidateId={candidate.id}
+              marked={Boolean(candidate.leadMarkedAt)}
+              note={candidate.leadNote}
+              markedByName={candidate.leadMarkedByName}
+            />
+          </Card>
+        )}
+
         {canArchive && !erased && (
           <Card title={t("archive.title")}>
             {archived && (
