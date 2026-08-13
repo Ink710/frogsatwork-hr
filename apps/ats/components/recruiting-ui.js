@@ -48,6 +48,25 @@ export function RecommendationBadge({ recommendation, label }) {
   );
 }
 
+/**
+ * The posted pay range on a public listing (M14).
+ *
+ * Renders NOTHING when the figures are absent, and that absence covers two different situations on
+ * purpose: the req has no band, or it has one the operator chose not to post. app_public_jobs()
+ * returns NULLs for both, so a visitor cannot tell them apart — the careers page must not become a
+ * way to ask whether an unadvertised band exists.
+ */
+export function SalaryRange({ job, formatMoney, locale, basisLabel }) {
+  if (job.salaryMin == null || job.salaryMax == null) return null;
+  const currency = job.currency ?? "USD";
+  return (
+    <p className="font-mono text-sm text-foreground">
+      {formatMoney(job.salaryMin, currency, locale)} – {formatMoney(job.salaryMax, currency, locale)}
+      {basisLabel && <span className="ml-1 font-sans text-xs text-muted-foreground">{basisLabel}</span>}
+    </p>
+  );
+}
+
 export function JobStatusBadge({ status, label }) {
   return (
     <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${JOB_STATUS_TONE[status] ?? JOB_STATUS_TONE.DRAFT}`}>

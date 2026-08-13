@@ -894,6 +894,68 @@ async function main() {
     create: { key: "candidateRetentionDays", value: "365" },
   });
 
+  // 19. Compensation (M14) — a band on the backend req, and Luis's live offer against it.
+  //
+  //     job-pd is deliberately left WITHOUT a band, so the "no approved band" state stays visible in
+  //     the UI (same reasoning as its missing EEO-1 category: the gap a real system has to handle is
+  //     more interesting to look at than a tidy dataset).
+  //
+  //     The band is POSTED PUBLICLY so the careers page demonstrates pay transparency. Note who can
+  //     see what after this seed: Raj and Marcus read the band and the offer; Diego and Tom
+  //     (INTERVIEWERs on the same req) read neither, and neither does Bianca — the DB refuses them
+  //     the rows. A stranger on /careers sees the range and nothing else.
+  await prisma.salaryBand.upsert({
+    where: { jobId: "job-be" },
+    update: {
+      salaryMin: 120000,
+      salaryMax: 160000,
+      currency: "USD",
+      payBasis: "PER_YEAR",
+      postPublicly: true,
+    },
+    create: {
+      id: "band-be",
+      jobId: "job-be",
+      salaryMin: 120000,
+      salaryMax: 160000,
+      currency: "USD",
+      payBasis: "PER_YEAR",
+      postPublicly: true,
+    },
+  });
+
+  // Luis sits at OFFER, so his offer is EXTENDED — the state where the accept/decline/revise
+  // controls are all live. Inside the band (150k against 120–160k, compa-ratio 1.07), so the
+  // out-of-band justification stays unasked-for until someone demos it.
+  //
+  // The update branch RE-ASSERTS the status: a demo that extends, accepts or revises this offer is
+  // undone by a reseed instead of needing a full `migrate reset`. Same trick as the anonymisation
+  // columns on the candidate upserts.
+  await prisma.offer.upsert({
+    where: { id: "offer-luis-v1" },
+    update: {
+      status: "EXTENDED",
+      salary: 150000,
+      bandMinSnapshot: 120000,
+      bandMaxSnapshot: 160000,
+    },
+    create: {
+      id: "offer-luis-v1",
+      applicationId: "app-luis",
+      jobId: "job-be",
+      createdById: PEOPLE.raj.userId,
+      version: 1,
+      status: "EXTENDED",
+      salary: 150000,
+      currency: "USD",
+      payBasis: "PER_YEAR",
+      startDate: new Date("2026-09-01T00:00:00.000Z"),
+      notes: "Verbal yes pending the written offer.",
+      bandMinSnapshot: 120000,
+      bandMaxSnapshot: 160000,
+    },
+  });
+
   // OPT-IN demo volume. `SEED_DEMO_VOLUME=1 pnpm --filter @hris/database db:seed` adds a cohort of
   // extra applicants so the EEO aggregates clear the suppression threshold and the compliance report
   // shows real numbers instead of a wall of dashes.
@@ -935,6 +997,8 @@ async function main() {
       (await prisma.$queryRaw`SELECT count(*)::int AS n FROM "EeoResponse"`)[0].n,
     ),
     erasureRequests: await prisma.erasureRequest.count(),
+    salaryBands: await prisma.salaryBand.count(),
+    offers: await prisma.offer.count(),
   };
   console.log("Seed complete:", counts);
 }

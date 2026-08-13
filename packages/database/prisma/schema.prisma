@@ -338,6 +338,21 @@ enum EeoExportVariant {
 // destroyed) or REFUSED (with a note — e.g. the person is now an employee and retention applies).
 // There is no "cancelled" — a request that was made is a fact, and silently dropping it is exactly
 // the behaviour the right to erasure exists to prevent.
+// The lifecycle of one offer version (ATS M14). The shape is M7's scorecard lifecycle — draft
+// freely, lock on submit — because an offer has the same property: it is a considered position that
+// becomes a commitment the moment it leaves the building.
+//
+// ACCEPTED is terminal. EXTENDED and DECLINED may be REVISED, which supersedes the version rather
+// than editing it: "what did we first offer, and what did they sign?" is a question a hiring
+// post-mortem actually asks, and an in-place edit destroys the answer.
+enum OfferStatus {
+  DRAFT
+  EXTENDED
+  ACCEPTED
+  DECLINED
+  SUPERSEDED
+}
+
 enum ErasureRequestStatus {
   PENDING
   COMPLETED
@@ -423,6 +438,8 @@ model User {
   applicationEvents      ApplicationEvent[]     @relation("ApplicationEventActor")
   // Compliance (ATS M12): EEO exports this user produced.
   eeoExports             EeoExportLog[]         @relation("EeoExportActor")
+  // Compensation (ATS M14): who wrote an offer.
+  offersCreated          Offer[]                @relation("OfferCreatedBy")
 
   @@index([orgId])
 }
@@ -1026,6 +1043,10 @@ model Job {
   competencies      JobCompetency[]
   scorecards        Scorecard[]        @relation("ScorecardJob")
   eeoResponses      EeoResponse[]      @relation("EeoResponseJob")
+  // Compensation (M14). The band is a SEPARATE table, not columns here, because this row is
+  // readable by the whole hiring team — interviewers included — and RLS cannot hide a column.
+  salaryBand        SalaryBand?
+  offers            Offer[]            @relation("OfferJob")
 
   @@index([orgId, status])
 }
@@ -1175,6 +1196,9 @@ model Application {
 
   events      ApplicationEvent[]
   scorecards  Scorecard[]
+  // Offer versions (M14). Same reasoning as SalaryBand: a separate, manage-gated table, because this
+  // row is readable by every interviewer on the hiring team.
+  offers      Offer[]
   // Voluntary EEO self-identification (M10). Note what this relation does NOT give you: the table is
   // unreadable through Prisma by design, so `include: { eeoResponse: true }` returns nothing for
   // anyone. The relation exists for the schema's integrity, not for querying.
@@ -1376,4 +1400,77 @@ model EeoExportLog {
   actor   User   @relation("EeoExportActor", fields: [actorId], references: [id])
 
   @@index([orgId, exportedAt])
+}
+
+// ---------------------------------------------------------------------------
+// Compensation (ATS M14) — the approved band on a requisition, and the offers written against it.
+//
+// ⚠️ WHY THESE ARE TABLES AND NOT COLUMNS. The obvious design puts salaryMin/salaryMax on Job and a
+// salary on Application. Both of those rows are readable by the WHOLE hiring team — `job_read` and
+// `application_read` delegate to app_can_see_job, which includes INTERVIEWERs — and row-level
+// security cannot hide a COLUMN. Guarding columns app-side (the employee-records comp guard) works
+// only while every present and future query remembers to; getJobForManage already does a bare
+// `findFirst` with no select and would have leaked the band on day one.
+//
+// As their own tables they carry their own policies, delegating to app_can_manage_job — the function
+// that ALREADY excludes interviewers. Postgres refuses them the rows from any code path, which is a
+// guarantee no amount of later carelessness can undo.
+// ---------------------------------------------------------------------------
+
+// The approved pay range for a requisition. One per Job.
+model SalaryBand {
+  id        String   @id @default(uuid())
+  salaryMin Decimal  @db.Decimal(12, 2) // money is never a float — same as EmployeeHistory.salary
+  salaryMax Decimal  @db.Decimal(12, 2)
+  currency  String   @default("USD")
+  payBasis  PayBasis @default(PER_YEAR)
+  // Pay-transparency posting. When true, app_public_jobs() returns the range on the careers page.
+  // A deliberate act, never a default: several jurisdictions REQUIRE the range on a job ad, and
+  // several employers still treat it as confidential, so the app must not decide for the operator.
+  //
+  // Note the honest consequence: once posted, withholding the band from interviewers is theatre.
+  // That is a choice the recruiter makes knowingly, not a hole in the access model.
+  postPublicly Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  jobId String @unique
+  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+}
+
+// One VERSION of an offer to one candidate. See OfferStatus for the lifecycle.
+model Offer {
+  id       String      @id @default(uuid())
+  version  Int         @default(1)
+  status   OfferStatus @default(DRAFT)
+  salary   Decimal     @db.Decimal(12, 2)
+  currency String      @default("USD")
+  payBasis PayBasis    @default(PER_YEAR)
+  // The proposed first day. Nullable: an offer is often agreed in principle before a date is.
+  startDate DateTime?
+  // Free text. BOTH of these are blanked by app_erase_candidate — they are exactly where a person's
+  // name survives ("she mentioned a competing offer from …"), the same reasoning as Scorecard.notes.
+  notes           String?
+  outOfBandReason String?
+  // The band AS IT WAS when this version was written. Snapshots, like ApplicationEvent.roundName and
+  // ScorecardRating.competencyName: re-approving the band next quarter must not silently rewrite
+  // what a past offer was measured against. Null when the req had no band at the time.
+  bandMinSnapshot Decimal? @db.Decimal(12, 2)
+  bandMaxSnapshot Decimal? @db.Decimal(12, 2)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  // Denormalized owner column so the RLS policy is the same one-liner as every other scoped table
+  // in the ATS (the ApplicationEvent.jobId trick).
+  jobId String
+  job   Job    @relation("OfferJob", fields: [jobId], references: [id])
+
+  createdById String
+  createdBy   User   @relation("OfferCreatedBy", fields: [createdById], references: [id])
+
+  @@unique([applicationId, version])
+  @@index([jobId])
 }

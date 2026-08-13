@@ -9,3 +9,4 @@ export * from "./eeo";
 export * from "./eeo-csv";
 export * from "./retention";
 export * from "./rules";
+export * from "./offer";

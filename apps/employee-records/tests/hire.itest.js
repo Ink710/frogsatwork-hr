@@ -114,6 +114,66 @@ describe("the onboarding queue", () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// The agreed salary across the seam (M14).
+//
+// ⚠️ WHAT THESE TESTS PIN DOWN, and why there is no doorway function to test. Only HR_ADMIN can both
+// create an employee (canEditEmployee) and set a salary (canEditCompensation), and HR_ADMIN is
+// already inside app_can_manage_job — so plain RLS reaches exactly the right population. The cases
+// below are the evidence for that claim, which is the reason M14 shipped without a second
+// SECURITY DEFINER bypass alongside app_link_hire.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+describe("the agreed salary across the seam", () => {
+  // The seeded offer on Luis is EXTENDED; accept it, as recording the candidate's yes would.
+  const acceptLuisOffer = () =>
+    withViewer(V.ana, (tx) => tx.$executeRaw`UPDATE "Offer" SET status = 'ACCEPTED' WHERE id = 'offer-luis-v1'`);
+
+  it("prefills the accepted figures for HR_ADMIN — the only role that can both hire and set pay", async () => {
+    await markHired("app-luis");
+    await acceptLuisOffer();
+    as(V.ana);
+    const hire = await getHireForPrefill("app-luis");
+    expect(hire.offer).toMatchObject({ salary: "150000", currency: "USD", payBasis: "PER_YEAR" });
+    expect(hire.offer.startDate.toISOString()).toBe("2026-09-01T00:00:00.000Z");
+  });
+
+  it("gives HR_GENERALIST the candidate but NOT the salary — she cannot set comp at all", async () => {
+    // Correct rather than unfortunate: a prefilled figure she is not permitted to submit would be
+    // compensation shown to someone with no compensation rights. She can still complete the hire.
+    await markHired("app-luis");
+    await acceptLuisOffer();
+    expect(await withViewer(V.bianca, (tx) => tx.offer.findMany())).toHaveLength(0); // RLS refuses her
+
+    as(V.bianca);
+    const hire = await getHireForPrefill("app-luis");
+    expect(hire.firstName).toBe("Luis"); // the rest of the prefill still works
+    expect(hire.offer).toBeNull();
+  });
+
+  it("returns NOTHING while the offer is only EXTENDED — a proposal is not a fact about pay", async () => {
+    await markHired("app-luis"); // seeded offer left EXTENDED
+    as(V.ana);
+    expect((await getHireForPrefill("app-luis")).offer).toBeNull();
+  });
+
+  it("gives a RECRUITER no prefill at all, though he CAN read the offer in the ATS", async () => {
+    // The two capabilities are genuinely separate: Raj negotiated the offer and cannot create the
+    // employee record, so the prefill loader refuses him before compensation is even considered.
+    await markHired("app-luis");
+    await acceptLuisOffer();
+    expect(await withViewer(V.raj, (tx) => tx.offer.findMany())).toHaveLength(1);
+    as(V.raj);
+    expect(await getHireForPrefill("app-luis")).toBeNull();
+  });
+
+  it("gives a MANAGER nothing either", async () => {
+    await markHired("app-luis");
+    await acceptLuisOffer();
+    as(V.marcus);
+    expect(await getHireForPrefill("app-luis")).toBeNull();
+  });
+});
+
 describe("completing a hire", () => {
   it("HR_GENERALIST can complete it — the case that needs the doorway", async () => {
     // Bianca may create employees but has NO write access to "Application" (app_can_manage_job

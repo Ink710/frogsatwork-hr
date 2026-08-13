@@ -280,6 +280,10 @@ const en = {
   "score.submit": "Submit feedback",
   "score.saved": "Draft saved.",
   "score.submitWarning": "Submitting is final — you can't edit afterwards, and only then can you read your colleagues' feedback.",
+  "score.closed":
+    "Feedback can only be started while a candidate is at the interview stage. This one has moved on, so there's nothing to add here.",
+  "score.finishUp":
+    "This candidate has moved past the interview stage. Your draft is still yours to finish — submit it so it counts towards the debrief.",
   "score.locked": "You've submitted this feedback. It can no longer be edited.",
 
   // Debrief
@@ -299,6 +303,8 @@ const en = {
   "err.competencyNotFound": "That competency no longer exists.",
   "err.scorecardFailed": "Couldn't save your feedback. Please try again.",
   "err.scorecardLocked": "This feedback was already submitted and can't be changed.",
+  "err.feedbackClosed":
+    "Feedback can only be started while the candidate is at the interview stage.",
   "err.needRecommendation": "Choose a recommendation before submitting.",
   "err.needRatings": "Rate every competency before submitting. Missing: {missing}",
 
@@ -487,6 +493,67 @@ const en = {
   "export.uncategorisedWarning": "{n} requisition(s) had no EEO-1 job category and are grouped as “uncategorised”.",
   "enum.eeoExportVariant.SUMMARY": "Summary (suppressed)",
   "enum.eeoExportVariant.FILING": "EEO-1 filing (exact)",
+
+  // Compensation (M14) — the band on a req and the offers written against it.
+  "band.title": "Salary band",
+  "band.hint":
+    "The approved range for this requisition. Visible only to the recruiter and hiring manager — interviewers never see it.",
+  "band.min": "Minimum",
+  "band.max": "Maximum",
+  "band.currency": "Currency",
+  "band.payBasis": "Basis",
+  "band.set": "Set band",
+  "band.update": "Update band",
+  "band.postPublicly": "Show this range on the careers page",
+  "band.postPubliclyHint":
+    "Pay transparency. Some jurisdictions require the range on a job ad. Off by default — posting it is a deliberate choice.",
+
+  "offer.title": "Offer",
+  "offer.empty": "No offer yet. Draft one below — nothing is sent until you extend it.",
+  "offer.none": "No offer has been recorded for this application.",
+  "offer.readOnly":
+    "This application is no longer at the offer stage, so the figures are read-only. They stay visible because they are what the hire was based on.",
+  "offer.salary": "Salary",
+  "offer.currency": "Currency",
+  "offer.payBasis": "Basis",
+  "offer.startDate": "Start date",
+  "offer.startsOn": "Starts {date}",
+  "offer.notes": "Notes",
+  "offer.outOfBandReason": "Reason for going outside the band",
+  "offer.bandIs": "Band: {min} – {max}",
+  "offer.noBand": "This requisition has no approved band, so nothing is checked against it.",
+  "offer.compaRatio": "compa-ratio {n}",
+  "offer.saveDraft": "Save draft",
+  "offer.saved": "Draft saved.",
+  "offer.extend": "Extend offer",
+  "offer.extendConfirm": "Once extended, the figures are locked. Revising creates a new version.",
+  "offer.extendConfirmYes": "Extend it",
+  "offer.markAccepted": "Candidate accepted",
+  "offer.markDeclined": "Candidate declined",
+  "offer.revise": "Revise",
+  "offer.history": "Earlier versions",
+  "enum.offerStatus.DRAFT": "Draft",
+  "enum.offerStatus.EXTENDED": "Extended",
+  "enum.offerStatus.ACCEPTED": "Accepted",
+  "enum.offerStatus.DECLINED": "Declined",
+  "enum.offerStatus.SUPERSEDED": "Superseded",
+  "enum.bandPosition.IN_BAND": "In band",
+  "enum.bandPosition.ABOVE": "Above band",
+  "enum.bandPosition.BELOW": "Below band",
+  "enum.bandPosition.NO_BAND": "No band",
+  "enum.payBasis.PER_HOUR": "per hour",
+  "enum.payBasis.PER_MONTH": "per month",
+  "enum.payBasis.PER_YEAR": "per year",
+  "common.saved": "Saved.",
+  "common.cancel": "Cancel",
+
+  "err.bandFailed": "Couldn’t save the salary band. Please try again.",
+  "err.offerFailed": "Couldn’t save the offer. Please try again.",
+  "err.offerNotFound": "That offer no longer exists.",
+  "err.offerLocked": "This offer has already been extended — revise it to change the figures.",
+  "err.offerNotRevisable": "Only an extended or declined offer can be revised.",
+  "err.invalidOfferStatus": "That isn’t a valid next step for this offer.",
+  "err.notAtOffer": "Offers can only be written while the application is at the offer stage.",
 };
 
 export default en;

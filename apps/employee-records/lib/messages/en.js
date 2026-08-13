@@ -2,7 +2,7 @@
 const en = {
   "dash.onboarding": "New hires to onboard",
   "dash.createRecord": "Create employee record",
-  "create.fromApplication": "Onboarding {name}, hired for {job}. Their name and email are prefilled — the rest is yours to complete.",
+  "create.fromApplication": "Onboarding {name}, hired for {job}. What the ATS already knows is prefilled — check it, then complete the rest.",
   // Common
   "common.save": "Save",
   "common.cancel": "Cancel",

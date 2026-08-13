@@ -187,3 +187,121 @@ describe("competency management is manage-gated", () => {
     expect((await addCompetency("job-be", undefined, f)).ok).toBe(true);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// M15 — feedback may only be STARTED while the candidate is at INTERVIEW.
+//
+// Note which application each test uses. `app-mei` is seeded at INTERVIEW (which is why none of the
+// tests above needed changing), `app-luis` at OFFER, and `app-nora` at APPLIED.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+const LUIS = "app-luis"; // OFFER
+const NORA = "app-nora"; // APPLIED
+
+// Move an application, as the recruiter would. Raw because this is setup, not the thing under test —
+// and it must go through withViewer, since Application is RLS'd (bare prisma would silently do nothing).
+const setStage = (applicationId, stage) =>
+  withViewer(V.raj, (tx) => tx.$executeRaw`
+    UPDATE "Application" SET stage = ${stage}::"ApplicationStage",
+                             "currentRoundId" = CASE WHEN ${stage} = 'INTERVIEW' THEN "currentRoundId" ELSE NULL END
+     WHERE id = ${applicationId}`);
+
+describe("the interview-stage window", () => {
+  it("lets an interviewer open feedback while the candidate is AT interview", async () => {
+    as(V.tom);
+    expect((await getMyScorecard(MEI)).canStartFeedback).toBe(true);
+    expect((await saveScorecardDraft(MEI, undefined, fullForm())).saved).toBe(true);
+  });
+
+  it("refuses an interviewer AFTER the candidate has moved on", async () => {
+    as(V.tom);
+    const mine = await getMyScorecard(LUIS);
+    expect(mine.canStartFeedback).toBe(false);
+    const res = await saveScorecardDraft(LUIS, undefined, fullForm());
+    expect(res.error).toMatch(/interview stage/i);
+    expect(await withViewer(V.raj, (tx) => tx.scorecard.count({ where: { applicationId: LUIS } }))).toBe(0);
+  });
+
+  it("refuses an interviewer BEFORE the interview too — feedback on someone unmet is not feedback", async () => {
+    as(V.tom);
+    expect((await getMyScorecard(NORA)).canStartFeedback).toBe(false);
+    expect((await saveScorecardDraft(NORA, undefined, fullForm())).error).toBeTruthy();
+  });
+
+  it("refuses at the DATABASE, not just in the action", async () => {
+    // The action's check exists to produce a readable sentence. This is the enforcement.
+    await expect(
+      withViewer(V.tom, (tx) =>
+        tx.scorecard.create({
+          data: {
+            applicationId: LUIS,
+            jobId: "job-be",
+            authorEmployeeId: V.tom.employeeId,
+            status: "DRAFT",
+          },
+        }),
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("does NOT gate recruiters or hiring managers — they run the process", async () => {
+    for (const persona of [V.raj, V.marcus]) {
+      as(persona);
+      expect((await getMyScorecard(LUIS)).canStartFeedback).toBe(true);
+      expect((await saveScorecardDraft(LUIS, undefined, fullForm())).saved).toBe(true);
+    }
+  });
+});
+
+describe("finish what you started", () => {
+  it("lets an interviewer submit a draft opened at INTERVIEW after the candidate advances", async () => {
+    // THE CASE THE WHOLE GRACE RULE EXISTS FOR: the debrief happens, the recruiter advances the
+    // candidate the same afternoon, and the interviewer submits the next morning. Without this they
+    // lose their feedback AND — via M7's anchoring guard, which needs a SUBMITTED card — permanent
+    // access to the debrief for that candidate.
+    as(V.tom);
+    expect((await saveScorecardDraft(MEI, undefined, fullForm())).saved).toBe(true);
+
+    await setStage(MEI, "OFFER");
+
+    const mine = await getMyScorecard(MEI);
+    expect(mine.canStartFeedback).toBe(false); // can't START anything new…
+    expect(mine.scorecard.status).toBe("DRAFT"); // …but the draft is still there
+
+    const res = await submitScorecard(MEI, undefined, fullForm("STRONG_YES"));
+    expect(res.submitted).toBe(true);
+
+    const saved = await withViewer(V.raj, (tx) => tx.scorecard.findFirst({ where: { applicationId: MEI, authorEmployeeId: V.tom.employeeId } }));
+    expect(saved.status).toBe("SUBMITTED");
+    expect(saved.recommendation).toBe("STRONG_YES");
+  });
+
+  it("re-locks once submitted — the M7 guarantee still holds after the grace path", async () => {
+    as(V.tom);
+    await saveScorecardDraft(MEI, undefined, fullForm());
+    await setStage(MEI, "OFFER");
+    await submitScorecard(MEI, undefined, fullForm());
+
+    const res = await saveScorecardDraft(MEI, undefined, fullForm("NO"));
+    expect(res.error).toBeTruthy();
+    const saved = await withViewer(V.raj, (tx) => tx.scorecard.findFirst({ where: { applicationId: MEI, authorEmployeeId: V.tom.employeeId } }));
+    expect(saved.recommendation).not.toBe("NO");
+  });
+});
+
+describe("reading is not gated by the stage", () => {
+  it("keeps the debrief readable after the candidate is hired", async () => {
+    // Gating reads would empty the debrief exactly when the offer needs justifying, and silently
+    // empty the M9 interviewer-load report with it.
+    as(V.tom);
+    await saveScorecardDraft(MEI, undefined, fullForm());
+    await submitScorecard(MEI, undefined, fullForm());
+
+    await setStage(MEI, "HIRED");
+
+    const { scorecards } = await getApplicationScorecards(MEI);
+    expect(scorecards.length).toBeGreaterThanOrEqual(2); // Tom's + Diego's seeded one
+    expect(scorecards.some((s) => s.authorEmployeeId === V.tom.employeeId)).toBe(true);
+    // And Diego's, which Tom could only read because he submitted his own — M7 intact.
+    expect(scorecards.some((s) => s.authorEmployeeId === V.diego.employeeId)).toBe(true);
+  });
+});

@@ -50,6 +50,22 @@ async function loadContext(tx, viewer, applicationId, t) {
   return { application, competencies, existing };
 }
 
+/**
+ * Refuse to OPEN new feedback outside the interview stage (M15).
+ *
+ * Only ever consulted when there is no existing scorecard — an interviewer holding a draft may
+ * always finish it, because the draft could only have been created while the candidate was at
+ * INTERVIEW in the first place.
+ *
+ * The `scorecard_insert` RLS policy is the actual enforcement; this check exists so the person gets
+ * a sentence explaining the rule instead of a generic "couldn't save". It calls the SAME database
+ * function the policy does, so the two cannot disagree about when the window is open.
+ */
+async function requireOpenFeedbackWindow(tx, applicationId, t) {
+  const [row] = await tx.$queryRaw`SELECT app_can_start_feedback(${applicationId}) AS ok`;
+  if (!row?.ok) throw new Error(t("err.feedbackClosed"));
+}
+
 // Write the viewer's ratings, replacing whatever was there. Delete-then-insert (rather than
 // diffing) is safe because ratings only ever belong to one draft scorecard, and it keeps the
 // competencyName SNAPSHOT fresh for the competencies that still exist.
@@ -91,6 +107,7 @@ export async function saveScorecardDraft(applicationId, _prevState, formData) {
 
       let scorecardId = existing?.id;
       if (!scorecardId) {
+        await requireOpenFeedbackWindow(tx, applicationId, t);
         const created = await tx.scorecard.create({
           data: {
             applicationId,
@@ -149,6 +166,7 @@ export async function submitScorecard(applicationId, _prevState, formData) {
 
       let scorecardId = existing?.id;
       if (!scorecardId) {
+        await requireOpenFeedbackWindow(tx, applicationId, t);
         const created = await tx.scorecard.create({
           data: {
             applicationId,

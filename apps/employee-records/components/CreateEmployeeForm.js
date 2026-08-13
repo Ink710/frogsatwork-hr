@@ -47,7 +47,20 @@ export function CreateEmployeeForm({ departments, managerOptions, canEditComp, h
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className={label} htmlFor="hireDate">{t("field.hireDate")}</label>
-          <input id="hireDate" name="hireDate" type="date" defaultValue={today} required className={field} />
+          {/* The agreed start date from the accepted offer, when there is one — otherwise today.
+              Stored as UTC midnight, so slicing the ISO string gives the calendar day back. */}
+          <input
+            id="hireDate"
+            name="hireDate"
+            type="date"
+            defaultValue={
+              hire?.offer?.startDate
+                ? new Date(hire.offer.startDate).toISOString().slice(0, 10)
+                : today
+            }
+            required
+            className={field}
+          />
         </div>
         <div>
           <label className={label} htmlFor="employmentType">{t("field.employmentType")}</label>
@@ -104,11 +117,26 @@ export function CreateEmployeeForm({ departments, managerOptions, canEditComp, h
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className={label} htmlFor="salary">{t("field.salary")}</label>
-              <input id="salary" name="salary" inputMode="decimal" placeholder="e.g. 90000" className={field} />
+              {/* Prefilled from the ACCEPTED offer when HR came from the onboarding queue (ATS M14).
+                  Still editable: the offer is what was agreed, but the employee record is HR's to
+                  enter, and a correction between acceptance and start date is ordinary. */}
+              <input
+                id="salary"
+                name="salary"
+                inputMode="decimal"
+                placeholder="e.g. 90000"
+                defaultValue={hire?.offer?.salary ?? ""}
+                className={field}
+              />
             </div>
             <div>
               <label className={label} htmlFor="payBasis">{t("field.payBasis")}</label>
-              <select id="payBasis" name="payBasis" defaultValue="PER_YEAR" className={field}>
+              <select
+                id="payBasis"
+                name="payBasis"
+                defaultValue={hire?.offer?.payBasis ?? "PER_YEAR"}
+                className={field}
+              >
                 {PAY_BASIS_OPTIONS.map(([v]) => <option key={v} value={v}>{t(`enum.payBasis.${v}`)}</option>)}
               </select>
             </div>

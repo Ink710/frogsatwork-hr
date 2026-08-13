@@ -2,10 +2,16 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getT, getLocale } from "@/lib/i18n.server";
 import { INTL_LOCALE, formatDate, formatDateTime, initials } from "@hris/ui";
-import { getApplicationDetail, getMyScorecard, getApplicationScorecards } from "@/lib/queries";
+import {
+  getApplicationDetail,
+  getMyScorecard,
+  getApplicationScorecards,
+  getOfferPanel,
+} from "@/lib/queries";
 import { StageBadge } from "@/components/recruiting-ui";
 import { ScorecardForm } from "@/components/ScorecardForm";
 import { DebriefPanel } from "@/components/DebriefPanel";
+import { OfferPanel } from "@/components/OfferPanel";
 import { Avatar, Card, Field, FieldGrid } from "@hris/ui/server";
 
 // Human label for one pipeline event: the initial application, an interview-round advance
@@ -29,7 +35,13 @@ export default async function ApplicationDetailPage({ params }) {
 
   // Feedback: the viewer's own scorecard (anyone on the hiring team may write one) and the debrief
   // of everything they're allowed to read. The withholding happens in RLS, not here.
-  const [mine, debrief] = await Promise.all([getMyScorecard(appId), getApplicationScorecards(appId)]);
+  // Compensation (M14): null unless the viewer may MANAGE this req, so an interviewer's payload
+  // carries no offer data at all — not hidden data, absent data.
+  const [mine, debrief, offerPanel] = await Promise.all([
+    getMyScorecard(appId),
+    getApplicationScorecards(appId),
+    getOfferPanel(id, appId),
+  ]);
 
   const { app } = detail;
   const c = app.candidate;
@@ -74,10 +86,21 @@ export default async function ApplicationDetailPage({ params }) {
           </FieldGrid>
         </Card>
 
+        {offerPanel && (
+          <Card title={t("offer.title")}>
+            <OfferPanel jobId={id} appId={appId} panel={offerPanel} />
+          </Card>
+        )}
+
         {mine && (
           <Card title={t("score.title")}>
             <p className="mb-3 text-xs text-muted-foreground">{t("score.subtitle")}</p>
-            <ScorecardForm applicationId={appId} competencies={mine.competencies} scorecard={mine.scorecard} />
+            <ScorecardForm
+              applicationId={appId}
+              competencies={mine.competencies}
+              scorecard={mine.scorecard}
+              canStartFeedback={mine.canStartFeedback}
+            />
           </Card>
         )}
 

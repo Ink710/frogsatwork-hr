@@ -11,6 +11,7 @@ import { CompetencyEditor } from "@/components/CompetencyEditor";
 import { TeamEditor } from "@/components/TeamEditor";
 import { JobStatusControl } from "@/components/JobStatusControl";
 import { PublishControl } from "@/components/PublishControl";
+import { SalaryBandEditor } from "@/components/SalaryBandEditor";
 
 // The requisition manage screen: details, interview rounds, hiring team, and the status lifecycle.
 // 404s both when RLS hides the job AND when the viewer can see it but may not manage it (an
@@ -45,6 +46,13 @@ export default async function ManageJobPage({ params }) {
       <div className="mt-6 flex flex-col gap-6">
         <Card title={t("jobForm.details")}>
           <JobForm job={job} departments={departments} employmentTypes={JOB_EMPLOYMENT_TYPES} />
+        </Card>
+
+        {/* The band lives here rather than in the details form because it is a different KIND of
+            decision — an approval, not a description — and because its own table is readable only by
+            the people who can reach this screen. */}
+        <Card title={t("band.title")}>
+          <SalaryBandEditor jobId={id} band={job.band} />
         </Card>
 
         <Card title={t("rounds.title")}>

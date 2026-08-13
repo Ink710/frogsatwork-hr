@@ -1178,6 +1178,31 @@ export async function getHireForPrefill(applicationId: string) {
       },
     });
     if (!a) return null;
+
+    // The agreed compensation from the ATS (M14), for prefilling the salary field.
+    //
+    // ⚠️ WHY THIS IS A PLAIN RLS READ AND NOT A SECURITY DEFINER DOORWAY. M8's `app_link_hire` exists
+    // because neither role spanned that seam. Here the comp gate NARROWS the population instead of
+    // splitting it: canEditEmployee is HR_ADMIN + HR_GENERALIST, canEditCompensation is HR_ADMIN +
+    // PAYROLL_ADMIN, so the only people who can both create the employee AND set a salary are
+    // HR_ADMINs — who are already inside app_can_manage_job and can therefore read Offer directly.
+    // An HR_GENERALIST gets null here, which is right rather than unfortunate: she cannot set
+    // compensation, so a prefilled figure would be one she isn't permitted to submit.
+    //
+    // Gated on canEditCompensation as well as RLS, because "don't fetch what you can't show" applies
+    // to the RSC payload, not just the rendering — and status/stage are re-checked here so a proposal
+    // still under negotiation can never be laundered into an employee record.
+    const offerRow = canEditCompensation(viewer)
+      ? await tx.offer.findFirst({
+          where: { applicationId, status: "ACCEPTED" },
+          orderBy: { version: "desc" },
+          select: { salary: true, currency: true, payBasis: true, startDate: true },
+        })
+      : null;
+    const offer = offerRow
+      ? { ...offerRow, salary: offerRow.salary.toString() } // Decimal → a serializable string
+      : null;
+
     return {
       applicationId: a.id,
       firstName: a.candidate.firstName,
@@ -1185,6 +1210,7 @@ export async function getHireForPrefill(applicationId: string) {
       email: a.candidate.email,
       phone: a.candidate.phone,
       jobTitle: a.job.title,
+      offer,
     };
   });
 }

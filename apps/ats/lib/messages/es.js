@@ -279,6 +279,10 @@ const es = {
   "score.submit": "Enviar evaluación",
   "score.saved": "Borrador guardado.",
   "score.submitWarning": "El envío es definitivo — después no podrás editarla, y solo entonces podrás leer la de tus colegas.",
+  "score.closed":
+    "La evaluación solo se puede iniciar mientras la candidatura está en la etapa de entrevista. Esta ya avanzó, así que aquí no hay nada que añadir.",
+  "score.finishUp":
+    "Esta candidatura ya pasó la etapa de entrevista. Tu borrador sigue siendo tuyo: envíalo para que cuente en el debrief.",
   "score.locked": "Ya enviaste esta evaluación. No se puede editar.",
 
   // Debrief
@@ -298,6 +302,8 @@ const es = {
   "err.competencyNotFound": "Esa competencia ya no existe.",
   "err.scorecardFailed": "No se pudo guardar tu evaluación. Inténtalo de nuevo.",
   "err.scorecardLocked": "Esta evaluación ya fue enviada y no se puede cambiar.",
+  "err.feedbackClosed":
+    "La evaluación solo se puede iniciar mientras la candidatura está en la etapa de entrevista.",
   "err.needRecommendation": "Elige una recomendación antes de enviar.",
   "err.needRatings": "Califica todas las competencias antes de enviar. Faltan: {missing}",
 
@@ -481,6 +487,67 @@ const es = {
   "export.uncategorisedWarning": "{n} vacante(s) no tenían categoría laboral EEO-1 y se agrupan como «sin categoría».",
   "enum.eeoExportVariant.SUMMARY": "Resumen (suprimido)",
   "enum.eeoExportVariant.FILING": "Declaración EEO-1 (exacta)",
+
+  // Compensación (M14) — la banda salarial de la vacante y las ofertas hechas contra ella.
+  "band.title": "Banda salarial",
+  "band.hint":
+    "El rango aprobado para esta vacante. Solo lo ven el reclutador y el responsable de contratación; los entrevistadores nunca.",
+  "band.min": "Mínimo",
+  "band.max": "Máximo",
+  "band.currency": "Moneda",
+  "band.payBasis": "Base",
+  "band.set": "Definir banda",
+  "band.update": "Actualizar banda",
+  "band.postPublicly": "Mostrar este rango en la página de empleo",
+  "band.postPubliclyHint":
+    "Transparencia salarial. Algunas jurisdicciones exigen publicar el rango en la oferta. Desactivado por defecto: publicarlo es una decisión deliberada.",
+
+  "offer.title": "Oferta",
+  "offer.empty": "Todavía no hay oferta. Redacta una abajo; no se envía nada hasta que la extiendas.",
+  "offer.none": "No se ha registrado ninguna oferta para esta candidatura.",
+  "offer.readOnly":
+    "Esta candidatura ya no está en la etapa de oferta, así que las cifras son de solo lectura. Siguen visibles porque son la base de la contratación.",
+  "offer.salary": "Salario",
+  "offer.currency": "Moneda",
+  "offer.payBasis": "Base",
+  "offer.startDate": "Fecha de inicio",
+  "offer.startsOn": "Comienza el {date}",
+  "offer.notes": "Notas",
+  "offer.outOfBandReason": "Motivo para salirse de la banda",
+  "offer.bandIs": "Banda: {min} – {max}",
+  "offer.noBand": "Esta vacante no tiene banda aprobada, así que no se compara con nada.",
+  "offer.compaRatio": "compa-ratio {n}",
+  "offer.saveDraft": "Guardar borrador",
+  "offer.saved": "Borrador guardado.",
+  "offer.extend": "Extender oferta",
+  "offer.extendConfirm": "Una vez extendida, las cifras quedan bloqueadas. Revisarla crea una versión nueva.",
+  "offer.extendConfirmYes": "Extenderla",
+  "offer.markAccepted": "La persona aceptó",
+  "offer.markDeclined": "La persona rechazó",
+  "offer.revise": "Revisar",
+  "offer.history": "Versiones anteriores",
+  "enum.offerStatus.DRAFT": "Borrador",
+  "enum.offerStatus.EXTENDED": "Extendida",
+  "enum.offerStatus.ACCEPTED": "Aceptada",
+  "enum.offerStatus.DECLINED": "Rechazada",
+  "enum.offerStatus.SUPERSEDED": "Sustituida",
+  "enum.bandPosition.IN_BAND": "Dentro de banda",
+  "enum.bandPosition.ABOVE": "Por encima de la banda",
+  "enum.bandPosition.BELOW": "Por debajo de la banda",
+  "enum.bandPosition.NO_BAND": "Sin banda",
+  "enum.payBasis.PER_HOUR": "por hora",
+  "enum.payBasis.PER_MONTH": "al mes",
+  "enum.payBasis.PER_YEAR": "al año",
+  "common.saved": "Guardado.",
+  "common.cancel": "Cancelar",
+
+  "err.bandFailed": "No se pudo guardar la banda salarial. Inténtalo de nuevo.",
+  "err.offerFailed": "No se pudo guardar la oferta. Inténtalo de nuevo.",
+  "err.offerNotFound": "Esa oferta ya no existe.",
+  "err.offerLocked": "Esta oferta ya se extendió: revísala para cambiar las cifras.",
+  "err.offerNotRevisable": "Solo se puede revisar una oferta extendida o rechazada.",
+  "err.invalidOfferStatus": "Ese no es un paso válido para esta oferta.",
+  "err.notAtOffer": "Las ofertas solo se pueden escribir mientras la candidatura está en la etapa de oferta.",
 };
 
 export default es;

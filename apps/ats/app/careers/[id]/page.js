@@ -1,14 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getT } from "@/lib/i18n.server";
+import { INTL_LOCALE, formatMoney } from "@hris/ui";
+import { getT, getLocale } from "@/lib/i18n.server";
 import { getPublishedJob } from "@/lib/queries";
 import { ApplyForm } from "@/components/ApplyForm";
+import { SalaryRange } from "@/components/recruiting-ui";
 
 // PUBLIC. notFound() unless the posting is OPEN *and* published — so guessing the id of a draft,
 // paused or confidential req reveals nothing (the DB function enforces the same rule on submit).
 export default async function CareersJobPage({ params }) {
   const { id } = await params; // async in Next 16
   const t = await getT();
+  const locale = INTL_LOCALE[await getLocale()];
   const job = await getPublishedJob(id);
   if (!job) notFound();
 
@@ -22,6 +25,14 @@ export default async function CareersJobPage({ params }) {
       <p className="mt-2 text-sm text-muted-foreground">
         {[job.location, t(`enum.employmentType.${job.employmentType}`)].filter(Boolean).join(" · ")}
       </p>
+      <div className="mt-2">
+        <SalaryRange
+          job={job}
+          formatMoney={formatMoney}
+          locale={locale}
+          basisLabel={job.payBasis ? t(`enum.payBasis.${job.payBasis}`) : null}
+        />
+      </div>
 
       {job.description && (
         <div className="mt-8 rounded-xl border border-border bg-card p-6">

@@ -2,7 +2,7 @@
 const es = {
   "dash.onboarding": "Nuevas contrataciones por dar de alta",
   "dash.createRecord": "Crear expediente",
-  "create.fromApplication": "Dando de alta a {name}, contratado para {job}. Su nombre y correo vienen prellenados — el resto lo completas tú.",
+  "create.fromApplication": "Dando de alta a {name}, contratado para {job}. Lo que ya sabe el ATS viene prellenado: revísalo y completa el resto.",
   // Common
   "common.save": "Guardar",
   "common.cancel": "Cancelar",

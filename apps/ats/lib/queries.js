@@ -10,6 +10,7 @@ import {
   suppressSmallCells,
   resolveRetentionDays,
   summariseRejections,
+  classifyOffer,
 } from "@hris/recruiting";
 
 // The active pipeline columns, in order. REJECTED / WITHDRAWN are shown separately (see `closed`).
@@ -159,7 +160,15 @@ export async function getMyScorecard(applicationId) {
       include: { ratings: { select: { competencyId: true, rating: true, comment: true } } },
     });
 
-    return { application, competencies, scorecard };
+    // M15: may this viewer OPEN new feedback here? Runs the exact function the scorecard_insert
+    // policy calls, so what the form offers can never drift from what the database permits — the
+    // same one-source-of-truth trick as viewerCanManageJob.
+    //
+    // Note this gates STARTING only. An existing draft stays editable whatever this returns: it
+    // could only exist because it was opened at INTERVIEW, so finishing it is always allowed.
+    const [row] = await tx.$queryRaw`SELECT app_can_start_feedback(${applicationId}) AS ok`;
+
+    return { application, competencies, scorecard, canStartFeedback: Boolean(row?.ok) };
   });
 }
 
@@ -212,9 +221,16 @@ export async function getApplicationScorecards(applicationId) {
 // rows we've chosen to advertise, and only non-sensitive columns are selected. Job has RLS enabled;
 // with no session variables `app_can_see_job` is false, so we must go through the same
 // SECURITY DEFINER boundary the write path uses — see app_public_jobs in the migration.
+// The salary columns are NULL unless the req's band says postPublicly — the function decides, not
+// this query, so an unposted range can't leak by someone selecting a column they shouldn't (M14).
+// The money columns are cast to TEXT for the same reason the Prisma reads call toString(): a numeric
+// comes back as a Decimal object, which is not serializable across the RSC boundary and would break
+// the moment a client component wanted to render it. Strings are the suite's money convention.
 export async function getPublishedJobs() {
   return prisma.$queryRaw`
-    SELECT id, title, location, "employmentType"::text AS "employmentType", "publishedAt"
+    SELECT id, title, location, "employmentType"::text AS "employmentType", "publishedAt",
+           "salaryMin"::text AS "salaryMin", "salaryMax"::text AS "salaryMax",
+           currency, "payBasis"::text AS "payBasis"
     FROM app_public_jobs()
     ORDER BY "publishedAt" DESC, title ASC`;
 }
@@ -222,7 +238,9 @@ export async function getPublishedJobs() {
 // One public posting, or null. Same boundary; also returns the description for the detail page.
 export async function getPublishedJob(jobId) {
   const [row] = await prisma.$queryRaw`
-    SELECT id, title, description, location, "employmentType"::text AS "employmentType", "publishedAt"
+    SELECT id, title, description, location, "employmentType"::text AS "employmentType", "publishedAt",
+           "salaryMin"::text AS "salaryMin", "salaryMax"::text AS "salaryMax",
+           currency, "payBasis"::text AS "payBasis"
     FROM app_public_jobs() WHERE id = ${jobId}`;
   return row ?? null;
 }
@@ -308,8 +326,11 @@ export async function getJobForManage(jobId) {
       };
     });
 
+    // M14: null for a viewer who may not manage the req — RLS decides, not a role check here.
+    const band = bandFor(await tx.salaryBand.findFirst({ where: { jobId } }));
+
     const canManage = await viewerCanManageJob(tx, jobId);
-    return { job: { ...job, interviewRounds, competencies, members }, canManage };
+    return { job: { ...job, interviewRounds, competencies, members, band }, canManage };
   });
 }
 
@@ -596,6 +617,100 @@ export async function getApplicationDetail(jobId, appId) {
 
     const canManage = await viewerCanManageJob(tx, jobId);
     return { app: { ...app, job, events, currentRound, hiredEmployee }, canManage };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Compensation (M14) — the band on a req, and the offers written against it.
+//
+// There is NO role branching anywhere in this section, and that is the design. The band and offer
+// tables are governed by `app_can_manage_job`, so an interviewer's query simply finds nothing. The
+// one app-layer decision left is WHEN writing is allowed (the OFFER stage), which is a workflow
+// rule, not an access rule.
+// ---------------------------------------------------------------------------
+
+// Prisma Decimal → a serializable string. RSC cannot send a Decimal to a client component, and a
+// float would be the wrong fix; the suite's convention (employee-records' salary) is toString().
+function money(value) {
+  return value?.toString() ?? null;
+}
+
+function bandFor(row) {
+  if (!row) return null;
+  return {
+    salaryMin: money(row.salaryMin),
+    salaryMax: money(row.salaryMax),
+    currency: row.currency,
+    payBasis: row.payBasis,
+    postPublicly: row.postPublicly,
+  };
+}
+
+// The approved range on a req, or null — which means EITHER "no band set" OR "you may not see it".
+// Deliberately indistinguishable here: the caller renders nothing in both cases, and a query that
+// could tell the two apart would be a way for an interviewer to detect that a band exists.
+export async function getSalaryBand(jobId) {
+  const viewer = await getViewer();
+  if (!viewer) return null;
+  return withViewer(viewer, async (tx) => bandFor(await tx.salaryBand.findFirst({ where: { jobId } })));
+}
+
+/**
+ * Everything the offer card needs, or **null for anyone who may not manage the req**.
+ *
+ * Returning null rather than an empty shell matters: a null means the application detail page
+ * renders no offer card at all, so an interviewer's RSC payload contains no offer keys, no band, and
+ * no "hidden" placeholder to reverse-engineer. RLS would already return zero rows — this makes the
+ * page's SHAPE carry the same answer as the database's.
+ *
+ * `canWrite` is the M14 stage gate: offers may be written only while the application sits at OFFER,
+ * but they stay READABLE afterwards. Otherwise the agreed figures would vanish at exactly the moment
+ * HR needs them to onboard the person — the same call already locked for interviewer scorecards.
+ */
+export async function getOfferPanel(jobId, appId) {
+  const viewer = await getViewer();
+  if (!viewer) return null;
+  return withViewer(viewer, async (tx) => {
+    if (!(await viewerCanManageJob(tx, jobId))) return null;
+
+    // Sequential, never sibling relations in one include — concurrent sub-queries on a transaction's
+    // pinned pg client trip the "already executing a query" deprecation (an error in pg@9).
+    const app = await tx.application.findFirst({
+      where: { id: appId, jobId },
+      select: { id: true, stage: true },
+    });
+    if (!app) return null;
+
+    const band = bandFor(await tx.salaryBand.findFirst({ where: { jobId } }));
+    const rows = await tx.offer.findMany({
+      where: { applicationId: appId },
+      orderBy: { version: "desc" },
+    });
+
+    const offers = rows.map((o) => ({
+      id: o.id,
+      version: o.version,
+      status: o.status,
+      salary: money(o.salary),
+      currency: o.currency,
+      payBasis: o.payBasis,
+      startDate: o.startDate,
+      notes: o.notes,
+      outOfBandReason: o.outOfBandReason,
+      // Classified against the band AS IT WAS when this version was written, not today's. That is
+      // what the snapshot columns are for: re-approving the band next quarter must not retroactively
+      // turn a properly justified exception into a routine in-band offer, or vice versa.
+      classification: classifyOffer(
+        o.bandMinSnapshot == null || o.bandMaxSnapshot == null
+          ? null
+          : { salaryMin: Number(o.bandMinSnapshot), salaryMax: Number(o.bandMaxSnapshot) },
+        Number(o.salary),
+      ),
+    }));
+
+    // The version being worked on. SUPERSEDED versions are history; the newest live one is current.
+    const current = offers.find((o) => o.status !== "SUPERSEDED") ?? null;
+    return { stage: app.stage, canWrite: app.stage === "OFFER", band, offers, current };
   });
 }
 

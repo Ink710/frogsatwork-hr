@@ -279,6 +279,27 @@ describe("erasing a candidate", () => {
     expect(rows.ratings.every((r) => r.comment === null)).toBe(true);
   });
 
+  it("blanks the OFFER prose but keeps the figures (M14)", async () => {
+    // The prose is where a name survives ("she has a competing offer from Acme"). The salary is a
+    // fact about a ROLE, not a person, and /reports and any future pay-equity view depend on it.
+    // Luis is at OFFER with a seeded offer and is NOT linked to an employee, so he is erasable.
+    await withViewer(V.ana, (tx) => tx.$executeRaw`
+      UPDATE "Offer" SET notes = 'Luis mentioned a competing offer from Acme',
+                         "outOfBandReason" = 'matching his current employer'
+       WHERE id = 'offer-luis-v1'`);
+
+    await erase("cand-luis");
+
+    const [offer] = await withViewer(V.raj, (tx) =>
+      tx.offer.findMany({ where: { applicationId: "app-luis" } }),
+    );
+    expect(offer.notes).toBeNull();
+    expect(offer.outOfBandReason).toBeNull();
+    expect(offer.salary.toString()).toBe("150000");
+    expect(offer.status).toBe("EXTENDED");
+    expect(offer.bandMinSnapshot.toString()).toBe("120000");
+  });
+
   it("leaves the append-only history itself intact — stages, timestamps and ratings all survive", async () => {
     const before = await withViewer(V.ana, (tx) =>
       tx.applicationEvent.findMany({ where: { applicationId: "app-mei" }, orderBy: { occurredAt: "asc" } }),

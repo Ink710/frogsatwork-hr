@@ -13,7 +13,7 @@ const INPUT =
 //
 // Once submitted the whole thing renders read-only. That's a courtesy, not the enforcement: the
 // scorecard_update RLS policy refuses edits to a SUBMITTED row no matter what this component does.
-export function ScorecardForm({ applicationId, competencies, scorecard }) {
+export function ScorecardForm({ applicationId, competencies, scorecard, canStartFeedback = true }) {
   const t = useT();
   const [saveState, saveAction, saving] = useActionState(saveScorecardDraft.bind(null, applicationId), undefined);
   const [subState, subAction, submitting] = useActionState(submitScorecard.bind(null, applicationId), undefined);
@@ -55,8 +55,20 @@ export function ScorecardForm({ applicationId, competencies, scorecard }) {
     );
   }
 
+  // M15: the window for OPENING feedback has closed and nothing was started. Show the rule rather
+  // than an empty form that would fail on submit — the database refuses the insert either way.
+  if (!scorecard && !canStartFeedback) {
+    return <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">{t("score.closed")}</p>;
+  }
+
   return (
     <form className="flex flex-col gap-5">
+      {/* A draft that outlived the interview stage. Legal, and deliberately so — but say why it
+          looks different, so finishing it reads as intended rather than as a glitch. */}
+      {scorecard && !canStartFeedback && (
+        <p className="rounded-md bg-warning/10 px-3 py-2 text-sm text-warning">{t("score.finishUp")}</p>
+      )}
+
       {competencies.length === 0 && <p className="text-sm text-muted-foreground">{t("score.noComps")}</p>}
 
       {competencies.map((c) => {

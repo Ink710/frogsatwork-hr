@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { INTL_LOCALE, formatDate } from "@hris/ui";
+import { INTL_LOCALE, formatDate, formatMoney } from "@hris/ui";
 import { getT, getLocale } from "@/lib/i18n.server";
 import { getPublishedJobs } from "@/lib/queries";
+import { SalaryRange } from "@/components/recruiting-ui";
 
 // PUBLIC. Anyone on the internet can read this. Only advertised postings appear, and only the
 // columns app_public_jobs() exposes — no openings count, no hiring team, no application data.
@@ -35,6 +36,14 @@ export default async function CareersPage() {
                     <p className="mt-1 text-sm text-muted-foreground">
                       {[j.location, t(`enum.employmentType.${j.employmentType}`)].filter(Boolean).join(" · ")}
                     </p>
+                    <div className="mt-1">
+                      <SalaryRange
+                        job={j}
+                        formatMoney={formatMoney}
+                        locale={locale}
+                        basisLabel={j.payBasis ? t(`enum.payBasis.${j.payBasis}`) : null}
+                      />
+                    </div>
                   </div>
                   <div className="text-right">
                     <p className="font-mono text-xs text-muted-foreground">
