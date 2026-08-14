@@ -67,6 +67,30 @@ export function SalaryRange({ job, formatMoney, locale, basisLabel }) {
   );
 }
 
+/**
+ * A download link for a candidate's résumé.
+ *
+ * Dumb like everything else here: the CALLER signs the href, because signing needs the viewer's user
+ * id and a signed link is a short-lived credential rather than a piece of layout. Renders nothing
+ * when there is no file — which covers "never uploaded one" and "erased" identically, matching what
+ * the route itself does.
+ */
+export function ResumeLink({ href, fileName, label }) {
+  if (!href || !fileName) return null;
+  return (
+    <a
+      href={href}
+      className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+      // Not a client-side navigation: it's a file response, not a page.
+      download
+    >
+      <span aria-hidden="true">↓</span>
+      <span>{label}</span>
+      <span className="font-mono text-xs text-muted-foreground">{fileName}</span>
+    </a>
+  );
+}
+
 export function JobStatusBadge({ status, label }) {
   return (
     <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${JOB_STATUS_TONE[status] ?? JOB_STATUS_TONE.DRAFT}`}>

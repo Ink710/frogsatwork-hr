@@ -8,7 +8,9 @@ import {
   getApplicationScorecards,
   getOfferPanel,
 } from "@/lib/queries";
-import { StageBadge } from "@/components/recruiting-ui";
+import { getViewer } from "@hris/auth";
+import { signResumeDownload } from "@/lib/sign";
+import { StageBadge, ResumeLink } from "@/components/recruiting-ui";
 import { ScorecardForm } from "@/components/ScorecardForm";
 import { DebriefPanel } from "@/components/DebriefPanel";
 import { OfferPanel } from "@/components/OfferPanel";
@@ -37,10 +39,11 @@ export default async function ApplicationDetailPage({ params }) {
   // of everything they're allowed to read. The withholding happens in RLS, not here.
   // Compensation (M14): null unless the viewer may MANAGE this req, so an interviewer's payload
   // carries no offer data at all — not hidden data, absent data.
-  const [mine, debrief, offerPanel] = await Promise.all([
+  const [mine, debrief, offerPanel, viewer] = await Promise.all([
     getMyScorecard(appId),
     getApplicationScorecards(appId),
     getOfferPanel(id, appId),
+    getViewer(),
   ]);
 
   const { app } = detail;
@@ -83,6 +86,17 @@ export default async function ApplicationDetailPage({ params }) {
             {c.source && <Field label={t("app.source")}>{c.source}</Field>}
             <Field label={t("app.appliedLabel")}>{formatDate(app.appliedAt, locale)}</Field>
             {app.currentRound && <Field label={t("app.currentRound")}>{app.currentRound.name}</Field>}
+            {/* Right beside the scorecard an interviewer is about to write — the CV is the thing
+                they read first, and RLS lets the whole hiring team through (see the route). */}
+            {c.resumeFileName && (
+              <Field label={t("resume.label")}>
+                <ResumeLink
+                  href={signResumeDownload(c.id, viewer.userId)}
+                  fileName={c.resumeFileName}
+                  label={t("resume.download")}
+                />
+              </Field>
+            )}
           </FieldGrid>
         </Card>
 

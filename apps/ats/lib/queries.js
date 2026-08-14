@@ -727,7 +727,20 @@ export async function getApplicationDetail(jobId, appId) {
       where: { id: appId, jobId },
       include: {
         candidate: {
-          select: { firstName: true, lastName: true, email: true, phone: true, source: true },
+          select: {
+            // `id` is needed because the résumé link is signed against the CANDIDATE, not the
+            // application — one person, one CV, however many reqs they applied to.
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+            source: true,
+            // The filename is display-only. `resumeKey` is deliberately NOT selected: it is a
+            // storage path, the client has no use for it, and the download route resolves it
+            // server-side from the candidate id.
+            resumeFileName: true,
+          },
         },
       },
     });

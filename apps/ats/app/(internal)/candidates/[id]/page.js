@@ -5,7 +5,8 @@ import { Avatar, Card, Field, FieldGrid } from "@hris/ui/server";
 import { getViewer } from "@hris/auth";
 import { getT, getLocale } from "@/lib/i18n.server";
 import { getCandidateProfile, canManageErasure, canArchiveCandidate } from "@/lib/queries";
-import { StageBadge } from "@/components/recruiting-ui";
+import { signResumeDownload } from "@/lib/sign";
+import { StageBadge, ResumeLink } from "@/components/recruiting-ui";
 import { EraseCandidateForm } from "@/components/ErasureActions";
 import { ArchiveControl } from "@/components/ArchiveControl";
 import { LeadControl } from "@/components/LeadControl";
@@ -69,6 +70,17 @@ export default async function CandidateProfilePage({ params }) {
               <>
                 <Field label={t("app.email")}>{candidate.email}</Field>
                 {candidate.phone && <Field label={t("app.phone")}>{candidate.phone}</Field>}
+                {/* Absent on a shell without needing an `erased` check of its own: erasure nulls
+                    resumeKey and resumeFileName, so there is nothing to render. */}
+                {candidate.resumeFileName && (
+                  <Field label={t("resume.label")}>
+                    <ResumeLink
+                      href={signResumeDownload(candidate.id, viewer.userId)}
+                      fileName={candidate.resumeFileName}
+                      label={t("resume.download")}
+                    />
+                  </Field>
+                )}
               </>
             )}
             {/* `source` outlives an erasure on purpose: it describes a channel, not a person, and

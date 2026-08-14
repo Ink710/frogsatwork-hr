@@ -41,7 +41,12 @@ export default defineConfig({
         resolve: { alias: employeeRecordsAlias },
         test: {
           name: "unit",
-          include: ["packages/**/src/**/*.test.js", "apps/employee-records/lib/**/*.test.js"],
+          include: [
+            "packages/**/src/**/*.test.js",
+            "apps/employee-records/lib/**/*.test.js",
+            // The ATS has its own signed-link helper (résumé downloads), pure and DB-free like er's.
+            "apps/ats/lib/**/*.test.js",
+          ],
           exclude: ["**/node_modules/**", "**/.next/**", "**/*.itest.js"],
           environment: "node",
         },

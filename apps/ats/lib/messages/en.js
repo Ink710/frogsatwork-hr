@@ -281,8 +281,10 @@ const en = {
   "score.submit": "Submit feedback",
   "score.saved": "Draft saved.",
   "score.submitWarning": "Submitting is final — you can't edit afterwards, and only then can you read your colleagues' feedback.",
+  // Stage-neutral on purpose: this fires BOTH before a candidate reaches the interview stage and
+  // after they leave it, so it must not claim they've "moved on".
   "score.closed":
-    "Feedback can only be started while a candidate is at the interview stage. This one has moved on, so there's nothing to add here.",
+    "Feedback can only be started while a candidate is at the interview stage — this one isn't, so there's nothing to add here.",
   "score.finishUp":
     "This candidate has moved past the interview stage. Your draft is still yours to finish — submit it so it counts towards the debrief.",
   "score.locked": "You've submitted this feedback. It can no longer be edited.",
@@ -429,6 +431,10 @@ const en = {
   // ── Archive / retention (M11) ──────────────────────────────────────────────
   "archive.title": "Talent pool",
   "archive.badge": "Archived",
+
+  // Résumé download
+  "resume.label": "Résumé",
+  "resume.download": "Download",
 
   // Great leads (M16)
   "lead.title": "Great lead",

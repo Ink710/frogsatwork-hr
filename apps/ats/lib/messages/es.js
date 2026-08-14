@@ -281,7 +281,7 @@ const es = {
   "score.saved": "Borrador guardado.",
   "score.submitWarning": "El envío es definitivo — después no podrás editarla, y solo entonces podrás leer la de tus colegas.",
   "score.closed":
-    "La evaluación solo se puede iniciar mientras la candidatura está en la etapa de entrevista. Esta ya avanzó, así que aquí no hay nada que añadir.",
+    "La evaluación solo se puede iniciar mientras la candidatura está en la etapa de entrevista; esta no lo está, así que aquí no hay nada que añadir.",
   "score.finishUp":
     "Esta candidatura ya pasó la etapa de entrevista. Tu borrador sigue siendo tuyo: envíalo para que cuente en el debrief.",
   "score.locked": "Ya enviaste esta evaluación. No se puede editar.",
@@ -423,6 +423,10 @@ const es = {
   // ── Archivo / retención (M11) ──────────────────────────────────────────────
   "archive.title": "Cantera de talento",
   "archive.badge": "Archivado",
+
+  // Descarga de CV
+  "resume.label": "CV",
+  "resume.download": "Descargar",
 
   // Prospectos destacados (M16)
   "lead.title": "Prospecto destacado",
