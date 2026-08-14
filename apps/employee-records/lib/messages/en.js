@@ -392,6 +392,8 @@ const en = {
   "settings.subtitle": "Global configuration.",
   "settings.storageDir": "Document storage folder",
   "settings.storageHint": "Absolute path where uploaded files are stored. New uploads land here.",
+  "settings.cloudDriver":
+    "Files are stored in object storage ({driver}), so there's no folder to configure here. The location is set by the STORAGE_DRIVER environment variable.",
   "settings.save": "Save",
   "settings.saving": "Saving…",
   "settings.saved": "Saved.",

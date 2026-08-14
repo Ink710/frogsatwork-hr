@@ -60,6 +60,13 @@ export async function GET(request, { params }) {
       // The stored filename is display-only and has never been part of the storage path (the key is
       // a server-generated UUID) — the quote strip keeps it from breaking out of the header.
       "Content-Disposition": `attachment; filename="${(candidate.resumeFileName ?? "resume").replace(/"/g, "")}"`,
+      // A CV is personal data, so nothing about it should be written to disk anywhere in between.
+      // Without this, Vercel's default is `public, max-age=0, must-revalidate` — revalidated, but
+      // still stored. `no-store` is Vercel's own guidance for PII served through a function.
+      "Cache-Control": "private, no-store",
+      // The bytes are attacker-supplied (a stranger's upload) and we always send them as a download;
+      // don't let a browser sniff its way to executing one.
+      "X-Content-Type-Options": "nosniff",
     },
   });
 }

@@ -199,12 +199,19 @@ error — never silently, and never by appearing to work.
 | Driver | Status |
 | --- | --- |
 | `local` (default) | **Fully working.** Writes to the filesystem; used in development and tests. |
-| `s3` · `r2` · `vercel-blob` | **Declared, not implemented.** Throws a clear "configure this driver" error. |
+| `vercel-blob` | **Fully working.** Backed by a **private** Vercel Blob store; what the live demos run on. |
+| `s3` · `r2` | **Declared, not implemented.** Throws a clear "configure this driver" error. |
 
 The local driver is the right choice for development but **cannot** be used on serverless hosting
 (Vercel's filesystem is ephemeral and read-only), so a deployed instance that accepts document or
 résumé uploads needs a cloud driver. Implementing one is a single file against the existing interface —
 no calling code changes.
+
+⚠️ **The Blob store must be created as PRIVATE**, and the access mode cannot be changed afterwards. A
+public store gives every file a URL that works forever for anyone who has it, which would bypass the
+authorization the download routes exist to enforce (a short-lived signature bound to one record *and*
+one user, on top of row-level security). Private stores authenticate every read and are delivered
+through the app's own route handler, so those checks stay on the only path to the bytes.
 
 **Rate limiting** — the minimal Upstash Redis limiter (see *Architecture highlights*). Without
 `UPSTASH_REDIS_REST_URL` / `_TOKEN` every limiter is a transparent no-op and Redis is never contacted.

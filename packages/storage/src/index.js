@@ -1,5 +1,6 @@
 import path from "node:path";
 import { LocalStorage } from "./local.js";
+import { createVercelBlobStorage } from "./vercel-blob.js";
 
 // @hris/storage — the suite's swappable object storage.
 //
@@ -11,8 +12,11 @@ import { LocalStorage } from "./local.js";
 // NOT work on serverless hosting (Vercel's filesystem is ephemeral and read-only), so a real
 // deployment needs object storage. Those services cost money, and the account belongs to whoever
 // runs the app — so the suite ships the SEAM, fully wired, and leaves the credentials to the
-// operator. `local` is functional; the cloud drivers are declared and throw a clear, actionable
-// error until configured. Swapping one in is a single file, no calling code changes.
+// operator. Swapping one in is a single file, no calling code changes.
+//
+// Status: `local` and `vercel-blob` are implemented; `s3` and `r2` are declared and throw a clear,
+// actionable error until someone writes them. That asymmetry is honest rather than untidy — the
+// interface claims only what exists.
 //
 // Select with STORAGE_DRIVER (default "local"). See the README's "Storage drivers" section.
 
@@ -33,7 +37,6 @@ function unconfiguredDriver(name, envHint) {
 const CLOUD_HINTS = {
   s3: "STORAGE_BUCKET + AWS credentials",
   r2: "STORAGE_BUCKET + Cloudflare R2 credentials",
-  "vercel-blob": "BLOB_READ_WRITE_TOKEN",
 };
 
 // The base folder for the local driver. `resolveBaseDir` is injected by the app (employee-records
@@ -56,6 +59,9 @@ export function createStorage({ resolveBaseDir, driver } = {}) {
     if (!STORAGE_DRIVERS.includes(name)) {
       throw new Error(`Unknown STORAGE_DRIVER "${name}". Expected one of: ${STORAGE_DRIVERS.join(", ")}.`);
     }
+    // Vercel Blob is a REAL implementation now (see ./vercel-blob.js); s3 and r2 are still just
+    // declared, and keep failing loudly with instructions rather than silently dropping files.
+    if (name === "vercel-blob") return createVercelBlobStorage();
     return unconfiguredDriver(name, CLOUD_HINTS[name]);
   }
 

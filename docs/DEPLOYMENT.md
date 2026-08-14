@@ -166,6 +166,100 @@ DIRECT_URL='<owner direct url>' DATABASE_URL='<hris_app pooled url>' \
 
 ---
 
+## Part G — 🛠️/👤 Third app: ATS / Recruiting (`apps/ats`)
+
+Same shape as Part F — a separate Vercel project on the shared Neon DB — **plus the first piece of
+real object storage in the suite**, because the ATS accepts résumé uploads from the public careers
+page and the `local` driver cannot work on Vercel.
+
+### G1 — 👤 Push first
+
+Vercel builds from GitHub. Commit and push the ATS milestones before anything below; a Vercel project
+pointed at an un-pushed branch will build the wrong tree.
+
+### G2 — 👤 Bring the shared Neon DB up to date
+
+Neon has never seen the recruiting schema — roughly a dozen migrations from `..._add_recruiting`
+through `..._candidate_leads`. They're additive to the two live apps.
+
+```bash
+DIRECT_URL='<owner direct url>' DATABASE_URL='<hris_app pooled url>' \
+  pnpm --filter @hris/database exec prisma migrate deploy
+
+# Reseed: one unified demo dataset across all three apps. This also resets any drift reviewers
+# created on the live employee-records / time-management demos (chosen, same as Part F).
+DIRECT_URL='<owner direct url>' DATABASE_URL='<hris_app pooled url>' \
+  pnpm --filter @hris/database db:seed
+```
+
+⚠️ **Most likely failure point:** the search-index migration runs `CREATE EXTENSION IF NOT EXISTS
+pg_trgm`. Neon supports it, but it needs the owner role — which is why `DIRECT_URL` must be the
+**owner** connection, not `hris_app`.
+
+### G3 — 👤 Create a **PRIVATE** Vercel Blob store
+
+Dashboard → **Storage** → **Blob** → set access to **Private**. Or:
+
+```bash
+vercel blob create-store frogsatwork-files --access private
+```
+
+Then **connect the store to BOTH** the `ats` project and the `employee-records` project
+(store → **Projects** → *Connect to Project*).
+
+> ⚠️ **Private is not optional and cannot be changed later.** A public store hands every résumé a URL
+> that anyone holding it can fetch forever, which would walk straight past the download route's
+> authorization (session → short-lived signature bound to candidate *and* user → RLS). Private stores
+> require auth on every read and are delivered through our own route handler, keeping those checks on
+> the only path to the file. The access mode is fixed at creation, so getting it wrong means creating
+> a new store.
+
+**No token env var is needed.** Connecting the store injects OIDC credentials (`BLOB_STORE_ID` and a
+short-lived, auto-rotating `VERCEL_OIDC_TOKEN`) which `@vercel/blob` picks up on its own — no
+long-lived secret in the project. `BLOB_READ_WRITE_TOKEN` is only for code running outside Vercel.
+
+### G4 — 👤 Vercel project
+
+1. Import the **same** repo as a **new** project.
+2. **Root Directory** = `apps/ats`.
+3. **Environment Variables** (Production):
+   | Var | Value |
+   | --- | --- |
+   | `DATABASE_URL` | `hris_app` **pooled** Neon URL (same as the other two apps) |
+   | `DIRECT_URL` | owner **direct** Neon URL (same) |
+   | `AUTH_SECRET` | a prod secret (may reuse the others' — sessions are per-domain) |
+   | `CRON_SECRET` | `openssl rand -base64 32` — **exact name required**: Vercel Cron sends it as `Authorization: Bearer`, and `/api/cron/archive-stale` **fails closed** without it |
+   | `STORAGE_DRIVER` | `vercel-blob` |
+   | `UPSTASH_REDIS_REST_URL` / `_TOKEN` | optional; the limiters are env-gated no-ops without them |
+4. Deploy. `prebuild` generates the Prisma client, then `next build`; every route is dynamic.
+
+### G5 — 👤 Switch employee-records to Blob too
+
+Its document upload has the same problem and has never worked in production. Add
+`STORAGE_DRIVER=vercel-blob` to that project's env and redeploy. No code change — the app's runtime
+"storage directory" setting simply stops applying, and `/settings` says so.
+
+### G6 — Vercel Cron (already in repo)
+
+`apps/ats/vercel.json` declares a weekly cron on `/api/cron/archive-stale` (`0 5 * * 1`) for the
+candidate retention sweep. Picked up automatically once `CRON_SECRET` is set. The sweep is safe to
+re-run: it only archives candidates already past the retention window, and archiving is idempotent
+and reversible.
+
+### G7 — 👤/🛠️ Verify
+
+- Sign in as `raj.patel@frogsatwork.test` — pipeline board, candidates, reports and leads render.
+- **The storage loop, which is the whole point of G3:** apply on `/careers/<job>` with a real PDF →
+  sign in → download it from the candidate profile → the bytes match.
+- **The privacy property:** fetching the blob's own `…private.blob.vercel-storage.com/…` URL without
+  auth returns 401/403 — the file is reachable only through the signed route.
+- Erase that candidate on `/compliance` → the download 404s and the blob is deleted.
+- employee-records: upload and download an employee document on the live demo.
+- `curl` `/api/cron/archive-stale` with no `Authorization` → **401**.
+- Fill in the README's ATS live-demo link.
+
+---
+
 ## Decisions & open items
 
 - **Email: disabled.** No `SMTP_*`; the invite send is best-effort so nothing breaks, and seeded

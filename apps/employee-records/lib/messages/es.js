@@ -392,6 +392,8 @@ const es = {
   "settings.subtitle": "Configuración global.",
   "settings.storageDir": "Carpeta de almacenamiento de documentos",
   "settings.storageHint": "Ruta absoluta donde se guardan los archivos subidos. Las nuevas cargas van aquí.",
+  "settings.cloudDriver":
+    "Los archivos se guardan en almacenamiento de objetos ({driver}), así que aquí no hay ninguna carpeta que configurar. La ubicación se define con la variable de entorno STORAGE_DRIVER.",
   "settings.save": "Guardar",
   "settings.saving": "Guardando…",
   "settings.saved": "Guardado.",

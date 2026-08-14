@@ -4,10 +4,21 @@ import { useActionState } from "react";
 import { setStorageDir } from "@/app/settings/actions";
 import { useT } from "@hris/ui/client";
 
-export function SettingsForm({ storageDir }) {
+// `driver` is the active STORAGE_DRIVER. The base-directory setting only means anything for the
+// LOCAL driver — under object storage there is no filesystem path to configure, and presenting an
+// editable one would be inviting someone to change a value that does nothing.
+export function SettingsForm({ storageDir, driver = "local" }) {
   const t = useT();
   const [state, formAction, pending] = useActionState(setStorageDir, {});
   const current = state?.value ?? storageDir;
+
+  if (driver !== "local") {
+    return (
+      <div className="mt-6 max-w-xl rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+        {t("settings.cloudDriver", { driver })}
+      </div>
+    );
+  }
 
   return (
     <form action={formAction} className="mt-6 max-w-xl space-y-3">

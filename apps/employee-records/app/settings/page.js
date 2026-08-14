@@ -14,12 +14,16 @@ export default async function SettingsPage() {
   if (!viewer || !canManageSettings(viewer)) notFound(); // HR_ADMIN only
 
   const [storageDir, t] = await Promise.all([getStorageDir(), getT()]);
+  // Which driver is actually in force. Read here rather than in the client component: env vars
+  // aren't available in the browser, and the answer decides whether the directory field means
+  // anything at all (see SettingsForm).
+  const driver = process.env.STORAGE_DRIVER || "local";
 
   return (
     <main className="mx-auto w-full max-w-3xl px-6 py-10">
       <h1 className="text-2xl font-semibold tracking-tight">{t("settings.title")}</h1>
       <p className="mt-1 text-sm text-muted-foreground">{t("settings.subtitle")}</p>
-      <SettingsForm storageDir={storageDir} />
+      <SettingsForm storageDir={storageDir} driver={driver} />
     </main>
   );
 }
