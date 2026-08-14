@@ -2,22 +2,30 @@
 
 [![CI](https://github.com/Ink710/frogsatwork-hr/actions/workflows/ci.yml/badge.svg)](https://github.com/Ink710/frogsatwork-hr/actions/workflows/ci.yml)
 
-> A lightweight, compliance-credible **HRIS** suite for managing employee records _and_ time &
-> attendance across an organization. _Let's jump into it._
+> A lightweight, compliance-credible **HRIS** suite covering employee records, time & attendance,
+> and hiring across an organization. _Let's jump into it._
 
 **▶ Live demos** — sign in with a seeded account below (password `password123`):
 
 - **Employee Records:** https://frogsatwork-hr.vercel.app
 - **Time & Attendance:** _(link added after deploy)_
+- **Recruiting / ATS:** _(link added after deploy)_
 
 FrogsAtWorkHR is a portfolio project built to demonstrate full-stack engineering judgment, not just
 CRUD mechanics. The domain decisions reflect how HR data actually behaves in the real world —
 records are **never hard-deleted**, changes are **effective-dated**, and sensitive data like
 compensation is guarded **on the server**, not just hidden in the UI.
 
-It's a **two-app monorepo suite** sharing one database, auth, and design system:
-**Employee Records** (the system of record) and **Time & Attendance** (PTO, timesheets,
-scheduling, and clock-in/out) — same sign-in, same security model.
+It's a **three-app monorepo suite** sharing one database, auth, and design system:
+
+| App | What it does |
+| --- | --- |
+| **Employee Records** | The system of record: profiles, effective-dated history, departments, the org chart. |
+| **Time & Attendance** | PTO, weekly timesheets, shift scheduling, clock in/out, recurring meetings. |
+| **Recruiting (ATS)** | Requisitions, a public careers page, the hiring pipeline, scorecards, salary bands and offers, EEO reporting and GDPR erasure. |
+
+Same sign-in, same security model — and the ATS closes the loop: a hired candidate becomes an
+employee in Employee Records through a single audited seam.
 
 ## Screenshots
 
@@ -64,7 +72,8 @@ Most "employee CRUD" demos overwrite data and hide fields in the frontend. Real 
 
 ## Features — Time & Attendance
 
-The second app in the suite, sharing the same users, roles, and security model:
+The second app in the suite, sharing the same users, roles, and security model — one sign-in, one
+database, one set of rules:
 
 - **Time off / PTO** — request, approve, and deny leave against a **ledger-based balance** (balance =
   sum of signed rows, auditable), with **automatic monthly accrual** (proration on hire, capped) and
@@ -82,6 +91,35 @@ The second app in the suite, sharing the same users, roles, and security model:
 - **Timezone-correct** — instants are stored UTC and displayed in the viewer's zone (cookie-based),
   including day/week boundaries.
 - **Login rate limiting** — see _Architecture highlights_.
+
+## Features — Recruiting (ATS)
+
+The third app, and the one that closes the loop back into Employee Records. Its access model is
+deliberately **different** from the other two: not the org chart, but a **per-requisition hiring
+team** (recruiter / hiring manager / interviewer), which is how hiring access actually works.
+
+- **Requisitions** — job postings with configurable **interview rounds** and **scoring
+  competencies**, a staffed hiring team, and a status lifecycle (never deleted).
+- **Public careers page + apply flow** — the suite's only unauthenticated surface. Anonymous
+  submissions go through a **`SECURITY DEFINER` doorway** rather than a hole in the security policy,
+  with a honeypot, IP rate limiting, and résumé upload behind the storage adapter.
+- **Pipeline board** — drag-and-drop stage moves with rules the server enforces: forward one step at
+  a time, backward to any earlier stage, terminal states that stay terminal.
+- **Scorecards with anti-anchoring** — you cannot read a colleague's feedback until you have
+  submitted your own, enforced in the database. Interviewers may only *start* feedback while the
+  candidate is at the interview stage — but may always finish a draft they opened.
+- **Salary bands and offers** — compensation lives in its own tables so that **row-level security can
+  hide it from interviewers**, since RLS cannot hide a column. Offers are versioned, with compa-ratio
+  and a required written justification for going outside the band.
+- **The hire seam** — a hired candidate becomes an employee through one audited `app_link_hire`
+  doorway, because neither role spans the boundary: recruiters cannot create employees, and HR
+  cannot write the application.
+- **Compliance** — voluntary **EEO-1** self-identification in a table the app role cannot read at
+  all, aggregate reporting with small-cell suppression, two separate CSV exports (suppressed vs
+  exact, the exact one audited), and **GDPR erasure** that destroys the person while every reporting
+  figure still balances.
+- **Retention** — a weekly sweep archives long-idle candidates; a **great-leads pool** keeps the
+  strong ones findable afterwards.
 
 ## Architecture highlights
 
@@ -154,10 +192,11 @@ pnpm --filter @hris/database db:seed
 # 5. Run an app
 pnpm --filter employee-records dev    # Employee Records  → http://localhost:3000
 pnpm --filter time-management dev      # Time & Attendance → http://localhost:3001
+pnpm --filter ats dev                  # Recruiting (ATS)  → http://localhost:3002
 ```
 
-Both apps share the same database and `AUTH_SECRET`, so a single sign-in works across the suite in
-local dev.
+All three apps share the same database and `AUTH_SECRET`, so a single sign-in works across the suite
+in local dev.
 
 Invite emails are captured by Mailpit — open the web UI at **http://localhost:8025** to view them.
 
@@ -172,19 +211,26 @@ All demo accounts use the password **`password123`**:
 | `nadia.cole@frogsatwork.test`  | Payroll Admin  | comp across the org          |
 | `marcus.lee@frogsatwork.test`  | Manager        | their reports only           |
 | `diego.santos@frogsatwork.test`| Employee       | only their own record        |
+| `raj.patel@frogsatwork.test`   | Recruiter      | every requisition, org-wide  |
 
 (`priya.nair@` and `tom.becker@frogsatwork.test` are additional Employees.)
+
+**In the ATS**, access is per-requisition rather than org-chart-based, which is worth seeing side by
+side: `raj.patel@` (recruiter) manages everything; `marcus.lee@` is the hiring manager on the backend
+req; `diego.santos@` and `tom.becker@` are interviewers there — they can read the pipeline and write
+their own scorecard, but **never see the salary band or the offer**; and `priya.nair@` is on no
+hiring team at all, so the app is empty for her.
 
 ## Testing
 
 ```bash
-pnpm test           # unit + integration (246 tests: 108 unit + 138 integration)
+pnpm test           # unit + integration (617 tests: 227 unit + 390 integration)
 ```
 
 Unit tests cover the pure logic (RBAC predicates, overtime/accrual rules, formatters, validation).
 Integration tests run against a real Postgres (`hris_test`), which the harness bootstraps
 automatically — they exercise RLS scoping, the compensation guard, the approval gates, and the write
-paths end-to-end across both apps.
+paths end-to-end across all three apps.
 
 ## Paid services: the seam ships, the account is yours
 
@@ -250,10 +296,12 @@ accruing and the talent pool stops being tidied. Set it.
 
 ## Status & roadmap
 
-Both apps are feature-complete. **Employee Records** is deployed (Vercel + Neon Postgres);
-**Time & Attendance** deploys as a second Vercel project against the same database
-(runbook in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)). **Next:** a lightweight ATS ("hire" flow)
-that plugs into the existing employee-creation path.
+All three apps are feature-complete. **Employee Records** and **Time & Attendance** are deployed
+(Vercel + Neon Postgres); **Recruiting** deploys as a third Vercel project against the same database
+— runbook in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md), Part G.
+
+**Next:** an applicant-facing register site, where candidates hold accounts, track their own
+applications and self-schedule interviews — the suite's first non-employee identity.
 
 ---
 
