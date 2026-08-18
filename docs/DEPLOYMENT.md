@@ -49,10 +49,22 @@ under connection limits. Migrations need a real session, so `DIRECT_URL` uses th
 2. In the **SQL editor**, run the contents of `docs/deploy/neon-app-role.sql` (set a strong
    `hris_app` password). This creates the restricted runtime role + base grants; the table-level
    grants/RLS come from the migrations in Part C.
-3. Collect two connection strings:
-   - **`DIRECT_URL`** = owner @ **direct** host, e.g. `postgresql://<owner>:<pw>@<project>.neon.tech/<db>?sslmode=require`
-   - **`DATABASE_URL`** = `hris_app` @ **pooled** host, e.g. `postgresql://hris_app:<pw>@<project>-pooler.neon.tech/<db>?sslmode=require`
+3. Collect two connection strings, and **change Neon's default `sslmode=require` to
+   `sslmode=verify-full`** (see the warning below):
+   - **`DIRECT_URL`** = owner @ **direct** host, e.g. `postgresql://<owner>:<pw>@<project>.neon.tech/<db>?sslmode=verify-full`
+   - **`DATABASE_URL`** = `hris_app` @ **pooled** host, e.g. `postgresql://hris_app:<pw>@<project>-pooler.neon.tech/<db>?sslmode=verify-full`
    (Neon shows both the direct and `-pooler` hostnames.)
+
+> ⚠️ **Why not the `sslmode=require` Neon hands you.** `pg` currently treats `require` as an alias
+> for `verify-full` — it encrypts *and* verifies the server certificate. In **pg v9 /
+> pg-connection-string v3** that alias goes away and `require` takes libpq's weaker meaning:
+> encrypt, but **don't verify the certificate**, which is open to a man-in-the-middle. Writing
+> `verify-full` explicitly means a future dependency bump can't silently downgrade the connection.
+> `pg` already warns about this on every run.
+>
+> Nothing else is needed: Neon's certificate chains to Let's Encrypt's ISRG Root X1, which is in the
+> OS/Node trust store, so no `sslrootcert` path is required. Neon recommends `verify-full` too.
+> (Local dev is unaffected — those URLs are plain `localhost` with no TLS.)
 
 ---
 
@@ -138,7 +150,7 @@ DIRECT_URL='<owner direct url>' DATABASE_URL='<hris_app pooled url>' \
    | --- | --- |
    | `DATABASE_URL` | `hris_app` **pooled** Neon URL (same as employee-records) |
    | `DIRECT_URL` | owner **direct** Neon URL (same) |
-   | `AUTH_SECRET` | a prod secret (can reuse employee-records' — sessions are per-domain either way) |
+   | `AUTH_SECRET` | a **fresh** secret — `openssl rand -base64 33`. Do not reuse another project's; see the note under Part G. |
    | `CRON_SECRET` | `openssl rand -base64 32` — **name it exactly this**: Vercel Cron auto-sends `Authorization: Bearer $CRON_SECRET`, which `/api/cron/accrue` checks |
    | `UPSTASH_REDIS_REST_URL` | from Upstash (F2) |
    | `UPSTASH_REDIS_REST_TOKEN` | from Upstash (F2) |
@@ -225,13 +237,34 @@ long-lived secret in the project. `BLOB_READ_WRITE_TOKEN` is only for code runni
 3. **Environment Variables** (Production):
    | Var | Value |
    | --- | --- |
-   | `DATABASE_URL` | `hris_app` **pooled** Neon URL (same as the other two apps) |
-   | `DIRECT_URL` | owner **direct** Neon URL (same) |
-   | `AUTH_SECRET` | a prod secret (may reuse the others' — sessions are per-domain) |
+   | `DATABASE_URL` | `hris_app` **pooled** Neon URL (same as the other two apps), `sslmode=verify-full` |
+   | `DIRECT_URL` | owner **direct** Neon URL (same), `sslmode=verify-full` |
+   | `AUTH_SECRET` | a **fresh** secret — `openssl rand -base64 33`, not shared with the other projects |
    | `CRON_SECRET` | `openssl rand -base64 32` — **exact name required**: Vercel Cron sends it as `Authorization: Bearer`, and `/api/cron/archive-stale` **fails closed** without it |
    | `STORAGE_DRIVER` | `vercel-blob` |
+   | `ENABLE_EXPERIMENTAL_COREPACK` | `1` — see the note below |
    | `UPSTASH_REDIS_REST_URL` / `_TOKEN` | optional; the limiters are env-gated no-ops without them |
 4. Deploy. `prebuild` generates the Prisma client, then `next build`; every route is dynamic.
+
+> ⚠️ **Give every project its OWN `AUTH_SECRET` and `CRON_SECRET`.** An earlier version of this
+> runbook said the auth secret could be reused across projects because "sessions are per-domain
+> anyway". That's true and it argues the *opposite* way: the deployed apps sit on different domains,
+> so cookies never travel between them and a shared secret buys nothing in production — while making
+> a single leak enough to forge sessions for all three, and turning any rotation into a three-app
+> job. `CRON_SECRET` is per-project by construction: Vercel sends *that* project's value as the
+> bearer token on *that* project's cron requests.
+>
+> The one case where sharing is right is deliberate SSO — all apps behind a single domain with a
+> shared cookie domain. That's a design decision to make on purpose, not something to inherit from a
+> copy-pasted value. (Locally, the apps *do* share a secret on purpose, so one login covers
+> `localhost:3000/3001/3002`.)
+
+> ⚠️ **`ENABLE_EXPERIMENTAL_COREPACK=1` — the build failure both earlier projects hit.** Without it
+> Vercel installs with its own bundled (older) pnpm and the install dies with `ERR_INVALID_THIS`.
+> The root `package.json`'s `"packageManager": "pnpm@11.9.0"` field is **not sufficient on its own** —
+> that was learned the hard way on the first deploy. Vercel's default pnpm may have caught up since,
+> so this may be unnecessary now; it is harmless either way, and it's the first thing to set if the
+> install step fails.
 
 ### G5 — 👤 Switch employee-records to Blob too
 
@@ -280,3 +313,12 @@ and reversible.
 - Migrations are forward-only (`migrate deploy`); Neon offers branching + point-in-time restore.
 - Rotating `AUTH_SECRET` invalidates all existing sessions.
 - Secrets live only in Vercel's env + your local shell — never committed.
+- **Vercel env fields take RAW values — never wrap them in quotes.** `.env` files strip quotes;
+  Vercel's dashboard does not, so `"https://…"` becomes a value that literally starts with `"`. The
+  same goes for trailing whitespace: a stray space on `CRON_SECRET` produces a 401 that looks like a
+  code bug. Paste carefully, especially the base64 secrets.
+- **Upstash: use the REST pair**, not the `redis://` string — the limiter speaks Upstash's HTTP API
+  (`UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`).
+- **All three projects' `DATABASE_URL` / `DIRECT_URL` must use `sslmode=verify-full`** (Part B). If
+  one is still on Neon's default `require`, it keeps working today and silently loses certificate
+  verification whenever `pg` reaches v9. Worth grepping the env vars whenever a project is added.

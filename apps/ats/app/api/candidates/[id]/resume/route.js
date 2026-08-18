@@ -47,10 +47,12 @@ export async function GET(request, { params }) {
   let nodeStream;
   try {
     nodeStream = await storage.getStream(candidate.resumeKey);
-  } catch {
+  } catch (e) {
     // The DB row says there is a file and the storage layer disagrees — a real inconsistency (an
     // unconfigured cloud driver, or a local file removed by hand). Say so plainly rather than
-    // letting it surface as an unhandled 500.
+    // letting it surface as an unhandled 500 — but log the cause, or the 404 is indistinguishable
+    // from "no such candidate" to whoever has to fix it.
+    console.error("[resume] storage read failed", { key: candidate.resumeKey, error: e });
     return new Response("Résumé unavailable", { status: 404 });
   }
 

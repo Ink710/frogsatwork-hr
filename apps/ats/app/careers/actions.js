@@ -84,7 +84,12 @@ export async function submitApplication(jobId, _prevState, formData) {
     resumeName = file.name?.slice(0, 200) ?? null; // stored for display only, never used as a path
     try {
       await storage.put(resumeKey, Buffer.from(await file.arrayBuffer()));
-    } catch {
+    } catch (e) {
+      // LOG IT. The applicant gets a deliberately vague message — a stranger must not learn anything
+      // about our infrastructure from a failed upload — but swallowing the cause entirely left
+      // production genuinely undebuggable: a misconfigured storage driver looked identical to a
+      // corrupt file, with nothing in the logs either way. The operator needs the real error.
+      console.error("[careers] resume upload failed", { key: resumeKey, error: e });
       return { error: t("apply.failed") };
     }
   }
