@@ -8,8 +8,8 @@
 **▶ Live demos** — sign in with a seeded account below (password `password123`):
 
 - **Employee Records:** https://frogsatwork-hr.vercel.app
-- **Time & Attendance:** _(link added after deploy)_
-- **Recruiting / ATS:** _(link added after deploy)_
+- **Time & Attendance:** https://frogsatwork-hr-time-management.vercel.app
+- **Recruiting / ATS:** https://frogsatwork-hr-ats.vercel.app
 
 FrogsAtWorkHR is a portfolio project built to demonstrate full-stack engineering judgment, not just
 CRUD mechanics. The domain decisions reflect how HR data actually behaves in the real world —
@@ -296,9 +296,9 @@ accruing and the talent pool stops being tidied. Set it.
 
 ## Status & roadmap
 
-All three apps are feature-complete. **Employee Records** and **Time & Attendance** are deployed
-(Vercel + Neon Postgres); **Recruiting** deploys as a third Vercel project against the same database
-— runbook in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md), Part G.
+All three apps are feature-complete and **deployed** — three Vercel projects against one Neon
+Postgres database, with résumés and documents in a private Vercel Blob store. Runbook in
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 **Next:** an applicant-facing register site, where candidates hold accounts, track their own
 applications and self-schedule interviews — the suite's first non-employee identity.
