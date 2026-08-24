@@ -80,7 +80,7 @@ export async function getJobBoard(jobId) {
       where: { jobId },
       orderBy: { appliedAt: "asc" },
       include: {
-        candidate: { select: { id: true, firstName: true, lastName: true, source: true } },
+        candidate: { select: { id: true, firstName: true, lastName: true } },
       },
     });
 
@@ -91,7 +91,9 @@ export async function getJobBoard(jobId) {
         id: a.id,
         stage: a.stage,
         candidateName: `${a.candidate.firstName} ${a.candidate.lastName}`,
-        source: a.candidate.source,
+        // M1: THIS application's channel, not the person's first touch. A card is about one
+        // submission, so the campaign that produced that submission is the honest thing to show.
+        source: a.source,
         appliedAt: a.appliedAt,
         currentRoundId: a.currentRoundId,
         currentRound: roundsById.get(a.currentRoundId)?.name ?? null,
@@ -411,16 +413,20 @@ export async function getCandidates({
     });
   }
 
-  // `source` lives on Candidate → a direct clause.
-  if (source) and.push({ source });
-
-  // stage / job / applied-date are all APPLICATION fields. They must be ANDed INSIDE ONE `some`, i.e.
-  // "has a single application matching all of them". Pushing them as separate `some` clauses would
-  // wrongly match a candidate whose DIFFERENT applications each satisfy a different filter — e.g.
-  // rejected on job A + at Offer on job B would match "job A at Offer". (Locked by a test.)
+  // stage / job / source / applied-date are all APPLICATION fields. They must be ANDed INSIDE ONE
+  // `some`, i.e. "has a single application matching all of them". Pushing them as separate `some`
+  // clauses would wrongly match a candidate whose DIFFERENT applications each satisfy a different
+  // filter — e.g. rejected on job A + at Offer on job B would match "job A at Offer". (Locked by a
+  // test.)
+  //
+  // M1: `source` joined this group when attribution moved from Candidate to Application. It is not a
+  // direct Candidate clause any more, and it must not become a `some` of its own: "from LinkedIn, at
+  // Offer" has to mean ONE application that was both, not a LinkedIn application plus an unrelated
+  // one sitting at Offer. That is the very confusion this milestone exists to remove.
   const appClauses = [];
   if (stage && APPLICATION_STAGES.includes(stage)) appClauses.push({ stage });
   if (jobId) appClauses.push({ jobId });
+  if (source) appClauses.push({ source });
   const from = utcMidnight(appliedFrom);
   const to = utcMidnight(appliedTo);
   if (from) appClauses.push({ appliedAt: { gte: from } });
@@ -704,7 +710,10 @@ export async function getCandidateFilterOptions() {
   if (!viewer) return { jobs: [], sources: [] };
   return withViewer(viewer, async (tx) => {
     const jobs = await tx.job.findMany({ orderBy: { title: "asc" }, select: { id: true, title: true } });
-    const grouped = await tx.candidate.groupBy({
+    // M1: the options come from APPLICATIONS, because that is where attribution lives now — and it
+    // keeps the dropdown honest with the filter it drives. Still RLS-scoped: application_read is
+    // app_can_see_job, so a hiring manager only sees sources present on their own reqs.
+    const grouped = await tx.application.groupBy({
       by: ["source"],
       where: { source: { not: null } },
       orderBy: { source: "asc" },
@@ -735,7 +744,8 @@ export async function getApplicationDetail(jobId, appId) {
             lastName: true,
             email: true,
             phone: true,
-            source: true,
+            // NOT `source`: M1 moved attribution to the application, and this view is about one
+            // application. It arrives on the returned row via the `...app` spread below.
             // The filename is display-only. `resumeKey` is deliberately NOT selected: it is a
             // storage path, the client has no use for it, and the download route resolves it
             // server-side from the candidate id.
@@ -909,8 +919,18 @@ export async function getSourceReport() {
     // It's also the more honest definition: a hire is a historical fact. Current stage can be edited
     // afterwards, which would silently erase a hire that really happened; the append-only event trail
     // is precisely what stops that.
+    // M1: grouped by the APPLICATION's own source, so a repeat applicant credits each campaign that
+    // actually produced a submission. Previously this grouped by the CANDIDATE's source, which meant
+    // someone who applied via the careers page and later via LinkedIn was counted as "Careers page"
+    // both times and LinkedIn was reported as producing nobody.
+    //
+    // The JOIN to "Candidate" went with it, and that is a real saving rather than tidying: Postgres
+    // evaluates candidate_visibility → app_can_see_candidate (SECURITY DEFINER) once per row SCANNED,
+    // which is the cost the candidate_erasure migration was written to reduce. The visible set is
+    // unchanged — if an application is visible then app_can_see_job holds, and app_can_see_candidate
+    // holds for its candidate via its own "applied to a job you can see" branch.
     const rows = await tx.$queryRaw`
-      SELECT c.source,
+      SELECT a.source,
              count(*)::int AS applications,
              count(*) FILTER (
                WHERE EXISTS (
@@ -919,8 +939,7 @@ export async function getSourceReport() {
                )
              )::int AS hires
       FROM "Application" a
-      JOIN "Candidate" c ON c.id = a."candidateId"
-      GROUP BY c.source`;
+      GROUP BY a.source`;
     return summariseSources(
       rows.map((r) => ({ source: r.source, applications: Number(r.applications), hires: Number(r.hires) })),
     );

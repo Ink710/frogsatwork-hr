@@ -122,6 +122,11 @@ const en = {
   "candidates.allStages": "All stages",
   "candidates.allJobs": "All jobs",
   "candidates.allSources": "All sources",
+  // Candidate-scoped views say "first touch"; application-scoped views use `app.source`. Since M1
+  // the filter matches an APPLICATION's source while this row shows how the PERSON first arrived —
+  // without the label, filtering by LinkedIn and seeing "Careers page" on a row reads as a bug.
+  "candidates.firstTouch": "First seen via {source}",
+  "candidates.firstTouchLabel": "First seen via",
   "candidates.appliedFrom": "Applied from",
   "candidates.appliedTo": "Applied to",
   "candidates.filter": "Filter",

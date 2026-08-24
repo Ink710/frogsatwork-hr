@@ -121,6 +121,8 @@ const es = {
   "candidates.allStages": "Todas las etapas",
   "candidates.allJobs": "Todas las vacantes",
   "candidates.allSources": "Todos los orígenes",
+  "candidates.firstTouch": "Primer contacto vía {source}",
+  "candidates.firstTouchLabel": "Primer contacto vía",
   "candidates.appliedFrom": "Postuló desde",
   "candidates.appliedTo": "Postuló hasta",
   "candidates.filter": "Filtrar",

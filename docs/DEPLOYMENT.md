@@ -301,10 +301,99 @@ and reversible.
   drift**. If it gets messy, add a scheduled reseed (Vercel Cron hitting a protected reseed route, or
   a nightly job running `db:seed`) — deferred, not built.
 - **Neon free-tier autosuspend** adds a cold-start delay on the first hit after idle — acceptable for
-  a demo; mention it in the Loom if noticeable.
+  a demo; mention it in the Loom if noticeable. **Leave it alone.**
+
+  > ⚠️ **DO NOT run an uptime pinger to avoid that cold start — it took all three demos offline.**
+  > Neon free allows **100 CU-hrs/month**; compute runs at **0.25 CU**, so the budget is ~400 hours
+  > of *active* compute. A ping every ~5 minutes stops the database ever suspending: ~720 hours of
+  > activity a month, ~180 CU-hrs, quota exhausted well before month end. Every app on that database
+  > then gets connections **refused in under a second** — which reads like an outage, not a limit,
+  > because Vercel stays up and only DB-backed routes fail.
+  >
+  > Cold starts and quota are the same dial. Bursty demo traffic on the default 5-minute autosuspend
+  > uses a few compute-hours a month. **Prefer the cold start.**
+  >
+  > Diagnosing it again: `/login` (no DB) returns **200** while `/api/health` returns **503** and
+  > DB-backed pages **500** — and the failure is *sub-second*, which rules out both a cold wake
+  > (seconds, then succeeds) and a network timeout (much longer). Check the Neon **usage** figures,
+  > and make sure you're looking at the right Neon **org and project** — an unrelated project's tidy
+  > dashboard will happily tell you nothing is wrong.
 - **`next build` and the DB.** The app's routes are dynamic (cookies/auth), so the build shouldn't try
   to prerender against the DB. If a build ever fails trying to reach Postgres, mark the offending
   route `export const dynamic = "force-dynamic"`.
+
+---
+
+## Part H — 👤 Recovery: rebuilding on a fresh Neon project
+
+Used 2026-08-19 after the free-tier compute quota was exhausted (see the pinger warning above). Also
+the procedure for *any* "the database is gone/unusable" situation, because **the database is fully
+reproducible from this repo** — migrations define the schema, RLS and grants; the seed defines the
+demo data. Nothing needs to be rescued from the old project.
+
+**The allowance is per PROJECT** (Neon Free: 100 CU-hours *per project*), so a new project in the
+**same organization** gets a clean budget. No new org, and nothing to "unlink" — the Vercel projects
+hold plain `DATABASE_URL` / `DIRECT_URL` env vars, not a marketplace integration.
+
+### H1 — Create the project
+Neon → same org → **New Project**. Match the old settings so nothing else shifts:
+- **Region: AWS US East 1 (N. Virginia)** — Vercel routes these deployments through `iad1`; a distant
+  database adds latency to every request.
+- **Postgres 17**.
+- **Leave Neon Auth OFF.** This suite has its own identity model (Auth.js + a `User` table + bcrypt,
+  with RLS driven by the `app.current_*` session vars `withViewer` sets). Neon Auth would be a
+  second, competing notion of "who is signed in" and buys nothing here.
+- Note the **database name** Neon creates (usually `neondb`) — H2 needs it.
+
+### H2 — Create the restricted role (SQL editor, as owner)
+`docs/deploy/neon-app-role.sql`, with the two placeholders filled in:
+```sql
+CREATE ROLE hris_app WITH LOGIN PASSWORD '<a strong new password>';
+GRANT CONNECT ON DATABASE neondb TO hris_app;   -- <- your db name
+GRANT USAGE ON SCHEMA public TO hris_app;
+```
+The role name must be exactly `hris_app` — the migrations reference it by name.
+
+### H3 — Build both connection strings
+Neon shows you the **owner's** string. The app's string you assemble yourself: same host, but the
+`hris_app` role and the password from H2. Both get `sslmode=verify-full` (see Part B).
+- **`DIRECT_URL`** = owner @ **direct** host
+- **`DATABASE_URL`** = `hris_app` @ **`-pooler`** host
+
+⚠️ Easy to get wrong: using the owner string for both. Then RLS never bites, because the owner
+bypasses every policy and REVOKE — the app would appear to work while silently having no security.
+
+### H4 — Schema + data (from your machine)
+```bash
+DIRECT_URL='<new owner direct url>' DATABASE_URL='<new hris_app pooled url>' \
+  pnpm --filter @hris/database exec prisma migrate deploy
+
+DIRECT_URL='<new owner direct url>' DATABASE_URL='<new hris_app pooled url>' \
+  pnpm --filter @hris/database db:seed
+```
+Expect ~35 migrations and a seed summary ending `salaryBands: 1, offers: 1, greatLeads: 1`.
+
+### H5 — Repoint the three Vercel projects
+Update **`DATABASE_URL`** and **`DIRECT_URL`** on `employee-records`, `time-management` and `ats` —
+six edits. Raw values, no quotes, marked sensitive. Everything else (AUTH_SECRET, CRON_SECRET,
+STORAGE_DRIVER, Blob connection) is unchanged.
+
+### H6 — Redeploy all three
+Env changes only reach a **new** deployment.
+
+> Sessions survive: `AUTH_SECRET` is unchanged and the seed uses **deterministic UUIDs**, so an
+> already-signed-in browser still resolves to a valid user. No forced logout.
+
+### H7 — Verify (👤)
+`/api/health` → `{"ok":true}` on all three · sign in as `ana.okafor@frogsatwork.test` · ATS
+`/careers` shows the posted band on the backend req · one page from each app renders real data.
+
+### H8 — Afterwards
+- **Do not delete the old project yet.** Its quota resets at the start of the next billing period,
+  making it a ready fallback. Delete it once the new one has run clean for a while.
+- **Confirm no pinger is running** against `/api/health` anywhere (UptimeRobot, cron-job.org, a
+  GitHub Action). A fresh allowance burns on the same clock if the heartbeat is still alive — that
+  is what caused this outage, not ordinary traffic.
 
 ---
 

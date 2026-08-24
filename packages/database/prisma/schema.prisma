@@ -1102,7 +1102,13 @@ model Candidate {
   lastName       String
   email          String
   phone          String?
-  source         String? // where they came from, e.g. "Referral" (plain string; an adapter enum later)
+  // FIRST TOUCH — how this person first entered our world, e.g. "Referral". NOT the attribution for
+  // any particular application: that lives on Application.source, because someone who applied via
+  // the careers page in March and a LinkedIn campaign in August is two attributions, not one. The
+  // two are different questions and both are worth answering, which is why this column survived the
+  // move. app_submit_application fills it with COALESCE (gaps only, never overwritten), which is
+  // exactly what "first" means.
+  source         String?
   // Object-storage key for the resume (like EmployeeDocument.fileUrl) — never a public URL.
   resumeKey      String?
   resumeFileName String?
@@ -1183,6 +1189,21 @@ model Application {
   id                String           @id @default(uuid())
   stage             ApplicationStage @default(APPLIED)
   appliedAt         DateTime         @default(now())
+  // WHERE THIS APPLICATION CAME FROM — the channel that produced this specific submission.
+  //
+  // Attribution belongs here rather than on Candidate because a person can apply more than once,
+  // from different campaigns. While it lived on Candidate (set with COALESCE, so never updated) a
+  // repeat applicant was credited to their FIRST channel every time, and every later campaign was
+  // reported as producing nobody. Nothing errored — the figures were simply wrong, which is the
+  // worst way for a reporting feature to fail.
+  //
+  // Nullable, and deliberately not backfilled for candidates with more than one application: for
+  // them the original source genuinely does not say which application it described, and inventing
+  // an answer is the same fiction this column exists to end. /reports shows those as "Unknown".
+  //
+  // Still free text in M1. The constrained campaign registry is M2 — it is what makes "a source
+  // describes a channel, not a person" structurally true rather than a convention we observe.
+  source            String?
   // Free text: the specifics, and the field an erasure blanks.
   rejectionReason   String?
   // Structured (M12): required by validation when moving to REJECTED, but NULLABLE in the schema —
@@ -1229,6 +1250,9 @@ model Application {
 
   @@unique([jobId, candidateId])
   @@index([jobId, stage])
+  // The candidate list filters "has an application from this source" (getCandidates), which is the
+  // read this helps. getSourceReport aggregates every application in the org and scans regardless.
+  @@index([orgId, source])
 }
 
 // A criterion this job scores candidates on (M7) — e.g. "System design", "Communication". Per-job and

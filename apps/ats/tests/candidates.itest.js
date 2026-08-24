@@ -69,7 +69,21 @@ describe("search + filters", () => {
     as(V.raj);
     expect(names(await getCandidates({ stage: "OFFER" }))).toEqual(["Luis Romero"]);
     expect(names(await getCandidates({ jobId: "job-pd" }))).toEqual(["Owen Zhang"]);
-    expect(names(await getCandidates({ source: "LinkedIn" }))).toEqual(["Nora Adeyemi"]);
+    // M1: source matches an APPLICATION, not the person's first touch. Owen's first touch is
+    // Referral, but he came back through LinkedIn — so a LinkedIn filter must find him.
+    expect(names(await getCandidates({ source: "LinkedIn" }))).toEqual(["Nora Adeyemi", "Owen Zhang"]);
+  });
+
+  it("ANDs source with the other application filters INSIDE one application", async () => {
+    // Owen has LinkedIn @ SCREEN (backend) and Referral @ REJECTED (design). Neither application is
+    // both, so this must find nobody. If `source` were pushed as its own `some` clause it would
+    // match him — one application satisfying the source, a DIFFERENT one satisfying the stage —
+    // which is the same cross-application confusion the stage/job/date filters already guard
+    // against, and the exact class of error this milestone set out to remove.
+    as(V.raj);
+    expect(names(await getCandidates({ source: "LinkedIn", stage: "REJECTED" }))).toEqual([]);
+    // The combination that IS true of a single application still matches.
+    expect(names(await getCandidates({ source: "LinkedIn", stage: "SCREEN" }))).toEqual(["Owen Zhang"]);
   });
 
   it("filters by applied-date range, with an INCLUSIVE upper bound", async () => {

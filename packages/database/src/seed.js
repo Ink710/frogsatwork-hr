@@ -749,13 +749,19 @@ async function main() {
   // candidate database's date-range filter has something real to bite on). Mei is mid-INTERVIEW at
   // "System Design". Owen appears TWICE — backend + design — which is what makes the candidate
   // profile's cross-job history (one person, many applications) visible in the demo.
+  //
+  // `source` is PER-APPLICATION since M1. Owen carries the point of the milestone: his FIRST touch
+  // was the June design req via Referral, and he came back in July through LinkedIn. Attribution on
+  // the candidate could only ever say "Referral" for both, so LinkedIn was reported as having
+  // produced nobody. Now /reports credits each channel with the submission it actually caused, while
+  // Candidate.source keeps saying Referral — because that is genuinely how we first met him.
   const APPLICATIONS = [
-    { id: "app-nora", cand: "cand-nora", job: "job-be", stage: "APPLIED", round: null, applied: "2026-08-05" },
-    { id: "app-owen", cand: "cand-owen", job: "job-be", stage: "SCREEN", round: null, applied: "2026-07-28" },
-    { id: "app-mei", cand: "cand-mei", job: "job-be", stage: "INTERVIEW", round: "ir-be-design", applied: "2026-07-20" },
-    { id: "app-luis", cand: "cand-luis", job: "job-be", stage: "OFFER", round: null, applied: "2026-07-10" },
+    { id: "app-nora", cand: "cand-nora", job: "job-be", stage: "APPLIED", round: null, applied: "2026-08-05", source: "LinkedIn" },
+    { id: "app-owen", cand: "cand-owen", job: "job-be", stage: "SCREEN", round: null, applied: "2026-07-28", source: "LinkedIn" },
+    { id: "app-mei", cand: "cand-mei", job: "job-be", stage: "INTERVIEW", round: "ir-be-design", applied: "2026-07-20", source: "Careers page" },
+    { id: "app-luis", cand: "cand-luis", job: "job-be", stage: "OFFER", round: null, applied: "2026-07-10", source: "Referral" },
     { id: "app-owen-pd", cand: "cand-owen", job: "job-pd", stage: "REJECTED", round: null,
-      applied: "2026-06-15", rejectionCategory: "STRONGER_CANDIDATE" },
+      applied: "2026-06-15", rejectionCategory: "STRONGER_CANDIDATE", source: "Referral" },
   ];
   for (const a of APPLICATIONS) {
     await prisma.application.upsert({
@@ -764,12 +770,14 @@ async function main() {
         stage: a.stage, currentRoundId: a.round,
         appliedAt: new Date(`${a.applied}T12:00:00.000Z`),
         rejectionCategory: a.rejectionCategory ?? null,
+        source: a.source ?? null,
       },
       create: {
         id: a.id, orgId: ORG_ID, jobId: a.job, candidateId: a.cand,
         stage: a.stage, currentRoundId: a.round,
         appliedAt: new Date(`${a.applied}T12:00:00.000Z`),
         rejectionCategory: a.rejectionCategory ?? null,
+        source: a.source ?? null,
       },
     });
   }
@@ -1083,7 +1091,12 @@ async function seedEeoVolume() {
     await prisma.application.upsert({
       where: { id: applicationId },
       update: {},
-      create: { id: applicationId, orgId: ORG_ID, jobId, candidateId, stage: "APPLIED", appliedAt },
+      // Each of these applies exactly once, so the application's source and the person's first touch
+      // are the same value — which is also why the M1 backfill could copy it down for them safely.
+      create: {
+        id: applicationId, orgId: ORG_ID, jobId, candidateId, stage: "APPLIED", appliedAt,
+        source: SOURCES[i % SOURCES.length],
+      },
     });
 
     await prisma.applicationEvent.upsert({
@@ -1161,7 +1174,7 @@ async function seedEeoVolume() {
       update: {},
       create: {
         id: applicationId, orgId: ORG_ID, jobId: "job-pd", candidateId,
-        stage: "REJECTED", appliedAt: at, createdAt: at,
+        stage: "REJECTED", appliedAt: at, createdAt: at, source: "Careers page",
       },
     });
     await prisma.applicationEvent.upsert({

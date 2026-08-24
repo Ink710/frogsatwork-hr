@@ -124,10 +124,36 @@ describe("source effectiveness", () => {
     as(V.raj);
     const rows = await getSourceReport();
     const referral = rows.find((r) => r.source === "Referral");
-    expect(referral.applications).toBe(3); // Owen ×2 + Luis
+    expect(referral.applications).toBe(2); // Owen's DESIGN application + Luis
     expect(referral.hires).toBe(1); // Luis
-    expect(referral.hireRate).toBe(33.3);
+    expect(referral.hireRate).toBe(50);
     expect(rows.find((r) => r.source === "LinkedIn").hires).toBe(0);
+  });
+
+  it("credits each of a repeat applicant's channels separately (M1)", async () => {
+    // THE REGRESSION THIS MILESTONE EXISTS FOR. Owen applied twice: to the design req in June via
+    // Referral, and to the backend req in July via LinkedIn.
+    //
+    // While attribution lived on Candidate it was written once with COALESCE and never updated, so
+    // BOTH of his applications reported as "Referral" and LinkedIn was credited with producing
+    // nobody. Nothing errored — the figures were just wrong, which is the failure mode a reports
+    // page can carry indefinitely without anyone noticing.
+    as(V.raj);
+    const rows = await getSourceReport();
+    const bySource = Object.fromEntries(rows.map((r) => [r.source, r.applications]));
+
+    expect(bySource.Referral).toBe(2); // Owen (design) + Luis
+    expect(bySource.LinkedIn).toBe(2); // Owen (backend) + Nora  ← was 1 before M1
+    expect(bySource["Careers page"]).toBe(1); // Mei
+
+    // Every application is still counted exactly once: the totals must reconcile, not just shift.
+    expect(rows.reduce((n, r) => n + r.applications, 0)).toBe(5);
+
+    // …and the person's FIRST TOUCH is untouched by any of it — a separate, still-true fact.
+    const owen = await withViewer(V.raj, (tx) =>
+      tx.candidate.findUnique({ where: { id: "cand-owen" }, select: { source: true } }),
+    );
+    expect(owen.source).toBe("Referral");
   });
 
   it("still counts a hire whose application was later moved off HIRED", async () => {

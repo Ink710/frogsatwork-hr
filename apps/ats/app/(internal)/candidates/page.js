@@ -176,7 +176,15 @@ export default async function CandidatesPage({ searchParams }) {
                           )}
                         </div>
                         <p className="font-mono text-xs text-muted-foreground">{c.email}</p>
-                        {c.source && <p className="mt-0.5 text-xs text-muted-foreground">{c.source}</p>}
+                        {/* FIRST TOUCH, not this row's application source — the row is a person,
+                            not a submission. Labelled since M1 because the source FILTER matches an
+                            application, so an unlabelled "Careers page" under a LinkedIn filter
+                            would look like a bug rather than two different facts. */}
+                        {c.source && (
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {t("candidates.firstTouch", { source: c.source })}
+                          </p>
+                        )}
                       </>
                     )}
                   </div>

@@ -83,9 +83,17 @@ export default async function CandidateProfilePage({ params }) {
                 )}
               </>
             )}
-            {/* `source` outlives an erasure on purpose: it describes a channel, not a person, and
-                every source-effectiveness figure on /reports depends on it. */}
-            {candidate.source && <Field label={t("app.source")}>{candidate.source}</Field>}
+            {/* FIRST TOUCH — how this person first reached us. Per-application attribution lives on
+                the application (M1), and /reports aggregates that; this is the separate question of
+                where the relationship started.
+
+                It still outlives an erasure on purpose: it describes a channel, not a person. Note
+                that reporting no longer DEPENDS on that exception — since attribution moved to
+                Application, which app_erase_candidate never touches, the figures survive by
+                construction rather than by a carve-out somebody must remember not to break. */}
+            {candidate.source && (
+              <Field label={t("candidates.firstTouchLabel")}>{candidate.source}</Field>
+            )}
             <Field label={t("profile.applicationsLabel")}>
               {t("candidates.applications", { n: candidate.applications.length })}
             </Field>

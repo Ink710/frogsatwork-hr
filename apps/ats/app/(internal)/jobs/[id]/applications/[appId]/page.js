@@ -83,7 +83,10 @@ export default async function ApplicationDetailPage({ params }) {
           <FieldGrid>
             <Field label={t("app.email")}>{c.email}</Field>
             {c.phone && <Field label={t("app.phone")}>{c.phone}</Field>}
-            {c.source && <Field label={t("app.source")}>{c.source}</Field>}
+            {/* M1: this APPLICATION's channel, not the candidate's first touch. This page is about
+                one submission, so the campaign that produced it is the relevant fact; first touch
+                lives on the candidate profile. */}
+            {app.source && <Field label={t("app.source")}>{app.source}</Field>}
             <Field label={t("app.appliedLabel")}>{formatDate(app.appliedAt, locale)}</Field>
             {app.currentRound && <Field label={t("app.currentRound")}>{app.currentRound.name}</Field>}
             {/* Right beside the scorecard an interviewer is about to write — the CV is the thing
