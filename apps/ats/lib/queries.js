@@ -10,6 +10,7 @@ import {
   suppressSmallCells,
   resolveRetentionDays,
   summariseRejections,
+  summariseChannels,
   classifyOffer,
 } from "@hris/recruiting";
 
@@ -426,7 +427,10 @@ export async function getCandidates({
   const appClauses = [];
   if (stage && APPLICATION_STAGES.includes(stage)) appClauses.push({ stage });
   if (jobId) appClauses.push({ jobId });
-  if (source) appClauses.push({ source });
+  // M2: `source` is a campaign SLUG now, matched through the FK rather than against the snapshot
+  // text. That means a renamed campaign keeps filtering correctly, and it keeps the internal filter
+  // speaking the same vocabulary as a public tracking link.
+  if (source) appClauses.push({ campaign: { slug: source } });
   const from = utcMidnight(appliedFrom);
   const to = utcMidnight(appliedTo);
   if (from) appClauses.push({ appliedAt: { gte: from } });
@@ -624,6 +628,54 @@ export function canBrowseLeadPool(viewer) {
   return Boolean(viewer) && isRecruiter(viewer.role);
 }
 
+// ---------------------------------------------------------------------------
+// Campaigns (M2) — the attribution registry.
+// ---------------------------------------------------------------------------
+
+// May the viewer MANAGE campaigns? Mirrors the campaign_write RLS policy's role list, so a button
+// can never appear for someone the database will refuse — the same one-source-of-truth trick
+// viewerCanManageJob uses, minus the round-trip (this is a pure role question, not a per-row one).
+//
+// Reading is deliberately NOT gated: campaign_read is org-wide, because the pipeline board and the
+// candidate filter have to resolve a campaign for everyone who can see an application.
+export function canManageCampaigns(viewer) {
+  return Boolean(viewer) && isRecruiter(viewer.role);
+}
+
+/**
+ * Every campaign in the org, with how many applications each has produced.
+ *
+ * Archived campaigns are INCLUDED (flagged, ordered last). They stop accepting new applications but
+ * they keep the ones they already produced, so hiding them would strand attribution nobody can
+ * explain — the same reasoning that keeps archived leads in the leads pool, and the reason
+ * `archivedAt` is a reversible timestamp rather than a delete.
+ */
+export async function getCampaigns() {
+  const viewer = await getViewer();
+  if (!viewer) return [];
+  return withViewer(viewer, async (tx) => {
+    const campaigns = await tx.campaign.findMany({
+      // `nulls: "first"` is load-bearing, not decoration: Postgres sorts NULLs LAST on ASC, so a
+      // plain `archivedAt: "asc"` puts every RETIRED campaign at the top of the list — the opposite
+      // of what a recruiter needs. Live campaigns first, retired ones after.
+      orderBy: [{ archivedAt: { sort: "asc", nulls: "first" } }, { name: "asc" }],
+      select: { id: true, name: true, slug: true, channel: true, archivedAt: true },
+    });
+
+    // SEQUENTIAL, not an `include: { _count }`. Two relation queries on this transaction's pinned
+    // client run concurrently and trip pg's "already executing a query" deprecation — the same
+    // reason getCandidates splits its follow-ups (see the note there).
+    const counts = await tx.application.groupBy({
+      by: ["campaignId"],
+      where: { campaignId: { not: null } },
+      _count: { _all: true },
+    });
+    const byId = new Map(counts.map((c) => [c.campaignId, c._count._all]));
+
+    return campaigns.map((c) => ({ ...c, applications: byId.get(c.id) ?? 0 }));
+  });
+}
+
 /**
  * The leads pool.
  *
@@ -710,15 +762,24 @@ export async function getCandidateFilterOptions() {
   if (!viewer) return { jobs: [], sources: [] };
   return withViewer(viewer, async (tx) => {
     const jobs = await tx.job.findMany({ orderBy: { title: "asc" }, select: { id: true, title: true } });
-    // M1: the options come from APPLICATIONS, because that is where attribution lives now — and it
-    // keeps the dropdown honest with the filter it drives. Still RLS-scoped: application_read is
-    // app_can_see_job, so a hiring manager only sees sources present on their own reqs.
-    const grouped = await tx.application.groupBy({
-      by: ["source"],
-      where: { source: { not: null } },
-      orderBy: { source: "asc" },
+    // M2: the options are CAMPAIGNS, so the dropdown speaks the same vocabulary as the filter it
+    // drives (slug) while showing a recruiter the readable name.
+    //
+    // Note the scoping difference from `jobs` above, which is deliberate: campaign_read is a plain
+    // org match, so this lists every live campaign rather than only those a viewer's own reqs
+    // happen to have received applications from. An empty result for one of them is a truthful
+    // "nobody came from that campaign", where a narrowed LIST would hide that the campaign exists
+    // at all — the same "a wrong number is worse than a hidden section" reasoning the leads pool
+    // uses, applied in the opposite direction because here the full list is the honest one.
+    //
+    // Archived campaigns are excluded: they can no longer receive applications, so offering one as
+    // a filter is offering a guaranteed empty result.
+    const campaigns = await tx.campaign.findMany({
+      where: { archivedAt: null },
+      orderBy: { name: "asc" },
+      select: { slug: true, name: true, channel: true },
     });
-    return { jobs, sources: grouped.map((g) => g.source).filter(Boolean) };
+    return { jobs, campaigns };
   });
 }
 
@@ -912,7 +973,7 @@ export async function getFunnelReport() {
 // Where candidates come from, and which sources actually produce hires.
 export async function getSourceReport() {
   const viewer = await getViewer();
-  if (!viewer) return [];
+  if (!viewer) return { campaigns: [], channels: [] };
   return withViewer(viewer, async (tx) => {
     // Hires are counted from the HIRED EVENT, not from Application.stage — the same source of truth
     // the funnel and the time metrics use, so the three can never contradict each other on one page.
@@ -929,8 +990,19 @@ export async function getSourceReport() {
     // which is the cost the candidate_erasure migration was written to reduce. The visible set is
     // unchanged — if an application is visible then app_can_see_job holds, and app_can_see_candidate
     // holds for its candidate via its own "applied to a job you can see" branch.
+    //
+    // M2: LEFT JOIN "Campaign" for the channel. LEFT, not INNER, because an application with no
+    // campaign — pre-registry history, or a submission that arrived with an unrecognised slug — must
+    // still be counted. An INNER JOIN would silently drop exactly the rows the "Unknown" bucket
+    // exists to make visible, and a source report that quietly omits its own gaps overstates every
+    // channel left in it.
+    //
+    // The label prefers the campaign's CURRENT name and falls back to the snapshot on the
+    // application, so a renamed campaign reads correctly today while history that outlived its
+    // campaign still says what it was called.
     const rows = await tx.$queryRaw`
-      SELECT a.source,
+      SELECT COALESCE(c.name, a.source) AS source,
+             c.channel::text            AS channel,
              count(*)::int AS applications,
              count(*) FILTER (
                WHERE EXISTS (
@@ -939,10 +1011,19 @@ export async function getSourceReport() {
                )
              )::int AS hires
       FROM "Application" a
-      GROUP BY a.source`;
-    return summariseSources(
-      rows.map((r) => ({ source: r.source, applications: Number(r.applications), hires: Number(r.hires) })),
-    );
+      LEFT JOIN "Campaign" c ON c.id = a."campaignId"
+      GROUP BY COALESCE(c.name, a.source), c.channel`;
+
+    const counted = rows.map((r) => ({
+      source: r.source,
+      channel: r.channel ?? null,
+      applications: Number(r.applications),
+      hires: Number(r.hires),
+    }));
+
+    // Two tables from one scan: campaigns for "which push worked", channels for "where the budget
+    // goes". Both pure functions, so the arithmetic is unit-tested away from the database.
+    return { campaigns: summariseSources(counted), channels: summariseChannels(counted) };
   });
 }
 

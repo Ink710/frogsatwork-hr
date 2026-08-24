@@ -54,6 +54,10 @@ export async function AppHeader() {
         { href: "/candidates", label: t("nav.candidates") },
         ...(canSeeLeads ? [{ href: "/candidates/leads", label: t("nav.leads") }] : []),
         { href: "/reports", label: t("nav.reports") },
+        // M2: same gate as the leads pool — `isRecruiter` is the campaign_write role list, so the
+        // link only appears for people the database will actually let maintain the registry. The
+        // page 404s regardless; this just stops advertising a door that won't open.
+        ...(canSeeLeads ? [{ href: "/campaigns", label: t("nav.campaigns") }] : []),
         ...(canSeeCompliance ? [{ href: "/compliance", label: t("nav.compliance") }] : []),
       ]}
       userName={name}

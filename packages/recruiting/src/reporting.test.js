@@ -1,5 +1,42 @@
 import { describe, it, expect } from "vitest";
-import { buildFunnel, daysBetween, averageDays, summariseSources } from "./reporting";
+import { buildFunnel, daysBetween, averageDays, summariseSources, summariseChannels } from "./reporting";
+
+describe("summariseChannels", () => {
+  it("rolls several campaigns up into one channel row", () => {
+    const rows = summariseChannels([
+      { channel: "LINKEDIN", applications: 40, hires: 2 },
+      { channel: "LINKEDIN", applications: 44, hires: 1 },
+      { channel: "REFERRAL", applications: 15, hires: 4 },
+    ]);
+    expect(rows.find((r) => r.channel === "LINKEDIN")).toEqual({
+      channel: "LINKEDIN",
+      applications: 84,
+      hires: 3,
+      hireRate: 3.6,
+    });
+    // Ranked by hires, not volume: referral produced more people from a quarter of the traffic.
+    expect(rows[0].channel).toBe("REFERRAL");
+  });
+
+  it("keeps unattributed applications in their own bucket rather than dropping them", () => {
+    // Dropping them would overstate every tracked channel — the direction of error that sends next
+    // quarter's budget to the wrong place.
+    const rows = summariseChannels([
+      { channel: "LINKEDIN", applications: 10, hires: 1 },
+      { channel: null, applications: 90, hires: 0 },
+    ]);
+    expect(rows.reduce((n, r) => n + r.applications, 0)).toBe(100);
+    const unknown = rows.find((r) => r.channel === null);
+    expect(unknown.applications).toBe(90);
+    // …and it sorts last, because it is a footnote rather than a finding.
+    expect(rows[rows.length - 1]).toBe(unknown);
+  });
+
+  it("reports a null hire rate for a channel with no applications yet", () => {
+    const [row] = summariseChannels([{ channel: "FACEBOOK", applications: 0, hires: 0 }]);
+    expect(row.hireRate).toBeNull();
+  });
+});
 
 describe("buildFunnel", () => {
   it("computes conversion and drop-off between consecutive stages", () => {

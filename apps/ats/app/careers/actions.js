@@ -28,7 +28,7 @@ const storage = createStorage();
 // the job, refuses anything not OPEN+published, dedupes the candidate, never overwrites an existing
 // candidate's details, and reveals nothing about existing records. Everything here is defence in
 // depth in FRONT of that — none of it is load-bearing on its own.
-export async function submitApplication(jobId, _prevState, formData) {
+export async function submitApplication(jobId, sourceSlug, _prevState, formData) {
   const t = await getT();
 
   // 1. Honeypot: a field positioned off-screen that a human never fills. Bots fill everything.
@@ -98,10 +98,20 @@ export async function submitApplication(jobId, _prevState, formData) {
   //    function itself decides what is allowed.
   let result;
   try {
+    // M2: the source argument is a campaign SLUG now, not a display label. A tracked link supplies
+    // one; an untracked visit to the careers site falls back to the built-in `careers-page`
+    // campaign, which is what that visit genuinely is.
+    //
+    // Passed through unvalidated ON PURPOSE — the function resolves it against the live registry in
+    // this job's own org and discards anything unrecognised, so a Zod check here would only
+    // duplicate a rule that has to live in the database anyway (the public path is not the only
+    // caller). What it must never do is refuse the application: a mangled marketing link is our
+    // bookkeeping problem, never the applicant's.
+    const source = typeof sourceSlug === "string" && sourceSlug.trim() ? sourceSlug.trim() : "careers-page";
     const rows = await prisma.$queryRaw`
       SELECT result, application_id FROM app_submit_application(
         ${jobId}, ${d.firstName}, ${d.lastName}, ${d.email},
-        ${d.phone ?? null}, ${"Careers page"}, ${resumeKey}, ${resumeName},
+        ${d.phone ?? null}, ${source}, ${resumeKey}, ${resumeName},
         ${eeo.gender}, ${eeo.ethnicity}, ${eeo.veteranStatus}, ${eeo.disabilityStatus})`;
     result = rows[0]?.result;
   } catch {

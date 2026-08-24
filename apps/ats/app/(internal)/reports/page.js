@@ -87,7 +87,44 @@ export default async function ReportsPage() {
             </ul>
           </Card>
 
-          {sources.length > 0 && (
+          {/* TWO TABLES, ONE SCAN (M2). They answer different questions and a recruiter needs both:
+              the channel roll-up decides where next quarter's spend goes, the campaign table decides
+              which push actually worked. One alone is misleading — five LinkedIn campaigns listed
+              separately never add up to "how is LinkedIn doing", and a channel total never says
+              which creative earned it. */}
+          {sources.channels.length > 0 && (
+            <Card title={t("reports.channels")}>
+              <p className="mb-3 text-xs text-muted-foreground">{t("reports.channelsHint")}</p>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+                    <th className="pb-2">{t("reports.channel")}</th>
+                    <th className="pb-2 text-right">{t("reports.applications")}</th>
+                    <th className="pb-2 text-right">{t("reports.hires")}</th>
+                    <th className="pb-2 text-right">{t("reports.hireRate")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sources.channels.map((c) => (
+                    <tr key={c.channel ?? "UNKNOWN"} className="border-t border-border">
+                      {/* A null channel is an application we never attributed — pre-registry
+                          history, or a submission that arrived with an unrecognised slug. It gets a
+                          visible row rather than being dropped, because a channel mix that hides its
+                          own gaps overstates every channel left in it. */}
+                      <td className="py-2">
+                        {c.channel ? t(`enum.sourceChannel.${c.channel}`) : t("reports.unattributed")}
+                      </td>
+                      <td className="py-2 text-right font-mono">{c.applications}</td>
+                      <td className="py-2 text-right font-mono">{c.hires}</td>
+                      <td className="py-2 text-right font-mono">{c.hireRate === null ? "—" : `${c.hireRate}%`}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+          )}
+
+          {sources.campaigns.length > 0 && (
             <Card title={t("reports.sources")}>
               <table className="w-full text-sm">
                 <thead>
@@ -99,7 +136,7 @@ export default async function ReportsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sources.map((s) => (
+                  {sources.campaigns.map((s) => (
                     <tr key={s.source} className="border-t border-border">
                       <td className="py-2">{s.source}</td>
                       <td className="py-2 text-right font-mono">{s.applications}</td>

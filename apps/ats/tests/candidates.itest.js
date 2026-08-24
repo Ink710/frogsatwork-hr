@@ -69,21 +69,23 @@ describe("search + filters", () => {
     as(V.raj);
     expect(names(await getCandidates({ stage: "OFFER" }))).toEqual(["Luis Romero"]);
     expect(names(await getCandidates({ jobId: "job-pd" }))).toEqual(["Owen Zhang"]);
-    // M1: source matches an APPLICATION, not the person's first touch. Owen's first touch is
-    // Referral, but he came back through LinkedIn — so a LinkedIn filter must find him.
-    expect(names(await getCandidates({ source: "LinkedIn" }))).toEqual(["Nora Adeyemi", "Owen Zhang"]);
+    // M1: source matches an APPLICATION, not the person's first touch. M2: the value is a campaign
+    // SLUG. Owen's first touch is Referral, but he came back through the LinkedIn grads push — so
+    // that campaign's filter must find him and the plain `linkedin` one must not.
+    expect(names(await getCandidates({ source: "linkedin" }))).toEqual(["Nora Adeyemi"]);
+    expect(names(await getCandidates({ source: "linkedin-march-grads" }))).toEqual(["Owen Zhang"]);
   });
 
   it("ANDs source with the other application filters INSIDE one application", async () => {
-    // Owen has LinkedIn @ SCREEN (backend) and Referral @ REJECTED (design). Neither application is
+    // Owen has linkedin-march-grads @ SCREEN (backend) and referral @ REJECTED (design). Neither is
     // both, so this must find nobody. If `source` were pushed as its own `some` clause it would
     // match him — one application satisfying the source, a DIFFERENT one satisfying the stage —
     // which is the same cross-application confusion the stage/job/date filters already guard
     // against, and the exact class of error this milestone set out to remove.
     as(V.raj);
-    expect(names(await getCandidates({ source: "LinkedIn", stage: "REJECTED" }))).toEqual([]);
+    expect(names(await getCandidates({ source: "linkedin-march-grads", stage: "REJECTED" }))).toEqual([]);
     // The combination that IS true of a single application still matches.
-    expect(names(await getCandidates({ source: "LinkedIn", stage: "SCREEN" }))).toEqual(["Owen Zhang"]);
+    expect(names(await getCandidates({ source: "linkedin-march-grads", stage: "SCREEN" }))).toEqual(["Owen Zhang"]);
   });
 
   it("filters by applied-date range, with an INCLUSIVE upper bound", async () => {
@@ -160,7 +162,14 @@ describe("filter options", () => {
     as(V.raj);
     const forRecruiter = await getCandidateFilterOptions();
     expect(forRecruiter.jobs).toHaveLength(2);
-    expect(forRecruiter.sources).toEqual(["Careers page", "LinkedIn", "Referral"]);
+    // M2: campaigns, not free-text sources — and the ARCHIVED one is absent, because a campaign
+    // that can no longer receive applications would only ever filter to nothing.
+    expect(forRecruiter.campaigns.map((c) => c.slug)).toEqual([
+      "careers-page",
+      "linkedin",
+      "linkedin-march-grads",
+      "referral",
+    ]);
 
     as(V.marcus);
     expect((await getCandidateFilterOptions()).jobs.map((j) => j.title)).toEqual(["Senior Backend Engineer"]);

@@ -215,6 +215,24 @@ enum JobStatus {
   FILLED
 }
 
+// Where applicants come from, as a CLASSIFICATION (M2). Deliberately coarse and deliberately an
+// enum: this is the axis /reports rolls up on, and a roll-up is only meaningful over a vocabulary
+// that cannot drift. Named campaigns are the fine-grained layer above it — see Campaign.
+//
+// OTHER exists so a real channel we haven't enumerated can still be recorded honestly rather than
+// mis-filed into the closest-looking option. Adding a channel is a migration, which is the point:
+// the reportable vocabulary should change deliberately, not because someone typed something new.
+enum SourceChannel {
+  CAREERS_PAGE
+  COMPANY_WEBSITE
+  REFERRAL
+  LINKEDIN
+  FACEBOOK
+  INSTAGRAM
+  JOB_BOARD
+  OTHER
+}
+
 // A person's role on a SPECIFIC job's hiring team (distinct from their org-wide Role). Drives the
 // app_can_see_job / app_can_manage_job RLS: managers/recruiters manage, interviewers are read-only (M1).
 enum JobMemberRole {
@@ -377,6 +395,8 @@ model Organization {
   jobs            Job[]
   candidates      Candidate[]
   applications    Application[]
+  // Attribution registry (ATS M2).
+  campaigns       Campaign[]
   // Compliance (ATS M10).
   eeoResponses    EeoResponse[]
   erasureRequests ErasureRequest[]
@@ -440,6 +460,8 @@ model User {
   eeoExports             EeoExportLog[]         @relation("EeoExportActor")
   // Compensation (ATS M14): who wrote an offer.
   offersCreated          Offer[]                @relation("OfferCreatedBy")
+  // Attribution (ATS M2, applicant-app track): who opened a recruitment campaign.
+  campaignsCreated       Campaign[]             @relation("CampaignCreatedBy")
 
   @@index([orgId])
 }
@@ -1096,6 +1118,45 @@ model JobMember {
 // rather than hard-deleted — the deliberate inverse of the employee "never delete" rule, because the
 // obligation follows the RELATIONSHIP: an applicant is not an employee, and only the employment
 // relationship carries a retention duty that outranks the right to be forgotten.
+// A named recruitment campaign — the fine-grained half of attribution (M2).
+//
+// WHY A TABLE AND AN ENUM, not one or the other. The enum (SourceChannel) is what /reports rolls up
+// on, and a roll-up needs a vocabulary that cannot drift. But "LinkedIn" alone cannot answer which
+// LinkedIn PUSH worked, and recruiters must be able to start a campaign without a deploy. So the
+// campaign is the row they create; the channel is the fixed axis it reports under.
+//
+// `slug` is the value that appears in a tracking URL (?source=<slug>) and it is the ONLY thing the
+// public apply path will accept. It is unique per org and validated to [a-z0-9-] so it can never
+// carry a path fragment, a name, or anything else a stranger fancied typing.
+//
+// ⚠️ THIS TABLE HOLDS NO PERSONAL DATA, and that is deliberate rather than incidental — it is what
+// lets attribution outlive an erasure. `name` is a channel label ("LinkedIn — March grads"), never
+// a person. A campaign named after the individual who referred someone would put a name into a
+// figure that survives app_erase_candidate, which is exactly the leak leadNote is warned about.
+model Campaign {
+  id         String        @id @default(uuid())
+  name       String // display label, e.g. "LinkedIn — March grads"
+  slug       String // the ?source= value; lowercase, [a-z0-9-]
+  channel    SourceChannel
+  // Retire a campaign without destroying what it produced — the same nullable-timestamp idiom as
+  // Candidate.archivedAt, and for the same reason: reversible, and it keeps the history intact.
+  // An archived campaign's slug STOPS being accepted by the public apply path.
+  archivedAt DateTime?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  orgId String
+  org   Organization @relation(fields: [orgId], references: [id])
+
+  createdById String
+  createdBy   User   @relation("CampaignCreatedBy", fields: [createdById], references: [id])
+
+  applications Application[]
+
+  @@unique([orgId, slug])
+  @@index([orgId, archivedAt])
+}
+
 model Candidate {
   id             String   @id @default(uuid())
   firstName      String
@@ -1201,8 +1262,12 @@ model Application {
   // them the original source genuinely does not say which application it described, and inventing
   // an answer is the same fiction this column exists to end. /reports shows those as "Unknown".
   //
-  // Still free text in M1. The constrained campaign registry is M2 — it is what makes "a source
-  // describes a channel, not a person" structurally true rather than a convention we observe.
+  // SNAPSHOT of the campaign's display name at submit time (M2 — before that, free text).
+  //
+  // Kept alongside campaignId rather than replaced by it, for the reason ApplicationEvent.roundName
+  // already exists: a campaign can be renamed or deleted years later, and history must not silently
+  // change to match. The FK answers "which campaign is this, now"; this answers "what did we call it
+  // when they applied". Reads prefer the FK and fall back to this.
   source            String?
   // Free text: the specifics, and the field an erasure blanks.
   rejectionReason   String?
@@ -1222,6 +1287,13 @@ model Application {
 
   candidateId String
   candidate   Candidate @relation(fields: [candidateId], references: [id])
+
+  // The campaign that produced this application (M2). NULL means unattributed — either it predates
+  // the registry, or the public path was handed a slug it did not recognise, which is discarded
+  // rather than recorded. SetNull for the same reason as currentRound: retiring a campaign must
+  // never destroy an application, and `source` above still carries what it was called.
+  campaignId String?
+  campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
 
   // The interview round the candidate is currently in (only while stage = INTERVIEW). SetNull so
   // editing/removing a round never destroys the application.
@@ -1253,6 +1325,9 @@ model Application {
   // The candidate list filters "has an application from this source" (getCandidates), which is the
   // read this helps. getSourceReport aggregates every application in the org and scans regardless.
   @@index([orgId, source])
+  // M2: the source report joins Campaign to roll up per channel, and the candidate filter matches by
+  // campaign slug — both drive off this column now.
+  @@index([orgId, campaignId])
 }
 
 // A criterion this job scores candidates on (M7) — e.g. "System design", "Communication". Per-job and

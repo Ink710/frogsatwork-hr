@@ -163,14 +163,14 @@ describe("EEO capture on the public apply path", () => {
   };
 
   it("records the answers with the application", async () => {
-    await swallowRedirect(() => submitApplication("job-be", undefined, fd(applicant)));
+    await swallowRedirect(() => submitApplication("job-be", null, undefined, fd(applicant)));
     const { totalResponses } = await getEeoSummary();
     expect(totalResponses).toBe(6);
   });
 
   it("records DECLINED when the applicant answers nothing", async () => {
     await swallowRedirect(() =>
-      submitApplication("job-be", undefined, fd({ firstName: "Alan", lastName: "Turing", email: "alan@example.com" })),
+      submitApplication("job-be", null, undefined, fd({ firstName: "Alan", lastName: "Turing", email: "alan@example.com" })),
     );
     const { dimensions } = await getEeoSummary();
     const declined = dimensions
@@ -183,6 +183,7 @@ describe("EEO capture on the public apply path", () => {
     const res = await swallowRedirect(() =>
       submitApplication(
         "job-be",
+        null,
         undefined,
         fd({ firstName: "Grace", lastName: "Hopper", email: "grace@example.com", eeoGender: "<script>" }),
       ),
@@ -195,9 +196,9 @@ describe("EEO capture on the public apply path", () => {
   });
 
   it("writes no response for a duplicate application", async () => {
-    await swallowRedirect(() => submitApplication("job-be", undefined, fd(applicant)));
+    await swallowRedirect(() => submitApplication("job-be", null, undefined, fd(applicant)));
     const before = (await getEeoSummary()).totalResponses;
-    const res = await submitApplication("job-be", undefined, fd(applicant));
+    const res = await submitApplication("job-be", null, undefined, fd(applicant));
     expect(res.error).toBeTruthy(); // DUPLICATE
     expect((await getEeoSummary()).totalResponses).toBe(before);
   });

@@ -24,9 +24,17 @@ const EEO_FIELD_NAMES = {
 // action is a function, and specifying it manually is both redundant and overridden — it logs
 // "Cannot specify a encType or method for a form that specifies a function as the action". The
 // résumé still reaches the server action; React handles the encoding.
-export function ApplyForm({ jobId }) {
+// `source` is the campaign slug from a tracking link (?source=…), bound as an argument rather than
+// rendered as a hidden input. Both are equally forgeable by anyone who wants to — which is exactly
+// why neither is trusted: app_submit_application resolves the slug against the live campaign
+// registry and discards anything it doesn't recognise. Binding just keeps the markup honest about
+// the fact that this is not something the applicant fills in.
+export function ApplyForm({ jobId, source }) {
   const t = useT();
-  const [state, action, pending] = useActionState(submitApplication.bind(null, jobId), undefined);
+  const [state, action, pending] = useActionState(
+    submitApplication.bind(null, jobId, source ?? null),
+    undefined,
+  );
 
   return (
     <form action={action} className="flex flex-col gap-4">

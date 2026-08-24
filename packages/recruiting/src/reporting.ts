@@ -89,6 +89,58 @@ export function summariseSources(
     .sort((a, b) => b.hires - a.hires || b.applications - a.applications || a.source.localeCompare(b.source));
 }
 
+export interface ChannelRow {
+  /** The SourceChannel value, or null for applications with no campaign. */
+  channel: string | null;
+  applications: number;
+  hires: number;
+  /** Percent of this channel's applications that became hires. null when it has none yet. */
+  hireRate: number | null;
+}
+
+/**
+ * Roll campaigns up to their CHANNEL (M2).
+ *
+ * This is the question the per-campaign table stops being able to answer once a channel has more
+ * than one campaign in it: five separate LinkedIn pushes are five rows, and "how is LinkedIn doing"
+ * is nowhere on the page. Both tables are shown, because they answer different questions — this one
+ * decides where next quarter's budget goes, the campaign table decides which creative worked.
+ *
+ * Unattributed applications keep their own bucket rather than being dropped. A channel mix that
+ * silently excludes everything we failed to track would overstate how well the tracked channels are
+ * doing, which is the direction of error that leads to spending money on the wrong one.
+ *
+ * Sorted by hires first, then volume — same ordering rule as summariseSources, for the same reason:
+ * a recruiter is asking which channel produces PEOPLE.
+ */
+export function summariseChannels(
+  rows: readonly { channel: string | null; applications: number; hires: number }[],
+): ChannelRow[] {
+  const totals = new Map<string | null, { applications: number; hires: number }>();
+  for (const r of rows) {
+    const key = r.channel ?? null;
+    const acc = totals.get(key) ?? { applications: 0, hires: 0 };
+    acc.applications += r.applications;
+    acc.hires += r.hires;
+    totals.set(key, acc);
+  }
+
+  return [...totals.entries()]
+    .map(([channel, t]) => ({
+      channel,
+      applications: t.applications,
+      hires: t.hires,
+      hireRate: t.applications > 0 ? Math.round((t.hires / t.applications) * 1000) / 10 : null,
+    }))
+    .sort(
+      (a, b) =>
+        b.hires - a.hires ||
+        b.applications - a.applications ||
+        // Nulls last: "Unknown" is a footnote, not a finding.
+        (a.channel ?? "￿").localeCompare(b.channel ?? "￿"),
+    );
+}
+
 /**
  * "Why candidates are rejected", from the structured category (M12).
  *

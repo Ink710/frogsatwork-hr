@@ -8,8 +8,14 @@ import { SalaryRange } from "@/components/recruiting-ui";
 
 // PUBLIC. notFound() unless the posting is OPEN *and* published — so guessing the id of a draft,
 // paused or confidential req reveals nothing (the DB function enforces the same rule on submit).
-export default async function CareersJobPage({ params }) {
+export default async function CareersJobPage({ params, searchParams }) {
   const { id } = await params; // async in Next 16
+  // M2: the campaign slug from a tracking link. Read raw and passed straight through — validating it
+  // here would be theatre, because the value the DATABASE sees is the only one that matters and
+  // app_submit_application resolves it against the live registry itself. An unrecognised slug costs
+  // the applicant nothing: the application is accepted, it simply reports as unattributed.
+  const sp = await searchParams; // async in Next 16
+  const source = typeof sp?.source === "string" ? sp.source : null;
   const t = await getT();
   const locale = INTL_LOCALE[await getLocale()];
   const job = await getPublishedJob(id);
@@ -44,7 +50,7 @@ export default async function CareersJobPage({ params }) {
         <h2 className="text-xl font-semibold tracking-tight">{t("apply.title")}</h2>
         <p className="mt-1 text-sm text-muted-foreground">{t("apply.subtitle")}</p>
         <div className="mt-4 rounded-xl border border-border bg-card p-6">
-          <ApplyForm jobId={id} />
+          <ApplyForm jobId={id} source={source} />
         </div>
       </section>
     </main>

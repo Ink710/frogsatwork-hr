@@ -79,12 +79,14 @@ export default async function CandidatesPage({ searchParams }) {
             </option>
           ))}
         </select>
-        {options.sources.length > 0 && (
+        {/* M2: the option VALUE is the campaign slug (what the filter matches, and what a tracking
+            link carries) while the label is the readable name. */}
+        {options.campaigns.length > 0 && (
           <select name="source" defaultValue={filters.source} aria-label={t("candidates.allSources")} className={inputCls}>
             <option value="">{t("candidates.allSources")}</option>
-            {options.sources.map((s) => (
-              <option key={s} value={s}>
-                {s}
+            {options.campaigns.map((c) => (
+              <option key={c.slug} value={c.slug}>
+                {c.name}
               </option>
             ))}
           </select>

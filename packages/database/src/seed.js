@@ -195,6 +195,16 @@ const WORK_SCHEDULE = "Mon–Fri, 09:00–18:00";
 const LAST_REVIEW = new Date("2025-01-15");
 const NEXT_REVIEW = new Date("2026-01-15");
 
+// Campaign ids keyed by slug, read back from the database (M2).
+//
+// Read rather than assumed, because the M2 migration BACKFILLS campaigns with generated uuids on any
+// database that already held applications — so the ids this seed's fixtures need cannot be hardcoded.
+// The slug is the natural key (it carries the unique constraint), so it is what everything looks up by.
+async function campaignIdsBySlug() {
+  const rows = await prisma.campaign.findMany({ select: { id: true, slug: true } });
+  return Object.fromEntries(rows.map((c) => [c.slug, c.id]));
+}
+
 async function main() {
   // One hash reused for all seeded logins (bcrypt salts internally, so identical
   // passwords still produce distinct hashes were we to hash per-user).
@@ -698,6 +708,51 @@ async function main() {
     });
   }
 
+  // Campaigns (M2) — the attribution registry. Slugs are what a tracking link carries
+  // (/careers/<job>?source=<slug>), so they're the demo's whole point: `careers-page` is what an
+  // untracked visit falls back to, and the rest are real channels.
+  //
+  // One is ARCHIVED on purpose, so the demo shows the state that matters: an archived campaign keeps
+  // the applications it already produced but its slug stops being accepted, which is the difference
+  // between retiring a campaign and deleting one.
+  const CAMPAIGNS = [
+    { name: "Careers page", slug: "careers-page", channel: "CAREERS_PAGE" },
+    { name: "Referral", slug: "referral", channel: "REFERRAL" },
+    { name: "LinkedIn", slug: "linkedin", channel: "LINKEDIN" },
+    { name: "LinkedIn — March grads", slug: "linkedin-march-grads", channel: "LINKEDIN" },
+    { name: "Facebook — spring push", slug: "facebook-spring", channel: "FACEBOOK", archived: true },
+  ];
+
+  // ⚠️ UPSERT ON (orgId, slug), NOT ON A FIXED ID. The M2 migration BACKFILLS a campaign for every
+  // distinct source it finds, with generated uuids — so on any database that already held
+  // applications, `careers-page` exists with an id this file cannot predict. Upserting by a made-up
+  // id would try to INSERT and hit the unique constraint on the slug. The slug IS the natural key
+  // here, which is exactly why the constraint is on it.
+  //
+  // Applications below therefore reference campaigns BY SLUG and resolve the real id through this
+  // map, so the seed works identically on a fresh database and on one that has been through the
+  // backfill.
+  const CAMPAIGN_ID_BY_SLUG = {};
+  const CAMPAIGN_BY_SLUG = Object.fromEntries(CAMPAIGNS.map((c) => [c.slug, c]));
+  for (const c of CAMPAIGNS) {
+    const archivedAt = c.archived ? new Date("2026-08-01T00:00:00.000Z") : null;
+    const row = await prisma.campaign.upsert({
+      where: { orgId_slug: { orgId: ORG_ID, slug: c.slug } },
+      // Re-assert name/channel/archivedAt so renaming or archiving in the browser is undone by a
+      // reseed — the same repeatability trick the candidate fixtures use for erasure and lead marks.
+      update: { name: c.name, channel: c.channel, archivedAt },
+      create: {
+        name: c.name,
+        slug: c.slug,
+        channel: c.channel,
+        archivedAt,
+        orgId: ORG_ID,
+        createdById: SYSTEM_USER_ID,
+      },
+    });
+    CAMPAIGN_ID_BY_SLUG[c.slug] = row.id;
+  }
+
   // Candidates (people) — deduped by email within the org.
   const CANDIDATES = [
     { id: "cand-nora", firstName: "Nora", lastName: "Adeyemi", email: "nora.adeyemi@example.com", source: "LinkedIn" },
@@ -755,13 +810,17 @@ async function main() {
   // the candidate could only ever say "Referral" for both, so LinkedIn was reported as having
   // produced nobody. Now /reports credits each channel with the submission it actually caused, while
   // Candidate.source keeps saying Referral — because that is genuinely how we first met him.
+  // M2: each application points at a CAMPAIGN; `source` is the snapshot of that campaign's name.
+  // Owen's two applications sit in DIFFERENT LinkedIn campaigns from his first-touch Referral, which
+  // makes both tables on /reports meaningful at once — "LinkedIn — March grads" and "LinkedIn" are
+  // separate campaign rows that roll up into a single LINKEDIN channel row.
   const APPLICATIONS = [
-    { id: "app-nora", cand: "cand-nora", job: "job-be", stage: "APPLIED", round: null, applied: "2026-08-05", source: "LinkedIn" },
-    { id: "app-owen", cand: "cand-owen", job: "job-be", stage: "SCREEN", round: null, applied: "2026-07-28", source: "LinkedIn" },
-    { id: "app-mei", cand: "cand-mei", job: "job-be", stage: "INTERVIEW", round: "ir-be-design", applied: "2026-07-20", source: "Careers page" },
-    { id: "app-luis", cand: "cand-luis", job: "job-be", stage: "OFFER", round: null, applied: "2026-07-10", source: "Referral" },
+    { id: "app-nora", cand: "cand-nora", job: "job-be", stage: "APPLIED", round: null, applied: "2026-08-05", campaign: "linkedin" },
+    { id: "app-owen", cand: "cand-owen", job: "job-be", stage: "SCREEN", round: null, applied: "2026-07-28", campaign: "linkedin-march-grads" },
+    { id: "app-mei", cand: "cand-mei", job: "job-be", stage: "INTERVIEW", round: "ir-be-design", applied: "2026-07-20", campaign: "careers-page" },
+    { id: "app-luis", cand: "cand-luis", job: "job-be", stage: "OFFER", round: null, applied: "2026-07-10", campaign: "referral" },
     { id: "app-owen-pd", cand: "cand-owen", job: "job-pd", stage: "REJECTED", round: null,
-      applied: "2026-06-15", rejectionCategory: "STRONGER_CANDIDATE", source: "Referral" },
+      applied: "2026-06-15", rejectionCategory: "STRONGER_CANDIDATE", campaign: "referral" },
   ];
   for (const a of APPLICATIONS) {
     await prisma.application.upsert({
@@ -770,14 +829,16 @@ async function main() {
         stage: a.stage, currentRoundId: a.round,
         appliedAt: new Date(`${a.applied}T12:00:00.000Z`),
         rejectionCategory: a.rejectionCategory ?? null,
-        source: a.source ?? null,
+        campaignId: CAMPAIGN_ID_BY_SLUG[a.campaign] ?? null,
+        source: CAMPAIGN_BY_SLUG[a.campaign]?.name ?? null,
       },
       create: {
         id: a.id, orgId: ORG_ID, jobId: a.job, candidateId: a.cand,
         stage: a.stage, currentRoundId: a.round,
         appliedAt: new Date(`${a.applied}T12:00:00.000Z`),
         rejectionCategory: a.rejectionCategory ?? null,
-        source: a.source ?? null,
+        campaignId: CAMPAIGN_ID_BY_SLUG[a.campaign] ?? null,
+        source: CAMPAIGN_BY_SLUG[a.campaign]?.name ?? null,
       },
     });
   }
@@ -1047,6 +1108,8 @@ async function main() {
 // Distributions are fixed, not random: a reseed must produce the same report, or the screenshot in
 // the case study stops matching the app.
 async function seedEeoVolume() {
+  // Own lookup: this runs in a separate function from main(), so it cannot borrow main's map.
+  const CAMPAIGN_ID_BY_SLUG = await campaignIdsBySlug();
   const fill = (value, n) => Array.from({ length: n }, () => value);
 
   const NAMES = [
@@ -1065,7 +1128,13 @@ async function seedEeoVolume() {
   ];
   const VETERAN = [...fill("NOT_A_VETERAN", 16), ...fill("PROTECTED_VETERAN", 1), ...fill("DECLINED", 4)];
   const DISABILITY = [...fill("NO", 14), ...fill("YES", 4), ...fill("DECLINED", 3)];
-  const SOURCES = ["Careers page", "Referral", "LinkedIn", "Careers page"];
+  // M2: campaign ids, paired with the name each application snapshots.
+  const SOURCES = [
+    { slug: "careers-page", name: "Careers page" },
+    { slug: "referral", name: "Referral" },
+    { slug: "linkedin", name: "LinkedIn" },
+    { slug: "careers-page", name: "Careers page" },
+  ];
 
   for (const [i, [firstName, lastName]] of NAMES.entries()) {
     const n = String(i + 1).padStart(2, "0");
@@ -1083,7 +1152,7 @@ async function seedEeoVolume() {
         firstName,
         lastName,
         email: `${firstName.toLowerCase().replace(/[^a-z]/g, "")}.${lastName.toLowerCase().replace(/[^a-z]/g, "")}@example.com`,
-        source: SOURCES[i % SOURCES.length],
+        source: SOURCES[i % SOURCES.length].name,
         orgId: ORG_ID,
       },
     });
@@ -1095,7 +1164,8 @@ async function seedEeoVolume() {
       // are the same value — which is also why the M1 backfill could copy it down for them safely.
       create: {
         id: applicationId, orgId: ORG_ID, jobId, candidateId, stage: "APPLIED", appliedAt,
-        source: SOURCES[i % SOURCES.length],
+        campaignId: CAMPAIGN_ID_BY_SLUG[SOURCES[i % SOURCES.length].slug],
+        source: SOURCES[i % SOURCES.length].name,
       },
     });
 
@@ -1174,7 +1244,8 @@ async function seedEeoVolume() {
       update: {},
       create: {
         id: applicationId, orgId: ORG_ID, jobId: "job-pd", candidateId,
-        stage: "REJECTED", appliedAt: at, createdAt: at, source: "Careers page",
+        stage: "REJECTED", appliedAt: at, createdAt: at,
+        campaignId: CAMPAIGN_ID_BY_SLUG["careers-page"], source: "Careers page",
       },
     });
     await prisma.applicationEvent.upsert({

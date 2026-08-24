@@ -42,9 +42,11 @@ const fd = (o) => {
 const APPLICANT = { firstName: "Ada", lastName: "Lovelace", email: "ada@example.com", phone: "+1 555 0000" };
 
 // The action redirects on success; treat a thrown NEXT_REDIRECT as "accepted".
-async function apply(jobId, form = APPLICANT) {
+// `source` is the campaign slug a tracking link would carry (M2); undefined means an untracked
+// visit, which the action falls back to the built-in `careers-page` campaign for.
+async function apply(jobId, form = APPLICANT, source) {
   try {
-    const res = await submitApplication(jobId, undefined, fd(form));
+    const res = await submitApplication(jobId, source ?? null, undefined, fd(form));
     return res ?? {};
   } catch (e) {
     if (e.__redirect) return { ok: true };
@@ -161,5 +163,86 @@ describe("RLS still governs the resulting data", () => {
     // not weaken RLS for ordinary queries.
     const anonymous = await prisma.candidate.findMany({ where: { email: "ada@example.com" } });
     expect(anonymous).toHaveLength(0);
+  });
+});
+
+describe("campaign attribution on the public path (M2)", () => {
+  const readApp = (email) =>
+    asRaj((tx) =>
+      tx.application.findFirst({
+        where: { candidate: { email } },
+        select: { source: true, campaignId: true, campaign: { select: { slug: true, channel: true } } },
+      }),
+    );
+
+  it("attributes a tracked link to its campaign", async () => {
+    await apply("job-be", APPLICANT, "linkedin-march-grads");
+    const app = await readApp("ada@example.com");
+    expect(app.campaign.slug).toBe("linkedin-march-grads");
+    expect(app.campaign.channel).toBe("LINKEDIN");
+    // The snapshot is the campaign's name at submit time, not the slug.
+    expect(app.source).toBe("LinkedIn — March grads");
+  });
+
+  it("falls back to the careers-page campaign for an untracked visit", async () => {
+    await apply("job-be");
+    const app = await readApp("ada@example.com");
+    expect(app.campaign.slug).toBe("careers-page");
+  });
+
+  // ── THE SECURITY PROPERTY THIS MILESTONE EXISTS FOR ────────────────────────────────────────────
+  it("DISCARDS an unrecognised slug instead of recording it, and still accepts the application", async () => {
+    // Before M2 this string would have been written verbatim into a report that deliberately
+    // survives erasure. Note the application is still ACCEPTED: attribution is our bookkeeping
+    // problem, and a mangled link must never cost someone a job.
+    const res = await apply("job-be", APPLICANT, "competitor-smear-campaign");
+    expect(res.ok).toBe(true);
+
+    const app = await readApp("ada@example.com");
+    expect(app.campaignId).toBeNull();
+    expect(app.source).toBeNull();
+  });
+
+  it("refuses an ARCHIVED campaign's slug — a retired link stops crediting", async () => {
+    const res = await apply("job-be", APPLICANT, "facebook-spring");
+    expect(res.ok).toBe(true);
+    const app = await readApp("ada@example.com");
+    expect(app.campaignId).toBeNull();
+  });
+
+  it("never lets a slug from another org attribute an application", async () => {
+    // The org is derived from the JOB inside app_submit_application, never from the caller, so a
+    // valid-looking slug belonging to someone else's org simply doesn't resolve.
+    const otherOrg = "20000000-0000-0000-0000-000000000002";
+    await prisma.$executeRaw`
+      INSERT INTO "Organization" (id, name, "createdAt") VALUES (${otherOrg}, 'Other Co', now())
+      ON CONFLICT (id) DO NOTHING`;
+    // Created THROUGH the other org's own session, not as a bare client — campaign_write refuses an
+    // insert with no session variables, which is the policy doing its job rather than a test detail.
+    await withViewer(
+      { userId: SYSTEM_USER, employeeId: null, role: "RECRUITER", orgId: otherOrg },
+      (tx) =>
+        tx.campaign.create({
+          data: {
+            name: "Foreign push",
+            slug: "foreign-push",
+            channel: "FACEBOOK",
+            orgId: otherOrg,
+            createdById: SYSTEM_USER,
+          },
+        }),
+    );
+
+    await apply("job-be", APPLICANT, "foreign-push");
+    const app = await readApp("ada@example.com");
+    expect(app.campaignId).toBeNull();
+  });
+
+  it("sets FIRST TOUCH from the resolved campaign, not from raw input", async () => {
+    await apply("job-be", APPLICANT, "linkedin-march-grads");
+    const cand = await asRaj((tx) =>
+      tx.candidate.findFirst({ where: { email: "ada@example.com" }, select: { source: true } }),
+    );
+    expect(cand.source).toBe("LinkedIn — March grads");
   });
 });

@@ -66,7 +66,7 @@ describe("scoping — the same code, different numbers", () => {
     const r = await getFunnelReport();
     expect(r.totalApplications).toBe(0);
     expect(r.funnel.every((f) => f.reached === 0)).toBe(true);
-    expect(await getSourceReport()).toEqual([]);
+    expect(await getSourceReport()).toEqual({ campaigns: [], channels: [] });
     expect(await getReqAgingReport()).toEqual([]);
   });
 });
@@ -122,7 +122,7 @@ describe("source effectiveness", () => {
   it("rolls up applications and hires per source", async () => {
     await hireLuis();
     as(V.raj);
-    const rows = await getSourceReport();
+    const { campaigns: rows } = await getSourceReport();
     const referral = rows.find((r) => r.source === "Referral");
     expect(referral.applications).toBe(2); // Owen's DESIGN application + Luis
     expect(referral.hires).toBe(1); // Luis
@@ -139,11 +139,13 @@ describe("source effectiveness", () => {
     // nobody. Nothing errored — the figures were just wrong, which is the failure mode a reports
     // page can carry indefinitely without anyone noticing.
     as(V.raj);
-    const rows = await getSourceReport();
+    const { campaigns: rows } = await getSourceReport();
     const bySource = Object.fromEntries(rows.map((r) => [r.source, r.applications]));
 
     expect(bySource.Referral).toBe(2); // Owen (design) + Luis
-    expect(bySource.LinkedIn).toBe(2); // Owen (backend) + Nora  ← was 1 before M1
+    // M2 split the LinkedIn traffic into two campaigns; Owen's return came through the grads push.
+    expect(bySource.LinkedIn).toBe(1); // Nora
+    expect(bySource["LinkedIn — March grads"]).toBe(1); // Owen (backend)  ← credited to LinkedIn, not Referral
     expect(bySource["Careers page"]).toBe(1); // Mei
 
     // Every application is still counted exactly once: the totals must reconcile, not just shift.
@@ -163,7 +165,7 @@ describe("source effectiveness", () => {
     await hireLuis();
     await withViewer(V.raj, (tx) => tx.$executeRaw`UPDATE "Application" SET stage='OFFER' WHERE id='app-luis'`);
     as(V.raj);
-    const rows = await getSourceReport();
+    const { campaigns: rows } = await getSourceReport();
     expect(rows.find((r) => r.source === "Referral").hires).toBe(1);
     // …and the funnel agrees, which is the point.
     const { funnel } = await getFunnelReport();
