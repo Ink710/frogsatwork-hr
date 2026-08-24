@@ -17,6 +17,10 @@ const atsAlias = {
   "@": fileURLToPath(new URL("./apps/ats", import.meta.url)),
   "server-only": serverOnly,
 };
+const candidatePortalAlias = {
+  "@": fileURLToPath(new URL("./apps/candidate-portal", import.meta.url)),
+  "server-only": serverOnly,
+};
 
 // Shared integration-project settings (fresh migrated+seeded hris_test, sequential files).
 const integrationBase = {
@@ -66,6 +70,11 @@ export default defineConfig({
         // Same, for the ATS app — its own `@/…` root + its own reseeding invocation.
         resolve: { alias: atsAlias },
         test: { name: "integration-ats", include: ["apps/ats/**/*.itest.js"], ...integrationBase },
+      },
+      {
+        // Same again, for the candidate portal (app 4).
+        resolve: { alias: candidatePortalAlias },
+        test: { name: "integration-portal", include: ["apps/candidate-portal/**/*.itest.js"], ...integrationBase },
       },
     ],
   },
