@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { INTL_LOCALE, formatDate } from "@hris/ui";
 import { getApplicant } from "@/lib/auth";
@@ -32,7 +33,12 @@ export default async function PortalPage() {
             <h1 className="text-2xl font-semibold tracking-tight">{t("portal.title")}</h1>
             <p className="mt-2 text-sm text-muted-foreground">{t("portal.subtitle")}</p>
           </div>
-          <SignOutButton />
+          <div className="flex items-center gap-4">
+            <Link href="/portal/profile" className="text-sm text-primary hover:underline">
+              {t("portal.editProfile")}
+            </Link>
+            <SignOutButton />
+          </div>
         </div>
 
         {/* A signed-in applicant with no applications is a real state — an account only exists for

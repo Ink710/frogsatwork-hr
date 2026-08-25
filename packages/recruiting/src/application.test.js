@@ -7,7 +7,9 @@ import {
   monthToDate,
   dateToMonth,
   MAX_HISTORY_ENTRIES,
+  profilePersonSchema,
 } from "./application";
+import { resumeFileError, RESUME_MAX_BYTES } from "./candidate";
 
 const job = (o = {}) => ({ employer: "Acme", title: "Engineer", startDate: "2022-01", ...o });
 
@@ -91,5 +93,75 @@ describe("month conversion", () => {
     expect(dateToMonth(new Date("2024-03-01T00:00:00.000Z"))).toBe("2024-03");
     expect(dateToMonth(null)).toBe("");
     expect(dateToMonth(undefined)).toBe("");
+  });
+});
+
+// ── M7: the profile an applicant maintains for themselves ──────────────────────────────────
+
+describe("profilePersonSchema", () => {
+  const person = (o = {}) => ({ firstName: "Nora", lastName: "Adeyemi", ...o });
+
+  it("accepts a name with an optional phone", () => {
+    expect(profilePersonSchema.parse(person()).firstName).toBe("Nora");
+    expect(profilePersonSchema.parse(person({ phone: "+44 20 7946 0000" })).phone).toBe(
+      "+44 20 7946 0000",
+    );
+  });
+
+  it("requires both names", () => {
+    expect(profilePersonSchema.safeParse(person({ firstName: "" })).success).toBe(false);
+    expect(profilePersonSchema.safeParse(person({ lastName: "  " })).success).toBe(false);
+  });
+
+  // ⚠️ THE OMISSION IS THE POINT. Email is the login identity and the per-org dedupe key, so it must
+  // not be settable from a profile form. Zod strips unknown keys, so a posted email is DISCARDED
+  // rather than rejected — this test is what says that is deliberate.
+  it("discards an email even when one is supplied", () => {
+    const parsed = profilePersonSchema.parse(person({ email: "someone.else@example.com" }));
+    expect(parsed).not.toHaveProperty("email");
+  });
+
+  it("discards a note — that belongs to a submission, not to a person", () => {
+    expect(profilePersonSchema.parse(person({ note: "hello" }))).not.toHaveProperty("note");
+  });
+});
+
+describe("resumeFileError", () => {
+  const file = (o = {}) => ({ name: "cv.pdf", type: "application/pdf", size: 1024, ...o });
+
+  it("accepts each allowed format", () => {
+    expect(resumeFileError(file())).toBeNull();
+    expect(resumeFileError(file({ name: "cv.doc", type: "application/msword" }))).toBeNull();
+    expect(
+      resumeFileError(
+        file({
+          name: "cv.docx",
+          type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it("treats no file as no error — a CV is optional", () => {
+    expect(resumeFileError(null)).toBeNull();
+    expect(resumeFileError(undefined)).toBeNull();
+    expect(resumeFileError(file({ size: 0 }))).toBeNull();
+  });
+
+  it("rejects a file over the cap", () => {
+    expect(resumeFileError(file({ size: RESUME_MAX_BYTES + 1 }))).toBe("TOO_LARGE");
+    expect(resumeFileError(file({ size: RESUME_MAX_BYTES }))).toBeNull();
+  });
+
+  // ⚠️ BOTH claims must pass. Either alone is trivially spoofed: the browser reports the MIME type
+  // and the attacker owns the filename, so the check is that two independent claims agree.
+  it("rejects a mismatch between the type and the extension", () => {
+    expect(resumeFileError(file({ name: "cv.exe" }))).toBe("BAD_TYPE");
+    expect(resumeFileError(file({ type: "application/x-msdownload" }))).toBe("BAD_TYPE");
+    expect(resumeFileError(file({ name: "cv.pdf.exe" }))).toBe("BAD_TYPE");
+  });
+
+  it("is case-insensitive about the extension", () => {
+    expect(resumeFileError(file({ name: "CV.PDF" }))).toBeNull();
   });
 });

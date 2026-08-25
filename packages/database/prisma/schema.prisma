@@ -1514,6 +1514,26 @@ model Application {
   employmentSnapshot Json?
   educationSnapshot  Json?
 
+  // THE CV THEY SENT FOR THIS ROLE (M7) — the third member of the snapshot family above, and the
+  // one that escaped M6.
+  //
+  // Until M7 nobody could replace a résumé, so `Candidate.resumeKey` doubled as "what they applied
+  // with". The moment an applicant can manage their own CV that stops being true: a recruiter
+  // reading a March application would silently start seeing the August file. So the KEY is pinned
+  // here at submit, exactly as the two snapshots above are.
+  //
+  // ⚠️ THE BLOB IS SHARED, NOT COPIED. This stores the key that was current at submit; replacing a
+  // CV writes a NEW blob and repoints Candidate.resumeKey only, leaving every earlier application
+  // pointing at the file it was actually submitted with. Applying without attaching anything pins
+  // whatever was already on file, so "no file attached" still shows the recruiter a CV.
+  //
+  // ⚠️ Every key must stay reachable from a row, because app_erase_candidate sweeps storage using
+  // keys it READS FROM THE DATABASE — an unreferenced blob is one erasure cannot destroy. That is
+  // why app_applicant_set_resume only reports a superseded key for deletion when no Application
+  // still pins it, and why erasure collects DISTINCT keys across here and Candidate.
+  resumeKey      String?
+  resumeFileName String?
+
   // The interview round the candidate is currently in (only while stage = INTERVIEW). SetNull so
   // editing/removing a round never destroys the application.
   currentRoundId String?
@@ -1551,6 +1571,9 @@ model Application {
   // M2: the source report joins Campaign to roll up per channel, and the candidate filter matches by
   // campaign slug — both drive off this column now.
   @@index([orgId, campaignId])
+  // M7: app_applicant_set_resume asks "does any application still pin this key" on every CV
+  // replacement, and that is the only lookup this table ever does by résumé key.
+  @@index([resumeKey])
 }
 
 // A criterion this job scores candidates on (M7) — e.g. "System design", "Communication". Per-job and

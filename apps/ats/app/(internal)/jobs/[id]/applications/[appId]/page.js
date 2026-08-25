@@ -9,7 +9,7 @@ import {
   getOfferPanel,
 } from "@/lib/queries";
 import { getViewer } from "@hris/auth";
-import { signResumeDownload } from "@/lib/sign";
+import { signApplicationResumeDownload } from "@/lib/sign";
 import { StageBadge, ResumeLink } from "@/components/recruiting-ui";
 import { ScorecardForm } from "@/components/ScorecardForm";
 import { DebriefPanel } from "@/components/DebriefPanel";
@@ -97,11 +97,17 @@ export default async function ApplicationDetailPage({ params }) {
             {app.currentRound && <Field label={t("app.currentRound")}>{app.currentRound.name}</Field>}
             {/* Right beside the scorecard an interviewer is about to write — the CV is the thing
                 they read first, and RLS lets the whole hiring team through (see the route). */}
-            {c.resumeFileName && (
+            {/* ⚠️ M7: THE APPLICATION'S CV, NOT THE CANDIDATE'S. Until M7 these were the same file
+                by definition — a résumé could not be replaced. Now that an applicant manages their
+                own, reading `c.resumeFileName` here would hand an interviewer whatever CV is
+                current, with a scorecard beside it about a document nobody can produce any more.
+                The candidate PROFILE page still shows the current one; that is a different
+                question and both are worth answering. */}
+            {app.resumeFileName && (
               <Field label={t("resume.label")}>
                 <ResumeLink
-                  href={signResumeDownload(c.id, viewer.userId)}
-                  fileName={c.resumeFileName}
+                  href={signApplicationResumeDownload(app.id, viewer.userId)}
+                  fileName={app.resumeFileName}
                   label={t("resume.download")}
                 />
               </Field>

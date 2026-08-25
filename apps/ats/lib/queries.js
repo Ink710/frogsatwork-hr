@@ -861,7 +861,18 @@ export async function getApplicationDetail(jobId, appId) {
     });
 
     const canManage = await viewerCanManageJob(tx, jobId);
-    return { app: { ...app, job, events, currentRound, hiredEmployee, answers }, canManage };
+
+    // ⚠️ M7: STRIP THE PINNED RÉSUMÉ KEY BEFORE THE SPREAD. `findFirst` above uses `include` with no
+    // top-level `select`, so every Application scalar comes back — including `resumeKey`, added in
+    // M7. That is a path into the private object store, and `...app` would put it in the RSC payload
+    // where anyone can read it out of the page source. The candidate `select` omits its own
+    // resumeKey for exactly this reason; the application's needs a deliberate removal instead,
+    // because `include` has no way to say "everything except".
+    //
+    // The FILENAME stays: it is display-only, and the download route resolves the key server-side
+    // from the application id.
+    const { resumeKey: _pinnedResumeKey, ...appFields } = app;
+    return { app: { ...appFields, job, events, currentRound, hiredEmployee, answers }, canManage };
   });
 }
 

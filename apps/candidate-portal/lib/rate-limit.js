@@ -68,3 +68,39 @@ export async function allowApplyAttempt(identifier) {
   const { success } = await rl.limit(identifier);
   return success;
 }
+
+// Profile writes (M7), including replacing a CV.
+//
+// ⚠️ KEYED BY ACCOUNT ID, NOT IP — the only limiter here that is. The other two throttle strangers,
+// where an IP is the only handle there is; this one throttles someone we have already identified, so
+// an IP key would be both weaker (one person, many addresses) and worse (one address, many people —
+// an office or a campus sharing a NAT would throttle each other).
+//
+// What it protects is object storage: a session no longer bounds file writes, so without this one
+// account could push 5 MB at the blob store in a loop. Generous, because saving a profile repeatedly
+// while editing it is ordinary behaviour, not abuse.
+const PROFILE_ATTEMPTS = 20;
+const PROFILE_WINDOW = "10 m";
+
+let profileLimiter = null;
+function getProfileLimiter() {
+  if (profileLimiter) return profileLimiter;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  profileLimiter = new Ratelimit({
+    redis: new Redis({ url, token }),
+    limiter: Ratelimit.fixedWindow(PROFILE_ATTEMPTS, PROFILE_WINDOW),
+    analytics: false,
+    ephemeralCache: new Map(),
+    prefix: "portal:profile",
+  });
+  return profileLimiter;
+}
+
+export async function allowProfileWrite(identifier) {
+  const rl = getProfileLimiter();
+  if (!rl) return true;
+  const { success } = await rl.limit(identifier);
+  return success;
+}

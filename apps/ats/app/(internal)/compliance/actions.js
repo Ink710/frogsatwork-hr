@@ -23,8 +23,9 @@ const ERROR_KEYS = {
  * The work is split across two systems that cannot share a transaction — Postgres holds the record,
  * the storage driver holds the résumé file — so the order is chosen deliberately:
  *
- *   1. app_erase_candidate commits. It returns the résumé key it just detached.
- *   2. Only then do we delete the file.
+ *   1. app_erase_candidate commits. It returns EVERY résumé key it just detached (M7 — the CV on the
+ *      profile plus any an earlier application still pinned).
+ *   2. Only then do we delete the files.
  *
  * Doing it the other way round would mean a failed transaction leaves a live candidate with a
  * missing résumé — data loss for someone who never asked for it. This way the worst case is an
@@ -48,12 +49,12 @@ export async function eraseCandidate(candidateId, _prevState, formData) {
   if (!parsed.success) return { error: t("err.invalidInput") };
 
   let result;
-  let resumeKey;
+  let resumeKeys;
   try {
-    [{ result, resume_key: resumeKey }] = await withViewer(
+    [{ result, resume_keys: resumeKeys }] = await withViewer(
       viewer,
       (tx) =>
-        tx.$queryRaw`SELECT result, resume_key FROM app_erase_candidate(
+        tx.$queryRaw`SELECT result, resume_keys FROM app_erase_candidate(
           ${candidateId}, ${parsed.data.note ?? null})`,
     );
   } catch {
@@ -62,14 +63,29 @@ export async function eraseCandidate(candidateId, _prevState, formData) {
 
   if (result !== "OK") return { error: t(ERROR_KEYS[result] ?? "err.erasureFailed") };
 
-  if (resumeKey) {
+  // ⚠️ M7: A SET OF KEYS, NOT ONE. With the résumé pinned per application, a person can hold several
+  // files — the CV on their profile plus whichever ones earlier applications still reference — and
+  // erasure is the only thing that will ever delete any of them. Returning just the current key
+  // would have left every superseded CV of an erased person sitting in the store.
+  //
+  // Every delete is attempted even if one fails: stopping at the first would leave later files
+  // behind with nothing recording that they exist. The message is the same either way — one
+  // unremoved résumé is already a privacy failure, and a count would not tell HR anything they can
+  // act on that the logs do not.
+  let anyLeft = false;
+  for (const key of resumeKeys ?? []) {
     try {
-      await storage.remove(resumeKey);
-    } catch {
-      revalidatePath("/compliance");
-      revalidatePath(`/candidates/${candidateId}`);
-      return { error: t("err.erasureFileLeft") };
+      await storage.remove(key);
+    } catch (e) {
+      console.error("[erasure] résumé left in storage", { candidateId, key, error: e });
+      anyLeft = true;
     }
+  }
+
+  if (anyLeft) {
+    revalidatePath("/compliance");
+    revalidatePath(`/candidates/${candidateId}`);
+    return { error: t("err.erasureFileLeft") };
   }
 
   revalidatePath("/compliance");

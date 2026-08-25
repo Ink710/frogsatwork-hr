@@ -44,8 +44,43 @@ const en = {
   "portal.empty": "We don't have any applications on file for you right now.",
   "portal.appliedOn": "Applied {date}",
   "portal.signOut": "Sign out",
+  "portal.editProfile": "Your profile →",
   "portal.closingMessage":
     "Thank you for your application. After reviewing your qualifications, we have decided not to move forward with your application for this position. We appreciate your interest and encourage you to apply for future opportunities.",
+
+  // The profile editor (M7) — the applicant's own record.
+  "profile.title": "Your profile",
+  "profile.subtitle": "The details we keep for you, and the CV we have on file.",
+  "profile.backToApplications": "← Your applications",
+  "profile.snapshotNote":
+    "Changes here apply to future applications. Anything you have already sent us stays exactly as you submitted it, including the CV attached to it.",
+  "profile.emailFixed": "Get in touch if you need to change the address you sign in with.",
+  "profile.save": "Save profile",
+  "profile.saving": "Saving…",
+  "profile.saved": "Saved.",
+  "profile.invalid": "Please check the details you entered.",
+  "profile.failed": "We couldn't save your profile. Please try again.",
+  "profile.signedOut": "Your session has expired. Please sign in again.",
+  "profile.closed": "This account can no longer be used.",
+  "profile.unavailable": "This account can no longer be used. Please get in touch if you think that's wrong.",
+  "profile.rateLimited": "That's a lot of changes at once. Please wait a few minutes and try again.",
+
+  // The CV panel
+  "profile.resumeTitle": "Your CV",
+  "profile.onFile": "On file:",
+  "profile.noResume": "You don't have a CV on file yet.",
+  "profile.uploadResume": "Upload a CV",
+  "profile.replaceResume": "Replace your CV",
+  "profile.upload": "Save CV",
+  "profile.uploading": "Uploading…",
+  "profile.removeResume": "Remove the CV from my profile",
+  "profile.removing": "Removing…",
+  "profile.resumeSaved": "Your CV has been updated.",
+  "profile.resumeHint": "PDF, DOC or DOCX, up to 5 MB. Applications you've already sent keep the CV you sent with them.",
+  "profile.noFile": "Choose a file to upload.",
+  "profile.uploadFailed": "We couldn't store that file. Please try again.",
+  "profile.oldFileLeft": "Your CV was updated, but we couldn't remove the previous file. We've logged it.",
+
 
   // The applicant-facing names for pipeline stages. ⚠️ These are PUBLIC copy: adding a stage to
   // ApplicationStage breaks packages/recruiting/src/portal.test.js until a label is decided here.

@@ -1,5 +1,6 @@
 // The richer application an applicant submits (M6): work history, education, and consent.
 import { z } from "zod";
+import { publicApplicationSchema } from "./candidate";
 
 // ⚠️ THE POLICY VERSION LIVES IN CODE, NOT IN A DATABASE ROW.
 //
@@ -56,6 +57,27 @@ export const educationListSchema = z.array(educationEntrySchema).max(MAX_HISTORY
 export const consentSchema = z.literal(true, {
   errorMap: () => ({ message: "Please accept the privacy notice to apply." }),
 });
+
+/**
+ * The identity and contact fields an applicant may edit about THEMSELVES (M7).
+ *
+ * Derived from `publicApplicationSchema` rather than restated, so the two forms that collect a
+ * person's name cannot drift apart on length limits or trimming.
+ *
+ * ⚠️ EMAIL IS PICKED OUT DELIBERATELY, and the omission is the security property. It is the login
+ * identity — `app_issue_candidate_login` resolves an account by `candidate.email` — and the dedupe
+ * key (`@@unique([orgId, email])`). An unverified change would be both an account-takeover surface
+ * and a way to collide with someone else's record. `note` is dropped for a duller reason: it belongs
+ * to a submission, not to a person.
+ *
+ * The matching database doorway takes no email parameter at all, so this is enforced twice.
+ */
+export const profilePersonSchema = publicApplicationSchema.pick({
+  firstName: true,
+  lastName: true,
+  phone: true,
+});
+export type ProfilePersonInput = z.infer<typeof profilePersonSchema>;
 
 /**
  * Turn a validated month string into the timestamp the database stores.

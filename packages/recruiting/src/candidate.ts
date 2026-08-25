@@ -51,6 +51,30 @@ export const RESUME_MIME_TYPES = [
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ] as const;
 
+/**
+ * Check an uploaded résumé BEFORE a byte is stored (M7).
+ *
+ * Returns a CODE, not a message: three call sites now check the same file — the public apply form,
+ * the ATS careers fallback, and the applicant's own profile editor — and each phrases the failure in
+ * its own dictionary. Returning `t("apply.fileTooLarge")` from a package that must stay
+ * dependency-light (zod only) would drag i18n in behind it.
+ *
+ * ⚠️ Both the MIME type and the extension must pass. Either alone is trivially spoofed: a browser
+ * will happily report `application/pdf` for a renamed executable, and an attacker controls the
+ * filename outright. Requiring both is not belt-and-braces — it is the cheapest available check that
+ * two independently-supplied claims agree.
+ */
+export function resumeFileError(
+  file: { size?: number; name?: string; type?: string } | null | undefined,
+): "TOO_LARGE" | "BAD_TYPE" | null {
+  if (!file || !file.size) return null; // no file attached is not an error — a CV is optional
+  if (file.size > RESUME_MAX_BYTES) return "TOO_LARGE";
+  const ext = (file.name?.split(".").pop() ?? "").toLowerCase();
+  if (!RESUME_MIME_TYPES.includes(file.type as never)) return "BAD_TYPE";
+  if (!RESUME_EXTENSIONS.includes(ext as never)) return "BAD_TYPE";
+  return null;
+}
+
 // A PUBLIC request to erase a candidate's personal data (GDPR, M10). Submitted by someone with no
 // account, so it carries nothing that could aim it: no candidate id, no org — just an address, which
 // app_request_erasure resolves server-side. `reason` is optional because the right to erasure does

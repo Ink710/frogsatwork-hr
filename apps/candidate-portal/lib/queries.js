@@ -109,6 +109,29 @@ export async function getMyApplications(accountId) {
  *
  * Dates come back as timestamps and are converted to the YYYY-MM the form's month inputs use.
  */
+/**
+ * The CV currently on the applicant's profile (M7) — the editor's "on file" line, and the only
+ * thing `/portal/resume` needs in order to stream it.
+ *
+ * Returns `{ key, fileName }` or null.
+ *
+ * ⚠️ THE KEY IS FOR SERVER USE ONLY — `/portal/resume` resolves the file with it. It must NOT be
+ * handed to a client component: every prop is serialized into the RSC payload and readable in the
+ * page source, so passing this object whole publishes a path into the private store. The profile
+ * page passes `resume?.fileName` alone for exactly that reason.
+ *
+ * This comment used to claim the key "never reaches a component". It did — the browser check found
+ * it in the payload, and no test could have, because tests do not render. Callers must strip it;
+ * the type does not do it for them.
+ */
+export async function getMyResume(accountId) {
+  if (!accountId) return null;
+  const [row] = await prisma.$queryRaw`
+    SELECT resume_key, resume_file_name FROM app_applicant_resume(${accountId})`;
+  if (!row?.resume_key) return null;
+  return { key: row.resume_key, fileName: row.resume_file_name ?? "resume" };
+}
+
 export async function getMyProfile(accountId) {
   if (!accountId) return null;
 

@@ -14,9 +14,7 @@ import {
   validateAnswers,
   monthToDate,
   PRIVACY_POLICY_VERSION,
-  RESUME_MAX_BYTES,
-  RESUME_EXTENSIONS,
-  RESUME_MIME_TYPES,
+  resumeFileError,
 } from "@hris/recruiting";
 import { getT } from "@/lib/i18n.server";
 import { getJobQuestions } from "@/lib/queries";
@@ -110,11 +108,11 @@ export async function submitApplication(jobId, sourceSlug, _prevState, formData)
   let resumeName = null;
   const file = formData.get("resume");
   if (file && typeof file === "object" && file.size > 0) {
-    if (file.size > RESUME_MAX_BYTES) return { error: t("apply.fileTooLarge") };
+    // M7: the same check the profile editor runs, in @hris/recruiting so the two cannot drift.
+    const fileError = resumeFileError(file);
+    if (fileError === "TOO_LARGE") return { error: t("apply.fileTooLarge") };
+    if (fileError === "BAD_TYPE") return { error: t("apply.fileType") };
     const ext = (file.name?.split(".").pop() ?? "").toLowerCase();
-    if (!RESUME_MIME_TYPES.includes(file.type) || !RESUME_EXTENSIONS.includes(ext)) {
-      return { error: t("apply.fileType") };
-    }
     resumeKey = `resumes/${randomUUID()}.${ext}`;
     resumeName = file.name?.slice(0, 200) ?? null;
     try {

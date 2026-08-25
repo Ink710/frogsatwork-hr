@@ -38,8 +38,43 @@ const es = {
   "portal.empty": "Ahora mismo no tenemos ninguna postulación tuya registrada.",
   "portal.appliedOn": "Postulaste el {date}",
   "portal.signOut": "Cerrar sesión",
+  "portal.editProfile": "Tu perfil →",
   "portal.closingMessage":
     "Gracias por tu postulación. Tras revisar tu perfil, hemos decidido no continuar con tu candidatura para esta vacante. Agradecemos tu interés y te animamos a postular a futuras oportunidades.",
+
+  // El editor de perfil (M7) — el propio expediente de la persona candidata.
+  "profile.title": "Tu perfil",
+  "profile.subtitle": "Los datos que guardamos sobre ti y el CV que tenemos archivado.",
+  "profile.backToApplications": "← Tus postulaciones",
+  "profile.snapshotNote":
+    "Los cambios se aplican a futuras postulaciones. Lo que ya nos enviaste se mantiene tal como lo presentaste, incluido el CV adjunto.",
+  "profile.emailFixed": "Escríbenos si necesitas cambiar la dirección con la que inicias sesión.",
+  "profile.save": "Guardar perfil",
+  "profile.saving": "Guardando…",
+  "profile.saved": "Guardado.",
+  "profile.invalid": "Revisa los datos que ingresaste.",
+  "profile.failed": "No pudimos guardar tu perfil. Inténtalo de nuevo.",
+  "profile.signedOut": "Tu sesión expiró. Inicia sesión otra vez.",
+  "profile.closed": "Esta cuenta ya no puede usarse.",
+  "profile.unavailable": "Esta cuenta ya no puede usarse. Escríbenos si crees que es un error.",
+  "profile.rateLimited": "Son muchos cambios seguidos. Espera unos minutos e inténtalo de nuevo.",
+
+  // El panel del CV
+  "profile.resumeTitle": "Tu CV",
+  "profile.onFile": "Archivado:",
+  "profile.noResume": "Todavía no tienes un CV archivado.",
+  "profile.uploadResume": "Subir un CV",
+  "profile.replaceResume": "Reemplazar tu CV",
+  "profile.upload": "Guardar CV",
+  "profile.uploading": "Subiendo…",
+  "profile.removeResume": "Quitar el CV de mi perfil",
+  "profile.removing": "Quitando…",
+  "profile.resumeSaved": "Tu CV se actualizó.",
+  "profile.resumeHint": "PDF, DOC o DOCX, hasta 5 MB. Las postulaciones ya enviadas conservan el CV con el que las enviaste.",
+  "profile.noFile": "Elige un archivo para subir.",
+  "profile.uploadFailed": "No pudimos guardar ese archivo. Inténtalo de nuevo.",
+  "profile.oldFileLeft": "Tu CV se actualizó, pero no pudimos eliminar el archivo anterior. Lo registramos.",
+
 
   // Nombres de las etapas visibles para la persona candidata. ⚠️ Son copy PÚBLICO.
   "enum.applicantStage.APPLIED": "Postulaste",
