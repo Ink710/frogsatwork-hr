@@ -12,6 +12,7 @@
   "dependencies": {
     "@hris/auth": "workspace:*",
     "@hris/database": "workspace:*",
+    "@hris/notifications": "workspace:*",
     "@hris/storage": "workspace:*",
     "@hris/types": "workspace:*",
     "@hris/ui": "workspace:*",

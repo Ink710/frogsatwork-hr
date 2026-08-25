@@ -1,28 +1,26 @@
 import "server-only";
-import nodemailer from "nodemailer";
+import { sendMail } from "@hris/notifications";
 
-// Outbound email. In dev this points at the Mailpit container (SMTP :1025, read at
-// http://localhost:8025); in production the same env vars point at a real provider, so no
-// code changes are needed. Kept app-local for now — promote to a shared @hris/email package
-// once the ATS also needs to send mail.
-
-// One transport, created lazily and reused. `secure:false` = plain SMTP (Mailpit and most
-// providers upgrade to STARTTLS on the same port); Mailpit needs no auth.
-let transport;
-function getTransport() {
-  if (!transport) {
-    transport = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT ?? 1025),
-      secure: false,
-    });
-  }
-  return transport;
-}
+// New-hire invite email.
+//
+// ⚠️ THE TRANSPORT MOVED, THE WORDS DID NOT (M8). This file used to build its own nodemailer
+// transport, duplicating the one in `@hris/notifications` — the promotion its old comment asked for
+// ("promote to a shared @hris/email package once the ATS also needs to send mail"), and which that
+// package's own comment named as M8's job.
+//
+// What was NOT moved is `sendInviteEmail` itself. `@hris/notifications` owns the TRANSPORT; each app
+// owns the words it sends, because copy is product surface and belongs beside the feature that needs
+// it. An invite is employee-records' message about employee-records' onboarding flow, so it stays
+// here — only the plumbing underneath it is now shared.
+//
+// (M8 does add candidate-facing templates to the package, which is a deliberate exception with its
+// own reasoning: those are sent by TWO apps to the same audience. See the package.)
+//
+// Dev still points at the Mailpit container (SMTP :1025, inbox at http://localhost:8025); production
+// points the same variables at a real provider, with no code change.
 
 export async function sendInviteEmail({ to, name, link }) {
-  await getTransport().sendMail({
-    from: process.env.SMTP_FROM ?? "FrogsAtWorkHR <no-reply@frogsatwork.test>",
+  await sendMail({
     to,
     subject: "Set up your FrogsAtWorkHR account",
     text:

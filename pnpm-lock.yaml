@@ -371,6 +371,9 @@ importers:
       '@hris/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@hris/notifications':
+        specifier: workspace:*
+        version: link:../../packages/notifications
       '@hris/storage':
         specifier: workspace:*
         version: link:../../packages/storage
