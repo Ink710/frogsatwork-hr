@@ -333,8 +333,47 @@ export async function getJobForManage(jobId) {
       select: { id: true, role: true, employeeId: true },
     });
 
+    // M9: interview slots, every state included — the editor is where a recruiter confirms what is
+    // outstanding, publishes what is agreed and sees what has been taken.
+    const slotRows = await tx.interviewSlot.findMany({
+      where: { jobId },
+      orderBy: { startAt: "asc" },
+      select: {
+        id: true, startAt: true, endAt: true, timeZone: true, meetingUrl: true,
+        confirmedAt: true, publishedAt: true, claimedAt: true, cancelledAt: true,
+        roundId: true, interviewerEmployeeId: true, claimedByApplicationId: true,
+      },
+    });
+    // Who has taken which slot. Only for claimed ones, and only a name — the slot list is a
+    // scheduling view, not a place to restate a candidate's record.
+    const claimedIds = slotRows.map((s) => s.claimedByApplicationId).filter(Boolean);
+    const claimedApps = claimedIds.length
+      ? await tx.application.findMany({
+          where: { id: { in: claimedIds } },
+          select: { id: true, candidate: { select: { firstName: true, lastName: true } } },
+        })
+      : [];
+    const takenBy = new Map(
+      claimedApps.map((a) => [a.id, `${a.candidate.firstName} ${a.candidate.lastName}`]),
+    );
+
     const directory = await orgDirectory(tx, viewer.orgId);
     const byId = new Map(directory.map((p) => [p.id, p]));
+
+    // ⚠️ Interviewer names come from the DIRECTORY, not from `include: { interviewer }` — the same
+    // trap the members mapping below documents: Employee is RLS-filtered, so the relation would come
+    // back null for most teammates and the editor would show a column of dashes.
+    const roundNames = new Map(interviewRounds.map((r) => [r.id, r.name]));
+    const slots = slotRows.map((sl) => {
+      const person = byId.get(sl.interviewerEmployeeId);
+      return {
+        ...sl,
+        roundName: roundNames.get(sl.roundId) ?? "—",
+        interviewerName: person ? `${person.firstName} ${person.lastName}` : "—",
+        takenByName: sl.claimedByApplicationId ? (takenBy.get(sl.claimedByApplicationId) ?? "—") : null,
+      };
+    });
+
     const members = jobMembers.map((m) => {
       const p = byId.get(m.employeeId);
       return {
@@ -350,7 +389,85 @@ export async function getJobForManage(jobId) {
     const band = bandFor(await tx.salaryBand.findFirst({ where: { jobId } }));
 
     const canManage = await viewerCanManageJob(tx, jobId);
-    return { job: { ...job, interviewRounds, competencies, questions, members, band }, canManage };
+    // The proposing recruiter's own zone, as the slot form's default. Nullable on Employee, so the
+    // form still needs a value — UTC is the honest fallback rather than guessing at the server's.
+    const me = viewer.employeeId
+      ? await tx.employee.findFirst({ where: { id: viewer.employeeId }, select: { timeZone: true } })
+      : null;
+
+    return {
+      job: { ...job, interviewRounds, competencies, questions, members, band, slots },
+      canManage,
+      defaultZone: me?.timeZone ?? "UTC",
+    };
+  });
+}
+
+/**
+ * Slots waiting for the SIGNED-IN person to confirm (M9).
+ *
+ * ⚠️ Scoped by `interviewerEmployeeId = the viewer`, which is the same identity
+ * app_can_confirm_interview_slot checks — so this queue can never offer someone a row they would
+ * then be refused. RLS narrows it to jobs they can see; this narrows it to slots that are theirs.
+ *
+ * The in-app half of decision 3: staff live in this tool, and unlike the email it works in
+ * production, where there is no SMTP provider at all.
+ */
+export async function getMyPendingConfirmations() {
+  const viewer = await getViewer();
+  if (!viewer?.employeeId) return [];
+  return withViewer(viewer, async (tx) => {
+    const rows = await tx.interviewSlot.findMany({
+      where: {
+        interviewerEmployeeId: viewer.employeeId,
+        confirmedAt: null,
+        cancelledAt: null,
+      },
+      orderBy: { startAt: "asc" },
+      select: {
+        id: true, startAt: true, endAt: true, timeZone: true,
+        jobId: true,
+        job: { select: { title: true } },
+        round: { select: { name: true } },
+      },
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      startAt: r.startAt,
+      endAt: r.endAt,
+      timeZone: r.timeZone,
+      jobId: r.jobId,
+      jobTitle: r.job?.title ?? "—",
+      roundName: r.round?.name ?? "—",
+    }));
+  });
+}
+
+/**
+ * Published, unclaimed slots a recruiter can assign to one application (M9).
+ *
+ * Filtered to the application's CURRENT round: offering a candidate a slot for a round they are not
+ * in would schedule an interview nobody expects.
+ */
+export async function getSchedulingPanel(jobId, appId, roundId) {
+  const viewer = await getViewer();
+  if (!viewer) return { slots: [], booked: null };
+  return withViewer(viewer, async (tx) => {
+    // What this application already holds for the round it is in — shown instead of a picker.
+    const booked = roundId
+      ? await tx.interviewSlot.findFirst({
+          where: { claimedByApplicationId: appId, roundId, cancelledAt: null },
+          select: { id: true, startAt: true, endAt: true, timeZone: true, meetingUrl: true },
+        })
+      : null;
+    if (booked || !roundId) return { slots: [], booked };
+
+    const slots = await tx.interviewSlot.findMany({
+      where: { jobId, roundId, publishedAt: { not: null }, claimedAt: null, cancelledAt: null },
+      orderBy: { startAt: "asc" },
+      select: { id: true, startAt: true, endAt: true, timeZone: true },
+    });
+    return { slots, booked: null };
   });
 }
 

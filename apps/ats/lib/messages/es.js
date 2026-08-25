@@ -1,6 +1,7 @@
 // Spanish dictionary for the ATS (recruiting) app. Mirrors en.js key-for-key.
 const es = {
   // Informes
+  "nav.interviews": "Entrevistas",
   "nav.reports": "Informes",
   "reports.title": "Informes",
   "reports.scopeOrg": "Actividad de contratación en toda la organización.",
@@ -645,6 +646,42 @@ const es = {
   "err.offerNotRevisable": "Solo se puede revisar una oferta extendida o rechazada.",
   "err.invalidOfferStatus": "Ese no es un paso válido para esta oferta.",
   "err.notAtOffer": "Las ofertas solo se pueden escribir mientras la candidatura está en la etapa de oferta.",
+
+  // M9 — horarios de entrevista
+  "slots.title": "Horarios de entrevista",
+  "slots.hint": "Propón un horario, la persona entrevistadora lo confirma y luego se publica para ofrecerlo.",
+  "slots.round": "Ronda",
+  "slots.interviewer": "Entrevistador/a",
+  "slots.startsAt": "Comienza",
+  "slots.timeZone": "Zona horaria",
+  "slots.duration": "Duración",
+  "slots.minutes": "{n} minutos",
+  "slots.meetingUrl": "Enlace de reunión (opcional)",
+  "slots.propose": "Proponer horario",
+  "slots.proposing": "Proponiendo…",
+  "slots.none": "Aún no hay horarios de entrevista.",
+  "slots.confirm": "Confirmar",
+  "slots.publish": "Publicar",
+  "slots.cancel": "Cancelar",
+  "slots.takenBy": "Reservado por {name}",
+  "slots.awaitingConfirmation": "Esperando la confirmación de {name}",
+  "slots.queueTitle": "Horarios que esperan tu confirmación",
+  "slots.queueEmpty": "No hay nada esperándote.",
+  "slots.assignTitle": "Entrevista",
+  "slots.assign": "Reservar este horario",
+  "slots.assignNone": "Todavía no hay horarios publicados para esta ronda.",
+  "slots.booked": "Reservado: {when}",
+  "enum.slotStatus.PROPOSED": "Propuesto",
+  "enum.slotStatus.CONFIRMED": "Confirmado",
+  "enum.slotStatus.PUBLISHED": "Publicado",
+  "enum.slotStatus.CLAIMED": "Reservado",
+  "enum.slotStatus.CANCELLED": "Cancelado",
+  "err.slotFailed": "No se pudo guardar ese horario.",
+  "err.slotNotYours": "Ese horario no te corresponde confirmarlo.",
+  "err.slotNotConfirmed": "La persona entrevistadora aún no confirmó este horario.",
+  "err.slotNotFound": "Ese horario ya no existe.",
+  "err.slotTaken": "Ese horario se acaba de ocupar. Elige otro.",
+  "err.slotAlreadyBooked": "Esta persona ya tiene un horario reservado para esta ronda.",
 };
 
 export default es;

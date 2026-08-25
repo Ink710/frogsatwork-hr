@@ -2,6 +2,7 @@
 // suite apps. Kept lean — generic shell keys (login/prefs/error/nav/role) + the recruiting domain.
 const en = {
   // Reports
+  "nav.interviews": "Interviews",
   "nav.reports": "Reports",
   "reports.title": "Reports",
   "reports.scopeOrg": "Recruiting activity across the organisation.",
@@ -656,6 +657,42 @@ const en = {
   "err.offerNotRevisable": "Only an extended or declined offer can be revised.",
   "err.invalidOfferStatus": "That isn’t a valid next step for this offer.",
   "err.notAtOffer": "Offers can only be written while the application is at the offer stage.",
+
+  // M9 — interview slots
+  "slots.title": "Interview times",
+  "slots.hint": "Propose a time, the interviewer confirms it, then publish it to offer it to candidates.",
+  "slots.round": "Round",
+  "slots.interviewer": "Interviewer",
+  "slots.startsAt": "Starts",
+  "slots.timeZone": "Time zone",
+  "slots.duration": "Duration",
+  "slots.minutes": "{n} minutes",
+  "slots.meetingUrl": "Meeting link (optional)",
+  "slots.propose": "Propose time",
+  "slots.proposing": "Proposing…",
+  "slots.none": "No interview times yet.",
+  "slots.confirm": "Confirm",
+  "slots.publish": "Publish",
+  "slots.cancel": "Cancel",
+  "slots.takenBy": "Booked by {name}",
+  "slots.awaitingConfirmation": "Waiting for {name} to confirm",
+  "slots.queueTitle": "Interview times needing your confirmation",
+  "slots.queueEmpty": "Nothing is waiting for you.",
+  "slots.assignTitle": "Interview",
+  "slots.assign": "Book this time",
+  "slots.assignNone": "No published times are available for this round yet.",
+  "slots.booked": "Booked: {when}",
+  "enum.slotStatus.PROPOSED": "Proposed",
+  "enum.slotStatus.CONFIRMED": "Confirmed",
+  "enum.slotStatus.PUBLISHED": "Published",
+  "enum.slotStatus.CLAIMED": "Booked",
+  "enum.slotStatus.CANCELLED": "Cancelled",
+  "err.slotFailed": "That interview time could not be saved.",
+  "err.slotNotYours": "That interview time isn't yours to confirm.",
+  "err.slotNotConfirmed": "The interviewer hasn't confirmed this time yet.",
+  "err.slotNotFound": "That interview time no longer exists.",
+  "err.slotTaken": "That time was just taken. Please choose another.",
+  "err.slotAlreadyBooked": "This candidate already has a time booked for this round.",
 };
 
 export default en;

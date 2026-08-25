@@ -7,6 +7,7 @@ export * from "./campaign";
 export * from "./portal";
 export * from "./application";
 export * from "./question";
+export * from "./slot";
 export * from "./scorecard";
 export * from "./reporting";
 export * from "./eeo";

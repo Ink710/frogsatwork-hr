@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getViewer, withViewer } from "@hris/auth";
-import { deliverCandidateStageEmail } from "@hris/notifications";
+import { deliverCandidateStageEmail, deliverInterviewerSlotEmail } from "@hris/notifications";
 import { prisma } from "@hris/database";
 import {
   stageTransitionSchema,
@@ -18,6 +18,10 @@ import {
   competencySchema,
   JOB_STATUSES,
   publicStatusFor,
+  interviewSlotSchema,
+  zonedWallClockToUtc,
+  canPublish,
+  formatSlotWhen,
 } from "@hris/recruiting";
 import { viewerCanManageJob, canCreateJob, isInOrgDirectory } from "@/lib/queries";
 import { getT } from "@/lib/i18n.server";
@@ -617,5 +621,217 @@ export async function advanceRound(jobId, appId, _prevState) {
 
   revalidatePath(`/jobs/${jobId}`);
   revalidatePath(`/jobs/${jobId}/applications/${appId}`);
+  return { ok: true };
+}
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// M9 — INTERVIEW SLOTS: propose → confirm → publish → claim.
+//
+// Four of these are ordinary RLS writes by someone who can manage the req. `confirmSlot` is the
+// exception, and the interesting one: the assigned interviewer is typically a JobMember with role
+// INTERVIEWER, who can SEE the req but NOT manage it. The database lets them through a narrow
+// UPDATE policy (app_can_confirm_interview_slot) that checks their employee id and the slot's state
+// — so no role check is written here. RLS decides, exactly as it does everywhere else.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+/** Propose a time. The recruiter's own zone is the default, but the form always sends one. */
+export async function proposeSlot(jobId, _prevState, formData) {
+  const t = await getT();
+  const viewer = await getViewer();
+  if (!viewer) return { error: t("err.notAuthorized") };
+
+  const parsed = interviewSlotSchema.safeParse({
+    roundId: formData.get("roundId"),
+    interviewerEmployeeId: formData.get("interviewerEmployeeId"),
+    startsAt: formData.get("startsAt"),
+    timeZone: formData.get("timeZone"),
+    durationMinutes: formData.get("durationMinutes"),
+    meetingUrl: formData.get("meetingUrl") || "",
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? t("err.invalidInput") };
+  const d = parsed.data;
+
+  // ⚠️ The wall clock is interpreted in the CHOSEN zone, never with `new Date(...)` — that would use
+  // the SERVER's zone and store a time hours away from the one the recruiter typed, with nothing
+  // looking wrong until a candidate arrived at the wrong hour.
+  const startAt = zonedWallClockToUtc(d.startsAt, d.timeZone);
+  const endAt = new Date(startAt.getTime() + d.durationMinutes * 60_000);
+
+  // Gathered inside the transaction, used after it commits — same shape as M8's stage-change send.
+  let pending;
+
+  try {
+    await withViewer(viewer, async (tx) => {
+      if (!(await viewerCanManageJob(tx, jobId))) throw new Error(t("err.notAuthorized"));
+      const slot = await tx.interviewSlot.create({
+        data: {
+          jobId,
+          roundId: d.roundId,
+          interviewerEmployeeId: d.interviewerEmployeeId,
+          proposedById: viewer.userId,
+          startAt,
+          endAt,
+          timeZone: d.timeZone,
+          meetingUrl: d.meetingUrl || null,
+        },
+      });
+
+      // ⚠️ THROUGH A DOORWAY. Reading the interviewer with `tx.employee.findFirst` here returns
+      // NULL: "Employee" is RLS'd by app_can_see_employee, and a recruiter is not their manager. The
+      // first version did exactly that, so the email was skipped and nothing errored — the same trap
+      // getJobForManage documents for names, which it resolves via app_org_chart.
+      const [person] = await tx.$queryRaw`
+        SELECT user_id, email, first_name, job_title, round_name
+        FROM app_interview_slot_recipient(${slot.id})`;
+
+      pending = {
+        slotId: slot.id,
+        recipientUserId: person?.user_id ?? null,
+        to: person?.email ?? null,
+        firstName: person?.first_name ?? null,
+        jobTitle: person?.job_title ?? "",
+        roundName: person?.round_name ?? "",
+        when: formatSlotWhen({ startAt, endAt, timeZone: d.timeZone }),
+      };
+    });
+  } catch (e) {
+    return { error: errorMessage(e) ?? t("err.slotFailed") };
+  }
+
+  // ⚠️ AFTER THE COMMIT, and never able to fail the proposal. The slot exists and the /interviews
+  // queue already shows it — the email is a nudge, not the mechanism, which is exactly why decision
+  // 3 asked for both. In production there is no SMTP provider, so this always fails and is logged;
+  // the queue carries the workflow regardless.
+  if (pending?.to && pending.recipientUserId) {
+    await deliverInterviewerSlotEmail({
+      db: prisma,
+      slotId: pending.slotId,
+      recipientUserId: pending.recipientUserId,
+      to: pending.to,
+      firstName: pending.firstName,
+      jobTitle: pending.jobTitle,
+      roundName: pending.roundName,
+      when: pending.when,
+      // The ATS's OWN base url is right here, unlike a candidate notification: the recipient is
+      // staff and /interviews is a page in this app.
+      confirmUrl: `${process.env.APP_BASE_URL ?? "http://localhost:3002"}/interviews`,
+    });
+  }
+
+  revalidatePath(`/jobs/${jobId}/manage`);
+  revalidatePath("/interviews");
+  return { ok: true };
+}
+
+/** The assigned interviewer agrees to sit in it. Nothing reaches a candidate before this. */
+export async function confirmSlot(jobId, slotId, _prevState) {
+  const t = await getT();
+  const viewer = await getViewer();
+  if (!viewer) return { error: t("err.notAuthorized") };
+
+  // ⚠️ THROUGH A DOORWAY, NOT AN UPDATE, and the reason is a bug the tests found. `confirmedAt` is
+  // REVOKEd from the app role at column level, because RLS could not express "a recruiter may edit
+  // this row but not this column" — permissive policies OR together, so the manage policy let a
+  // recruiter confirm their own proposal and the two-person rule quietly did not hold.
+  let result;
+  try {
+    result = await withViewer(viewer, async (tx) => {
+      const rows = await tx.$queryRaw`SELECT app_confirm_interview_slot(${slotId}) AS result`;
+      return rows[0]?.result;
+    });
+  } catch (e) {
+    return { error: errorMessage(e) ?? t("err.slotFailed") };
+  }
+  if (result === "NOT_FOUND") return { error: t("err.slotNotFound") };
+  if (result !== "OK") return { error: t("err.slotNotYours") };
+
+  revalidatePath(`/jobs/${jobId}/manage`);
+  revalidatePath("/jobs");
+  return { ok: true };
+}
+
+/** Offer it to candidates. Refused unless an interviewer has confirmed — the two-person rule. */
+export async function publishSlot(jobId, slotId, _prevState) {
+  const t = await getT();
+  const viewer = await getViewer();
+  if (!viewer) return { error: t("err.notAuthorized") };
+
+  try {
+    const done = await withViewer(viewer, async (tx) => {
+      if (!(await viewerCanManageJob(tx, jobId))) throw new Error(t("err.notAuthorized"));
+      const slot = await tx.interviewSlot.findFirst({ where: { id: slotId } });
+      if (!slot) throw new Error(t("err.slotNotFound"));
+      // The workflow rule lives in @hris/recruiting so it is unit-tested and identical wherever it
+      // is asked. Publishing an unconfirmed slot would offer a candidate a time nobody agreed to.
+      if (!canPublish(slot)) return false;
+      await tx.interviewSlot.update({ where: { id: slotId }, data: { publishedAt: new Date() } });
+      return true;
+    });
+    if (!done) return { error: t("err.slotNotConfirmed") };
+  } catch (e) {
+    return { error: errorMessage(e) ?? t("err.slotFailed") };
+  }
+
+  revalidatePath(`/jobs/${jobId}/manage`);
+  return { ok: true };
+}
+
+/** Withdraw a slot. Releases any claim, so the candidate can be rebooked for that round. */
+export async function cancelSlot(jobId, slotId, _prevState) {
+  const t = await getT();
+  const viewer = await getViewer();
+  if (!viewer) return { error: t("err.notAuthorized") };
+
+  try {
+    await withViewer(viewer, async (tx) => {
+      if (!(await viewerCanManageJob(tx, jobId))) throw new Error(t("err.notAuthorized"));
+      // Clearing the claim is what lets the once-per-round unique constraint accept a replacement:
+      // a cancelled-but-still-claimed slot would block that application from ever rebooking.
+      await tx.interviewSlot.updateMany({
+        where: { id: slotId, cancelledAt: null },
+        data: { cancelledAt: new Date(), claimedAt: null, claimedByApplicationId: null },
+      });
+    });
+  } catch (e) {
+    return { error: errorMessage(e) ?? t("err.slotFailed") };
+  }
+
+  revalidatePath(`/jobs/${jobId}/manage`);
+  return { ok: true };
+}
+
+/**
+ * Book a published slot for one application.
+ *
+ * ⚠️ THROUGH THE DOORWAY, NOT A PRISMA UPDATE. Two recruiters can be looking at the same pool, so
+ * the claim must be one atomic conditional statement — app_claim_interview_slot returns UNAVAILABLE
+ * to whoever loses. A read-then-write here would double-book, and the failure would be invisible
+ * until two people arrived for the same interview. M11 calls the same function for candidates.
+ */
+export async function assignSlot(jobId, appId, _prevState, formData) {
+  const t = await getT();
+  const viewer = await getViewer();
+  if (!viewer) return { error: t("err.notAuthorized") };
+
+  const slotId = String(formData.get("slotId") ?? "");
+  if (!slotId) return { error: t("err.invalidInput") };
+
+  let result;
+  try {
+    result = await withViewer(viewer, async (tx) => {
+      if (!(await viewerCanManageJob(tx, jobId))) throw new Error(t("err.notAuthorized"));
+      const rows = await tx.$queryRaw`SELECT app_claim_interview_slot(${slotId}, ${appId}) AS result`;
+      return rows[0]?.result;
+    });
+  } catch (e) {
+    return { error: errorMessage(e) ?? t("err.slotFailed") };
+  }
+
+  if (result === "UNAVAILABLE") return { error: t("err.slotTaken") };
+  if (result === "ALREADY_BOOKED") return { error: t("err.slotAlreadyBooked") };
+  if (result !== "OK") return { error: t("err.slotNotFound") };
+
+  revalidatePath(`/jobs/${jobId}/applications/${appId}`);
+  revalidatePath(`/jobs/${jobId}/manage`);
   return { ok: true };
 }

@@ -45,6 +45,9 @@ const en = {
   "portal.appliedOn": "Applied {date}",
   "portal.signOut": "Sign out",
   "portal.latestUpdate": "Update: your application moved to {stage} on {date}.",
+  "portal.interviewTitle": "{round} interview",
+  "portal.interviewLocal": "That's {when} where you are.",
+  "portal.interviewJoin": "Join the interview",
   "portal.editProfile": "Your profile →",
   "portal.closingMessage":
     "Thank you for your application. After reviewing your qualifications, we have decided not to move forward with your application for this position. We appreciate your interest and encourage you to apply for future opportunities.",

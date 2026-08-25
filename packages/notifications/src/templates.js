@@ -157,3 +157,63 @@ export function candidateStageEmail({ stageKey, locale, firstName, jobTitle, por
 
 /** The locales this module actually has copy for — used by tests and by callers normalising input. */
 export const NOTIFICATION_LOCALES = Object.keys(COPY);
+
+// ── Staff-facing: an interview slot awaits confirmation (M9) ─────────────────────────────────
+//
+// ⚠️ THIS ONE GOES TO AN EMPLOYEE, NOT A CANDIDATE, and it is the first message in the suite that
+// does. It lives here beside the candidate copy because the delivery machinery is shared, not
+// because staff and candidate wording belong together — keep them clearly separated below.
+//
+// ⚠️ THERE IS NO LOCALE STORED FOR STAFF. Neither `User` nor `Employee` has one (unlike
+// `Candidate.locale`, which M8 added precisely because email needed it). So this defaults to English
+// and accepts a locale only so the day someone adds `Employee.locale` this does not have to change.
+const STAFF_COPY = {
+  en: {
+    subject: (job) => `Please confirm an interview time for ${job}`,
+    paragraphs: (name, job, round, when) => [
+      `Hi ${name},`,
+      `You've been proposed as the interviewer for a ${round} interview on ${job}.`,
+      `The time is ${when}. Nothing is offered to the candidate until you confirm it.`,
+      `Confirm or decline here:`,
+    ],
+    link: "Review the interview time",
+    signoff: "FrogsAtWorkHR",
+  },
+  es: {
+    subject: (job) => `Confirma un horario de entrevista para ${job}`,
+    paragraphs: (name, job, round, when) => [
+      `Hola ${name}:`,
+      `Te propusieron como entrevistador/a para una entrevista de ${round} en ${job}.`,
+      `El horario es ${when}. No se le ofrece nada a la persona candidata hasta que lo confirmes.`,
+      `Confirma o rechaza aquí:`,
+    ],
+    link: "Revisar el horario",
+    signoff: "FrogsAtWorkHR",
+  },
+};
+
+/**
+ * Ask an interviewer to confirm a proposed slot.
+ *
+ * @param {object} args
+ * @param {string} args.firstName  the interviewer's
+ * @param {string} args.jobTitle
+ * @param {string} args.roundName
+ * @param {string} args.when       ALREADY FORMATTED by formatSlotWhen — the canonical string that
+ *                                 names its time zone. Email has no browser to localise anything, so
+ *                                 an unlabelled "15:00" would be a number, not a time.
+ * @param {string} args.confirmUrl
+ * @param {string} [args.locale]
+ */
+export function interviewerSlotEmail({ firstName, jobTitle, roundName, when, confirmUrl, locale }) {
+  const pack = STAFF_COPY[locale] ?? STAFF_COPY[FALLBACK_LOCALE];
+  const paragraphs = pack.paragraphs(firstName || "there", jobTitle, roundName, when);
+
+  const text = [...paragraphs, "", confirmUrl, "", `— ${pack.signoff}`].join("\n\n");
+  const html =
+    paragraphs.map((p) => `<p>${escapeHtml(p)}</p>`).join("") +
+    `<p><a href="${escapeHtml(confirmUrl)}">${escapeHtml(pack.link)}</a></p>` +
+    `<p style="color:#71717a;font-size:13px">— ${escapeHtml(pack.signoff)}</p>`;
+
+  return { subject: pack.subject(jobTitle), text, html };
+}

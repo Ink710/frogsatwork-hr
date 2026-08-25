@@ -3,9 +3,10 @@ import { redirect } from "next/navigation";
 import { INTL_LOCALE, formatDate } from "@hris/ui";
 import { getApplicant } from "@/lib/auth";
 import { getT, getLocale } from "@/lib/i18n.server";
-import { getMyApplications } from "@/lib/queries";
+import { getMyApplications, getMyInterviews } from "@/lib/queries";
 import { SiteHeader, SiteFooter } from "@/components/site-ui";
 import { SignOutButton } from "@/components/SignOutButton";
+import { InterviewTime } from "@/components/InterviewTime";
 
 export const metadata = { title: "Your applications · FrogsAtWorkHR" };
 
@@ -23,6 +24,8 @@ export default async function PortalPage() {
   const t = await getT();
   const locale = INTL_LOCALE[await getLocale()];
   const applications = await getMyApplications(applicant.accountId);
+  // M9: one extra doorway call, keyed by application, rather than a query per card.
+  const interviews = await getMyInterviews(applicant.accountId);
 
   return (
     <>
@@ -83,6 +86,12 @@ export default async function PortalPage() {
                     })}
                   </p>
                 )}
+
+                {/* M9 — the interview they actually have. Published and claimed only; the doorway
+                    will not return anything a recruiter has merely proposed. */}
+                {(interviews.get(app.id) ?? []).map((iv, i) => (
+                  <InterviewTime key={`${app.id}-${i}`} interview={iv} locale={locale} />
+                ))}
 
                 {/* The timeline. Round names are never here — see app_applicant_events — so an
                     applicant sees that they reached the interview stage, not how our process is

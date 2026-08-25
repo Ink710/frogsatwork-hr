@@ -53,6 +53,11 @@ export async function AppHeader() {
         { href: "/", label: t("nav.jobs") },
         { href: "/candidates", label: t("nav.candidates") },
         ...(canSeeLeads ? [{ href: "/candidates/leads", label: t("nav.leads") }] : []),
+        // M9: ungated on purpose, unlike the links below. Anyone on a hiring team can be proposed
+        // as an interviewer, and the page scopes itself to slots that are actually theirs — so it is
+        // empty rather than forbidden for everyone else. Gating it by role would hide the one
+        // surface an INTERVIEWER (who cannot reach /jobs/[id]/manage at all) needs.
+        { href: "/interviews", label: t("nav.interviews") },
         { href: "/reports", label: t("nav.reports") },
         // M2: same gate as the leads pool — `isRecruiter` is the campaign_write role list, so the
         // link only appears for people the database will actually let maintain the registry. The

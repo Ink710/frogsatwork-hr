@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { JOB_STATUSES, JOB_MEMBER_ROLES, JOB_EMPLOYMENT_TYPES } from "@hris/recruiting";
 import { Card } from "@hris/ui/server";
-import { getT } from "@/lib/i18n.server";
+import { INTL_LOCALE } from "@hris/ui";
+import { getT, getLocale } from "@/lib/i18n.server";
 import { getJobForManage, getJobFormData, getAssignableEmployees } from "@/lib/queries";
 import { JobStatusBadge } from "@/components/recruiting-ui";
 import { JobForm } from "@/components/JobForm";
@@ -13,6 +14,7 @@ import { TeamEditor } from "@/components/TeamEditor";
 import { JobStatusControl } from "@/components/JobStatusControl";
 import { PublishControl } from "@/components/PublishControl";
 import { SalaryBandEditor } from "@/components/SalaryBandEditor";
+import { SlotEditor } from "@/components/SlotEditor";
 
 // The requisition manage screen: details, interview rounds, hiring team, and the status lifecycle.
 // 404s both when RLS hides the job AND when the viewer can see it but may not manage it (an
@@ -20,6 +22,7 @@ import { SalaryBandEditor } from "@/components/SalaryBandEditor";
 export default async function ManageJobPage({ params }) {
   const { id } = await params; // async in Next 16
   const t = await getT();
+  const locale = INTL_LOCALE[await getLocale()];
 
   const data = await getJobForManage(id);
   if (!data || !data.canManage) notFound();
@@ -60,6 +63,21 @@ export default async function ManageJobPage({ params }) {
           <p className="mb-3 text-xs text-muted-foreground">{t("rounds.subtitle")}</p>
           <RoundEditor jobId={id} rounds={job.interviewRounds} />
         </Card>
+
+        {/* M9. Rendered only when the req has rounds and a team: a slot needs both, and an empty
+            editor with two empty dropdowns explains nothing. */}
+        {data.job.interviewRounds.length > 0 && data.job.members.length > 0 && (
+          <Card title={t("slots.title")}>
+            <SlotEditor
+              jobId={id}
+              slots={data.job.slots}
+              rounds={data.job.interviewRounds}
+              members={data.job.members}
+              defaultZone={data.defaultZone}
+              locale={locale}
+            />
+          </Card>
+        )}
 
         <Card title={t("comps.title")}>
           <p className="mb-3 text-xs text-muted-foreground">{t("comps.subtitle")}</p>

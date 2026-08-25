@@ -7,6 +7,7 @@ import {
   getMyScorecard,
   getApplicationScorecards,
   getOfferPanel,
+  getSchedulingPanel,
 } from "@/lib/queries";
 import { getViewer } from "@hris/auth";
 import { signApplicationResumeDownload } from "@/lib/sign";
@@ -14,6 +15,7 @@ import { StageBadge, ResumeLink } from "@/components/recruiting-ui";
 import { ScorecardForm } from "@/components/ScorecardForm";
 import { DebriefPanel } from "@/components/DebriefPanel";
 import { OfferPanel } from "@/components/OfferPanel";
+import { AssignSlot } from "@/components/AssignSlot";
 import { Avatar, Card, Field, FieldGrid } from "@hris/ui/server";
 
 // Human label for one pipeline event: the initial application, an interview-round advance
@@ -52,8 +54,13 @@ export default async function ApplicationDetailPage({ params }) {
     getViewer(),
   ]);
 
-  const { app } = detail;
+  const { app, canManage } = detail;
   const c = app.candidate;
+
+  // M9: scheduling, scoped to the round this application is actually in — offering a time for a
+  // round they have not reached would book an interview nobody expects. Read after `app` because it
+  // needs currentRoundId.
+  const scheduling = await getSchedulingPanel(id, appId, app.currentRoundId);
 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8 sm:px-6">
@@ -114,6 +121,20 @@ export default async function ApplicationDetailPage({ params }) {
             )}
           </FieldGrid>
         </Card>
+
+        {/* M9 — the interview time. Only while they are IN the interview stage: a slot picker on an
+            application at Applied or Offer is an invitation to schedule the wrong thing. */}
+        {app.stage === "INTERVIEW" && canManage && (
+          <Card title={t("slots.assignTitle")}>
+            <AssignSlot
+              jobId={id}
+              appId={appId}
+              slots={scheduling.slots}
+              booked={scheduling.booked}
+              locale={locale}
+            />
+          </Card>
+        )}
 
         {/* Their answers to this req's screening questions (M6b). The prompt shown is the SNAPSHOT
             taken when they answered — reword the question next quarter and this still reads as the

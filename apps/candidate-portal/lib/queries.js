@@ -119,6 +119,40 @@ export async function getMyApplications(accountId) {
  * Dates come back as timestamps and are converted to the YYYY-MM the form's month inputs use.
  */
 /**
+ * The interviews this applicant actually has (M9).
+ *
+ * Doorway again — the fifth of this shape. "Application" and "InterviewSlot" are both under RLS and
+ * this connection has no session variables, so a join returns nothing, silently.
+ *
+ * ⚠️ The doorway returns PUBLISHED, CLAIMED-BY-THEM slots only. A proposed or merely confirmed time
+ * is internal: it must not reach the person it concerns before anyone decided to offer it.
+ *
+ * The canonical `timeZone` travels with each row, because "15:00" alone is not a time to someone
+ * whose own zone we do not know.
+ */
+export async function getMyInterviews(accountId) {
+  if (!accountId) return new Map();
+  const rows = await prisma.$queryRaw`
+    SELECT application_id, round_name, start_at, end_at, time_zone, meeting_url
+    FROM app_applicant_interviews(${accountId})`;
+
+  // Keyed by application so the portal card can show its own interview without a second pass.
+  const byApplication = new Map();
+  for (const r of rows) {
+    const list = byApplication.get(r.application_id) ?? [];
+    list.push({
+      roundName: r.round_name,
+      startAt: r.start_at,
+      endAt: r.end_at,
+      timeZone: r.time_zone,
+      meetingUrl: r.meeting_url,
+    });
+    byApplication.set(r.application_id, list);
+  }
+  return byApplication;
+}
+
+/**
  * The CV currently on the applicant's profile (M7) — the editor's "on file" line, and the only
  * thing `/portal/resume` needs in order to stream it.
  *

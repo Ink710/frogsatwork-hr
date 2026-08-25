@@ -39,6 +39,9 @@ const es = {
   "portal.appliedOn": "Postulaste el {date}",
   "portal.signOut": "Cerrar sesión",
   "portal.latestUpdate": "Novedad: tu postulación pasó a {stage} el {date}.",
+  "portal.interviewTitle": "Entrevista: {round}",
+  "portal.interviewLocal": "Es decir, {when} en tu zona.",
+  "portal.interviewJoin": "Unirse a la entrevista",
   "portal.editProfile": "Tu perfil →",
   "portal.closingMessage":
     "Gracias por tu postulación. Tras revisar tu perfil, hemos decidido no continuar con tu candidatura para esta vacante. Agradecemos tu interés y te animamos a postular a futuras oportunidades.",
