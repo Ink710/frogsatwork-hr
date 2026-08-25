@@ -151,14 +151,17 @@ describe("answers that must be discarded", () => {
   it("the DOORWAY discards them too, independently of the form", async () => {
     // Bypass the app layer entirely — this is what a direct POST amounts to.
     await prisma.$queryRaw`
-      SELECT result FROM app_submit_application(
-        'job-be','Direct','Poster','direct@example.com',NULL,'careers-page',NULL,NULL,
-        NULL,NULL,NULL,NULL,NULL,NULL,NULL,
-        ${JSON.stringify([
+      SELECT result FROM app_submit_application('job-be', ${JSON.stringify({
+        firstName: "Direct",
+        lastName: "Poster",
+        email: "direct@example.com",
+        source: "careers-page",
+        answers: [
           { questionId: "q-req", value: "Yes" },
           { questionId: "q-other", value: "SMUGGLED" },
           { questionId: "q-arch", value: "SMUGGLED" },
-        ])}::jsonb)`;
+        ],
+      })}::jsonb)`;
 
     const answers = await answersFor("direct@example.com");
     expect(answers.map((a) => a.questionId)).toEqual(["q-req"]);
@@ -166,9 +169,13 @@ describe("answers that must be discarded", () => {
 
   it("the DOORWAY refuses a missing required answer, independently of the form", async () => {
     const [row] = await prisma.$queryRaw`
-      SELECT result FROM app_submit_application(
-        'job-be','Direct','Poster','direct2@example.com',NULL,'careers-page',NULL,NULL,
-        NULL,NULL,NULL,NULL,NULL,NULL,NULL,'[]'::jsonb)`;
+      SELECT result FROM app_submit_application('job-be', ${JSON.stringify({
+        firstName: "Direct",
+        lastName: "Poster",
+        email: "direct2@example.com",
+        source: "careers-page",
+        answers: [],
+      })}::jsonb)`;
     expect(row.result).toBe("MISSING_ANSWERS");
     expect(await asAna((tx) => tx.candidate.findFirst({ where: { email: "direct2@example.com" } }))).toBeNull();
   });

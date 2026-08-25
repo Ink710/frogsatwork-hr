@@ -14,7 +14,7 @@ import {
   RESUME_MIME_TYPES,
 } from "@hris/recruiting";
 import { allowApplyAttempt, allowErasureAttempt } from "@/lib/rate-limit";
-import { getT } from "@/lib/i18n.server";
+import { getT, getLocale } from "@/lib/i18n.server";
 
 const storage = createStorage();
 
@@ -97,6 +97,7 @@ export async function submitApplication(jobId, sourceSlug, _prevState, formData)
   // 5. The security boundary. A bare prisma call — no withViewer — because there is no viewer; the
   //    function itself decides what is allowed.
   let result;
+  let eventId;
   try {
     // M2: the source argument is a campaign SLUG now, not a display label. A tracked link supplies
     // one; an untracked visit to the careers site falls back to the built-in `careers-page`
@@ -108,12 +109,35 @@ export async function submitApplication(jobId, sourceSlug, _prevState, formData)
     // caller). What it must never do is refuse the application: a mangled marketing link is our
     // bookkeeping problem, never the applicant's.
     const source = typeof sourceSlug === "string" && sourceSlug.trim() ? sourceSlug.trim() : "careers-page";
+
+    // M8: one jsonb payload instead of twelve positional arguments. This fallback still sends no
+    // employment, education, consent or answers — those belong to app 4's richer flow — and omitting
+    // the keys means exactly what it meant before: not submitted, so nothing is written.
+    //
+    // `locale` IS captured here. /careers is a public page, so the cookie is the applicant's own,
+    // and someone who applies through the fallback deserves to be written to in their own language
+    // just as much as someone who uses the front door.
+    const payload = {
+      firstName: d.firstName,
+      lastName: d.lastName,
+      email: d.email,
+      phone: d.phone ?? null,
+      source,
+      resumeKey,
+      resumeName,
+      locale: await getLocale(),
+      eeo: {
+        gender: eeo.gender,
+        ethnicity: eeo.ethnicity,
+        veteran: eeo.veteranStatus,
+        disability: eeo.disabilityStatus,
+      },
+    };
     const rows = await prisma.$queryRaw`
-      SELECT result, application_id FROM app_submit_application(
-        ${jobId}, ${d.firstName}, ${d.lastName}, ${d.email},
-        ${d.phone ?? null}, ${source}, ${resumeKey}, ${resumeName},
-        ${eeo.gender}, ${eeo.ethnicity}, ${eeo.veteranStatus}, ${eeo.disabilityStatus})`;
+      SELECT result, application_id, event_id
+      FROM app_submit_application(${jobId}, ${JSON.stringify(payload)}::jsonb)`;
     result = rows[0]?.result;
+    eventId = rows[0]?.event_id;
   } catch {
     if (resumeKey) await storage.remove(resumeKey).catch(() => {});
     return { error: t("apply.failed") };

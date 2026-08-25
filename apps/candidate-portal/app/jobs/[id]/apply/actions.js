@@ -16,7 +16,7 @@ import {
   PRIVACY_POLICY_VERSION,
   resumeFileError,
 } from "@hris/recruiting";
-import { getT } from "@/lib/i18n.server";
+import { getT, getLocale } from "@/lib/i18n.server";
 import { getJobQuestions } from "@/lib/queries";
 import { allowApplyAttempt } from "@/lib/rate-limit";
 
@@ -143,16 +143,43 @@ export async function submitApplication(jobId, sourceSlug, _prevState, formData)
 
   // 5. The boundary. ONE call, so candidate, application, event, EEO, profile, snapshots and consent
   //    all land together or not at all — a follow-up write would leave half-applications behind.
+  //
+  //    ⚠️ ONE jsonb PAYLOAD, NOT SIXTEEN POSITIONAL ARGUMENTS (M8). The old call passed sixteen, and
+  //    a miscounted NULL in the middle was a silent, well-earned hazard. Named keys also mean the
+  //    next field costs nothing on either side.
+  //
+  //    `locale` is captured HERE and nowhere else: this is a public page, so the cookie belongs to
+  //    the applicant themselves — the only moment in the whole flow when it does. The doorway
+  //    gap-fills it, so a first application decides the language we write to them in.
+  const payload = {
+    firstName: d.firstName,
+    lastName: d.lastName,
+    email: d.email,
+    phone: d.phone ?? null,
+    source: sourceSlug || "careers-page",
+    resumeKey,
+    resumeName,
+    locale: await getLocale(),
+    eeo: {
+      gender: eeo.gender,
+      ethnicity: eeo.ethnicity,
+      veteran: eeo.veteranStatus,
+      disability: eeo.disabilityStatus,
+    },
+    employment: employmentRows,
+    education: educationRows,
+    consentVersion: PRIVACY_POLICY_VERSION,
+    answers: validated.answers,
+  };
+
   let result;
+  let eventId;
   try {
     const rows = await prisma.$queryRaw`
-      SELECT result, application_id FROM app_submit_application(
-        ${jobId}, ${d.firstName}, ${d.lastName}, ${d.email},
-        ${d.phone ?? null}, ${sourceSlug || "careers-page"}, ${resumeKey}, ${resumeName},
-        ${eeo.gender}, ${eeo.ethnicity}, ${eeo.veteranStatus}, ${eeo.disabilityStatus},
-        ${JSON.stringify(employmentRows)}::jsonb, ${JSON.stringify(educationRows)}::jsonb,
-        ${PRIVACY_POLICY_VERSION}, ${JSON.stringify(validated.answers)}::jsonb)`;
+      SELECT result, application_id, event_id
+      FROM app_submit_application(${jobId}, ${JSON.stringify(payload)}::jsonb)`;
     result = rows[0]?.result;
+    eventId = rows[0]?.event_id;
   } catch (e) {
     console.error("[apply] submission failed", e);
     if (resumeKey) await storage.remove(resumeKey).catch(() => {});

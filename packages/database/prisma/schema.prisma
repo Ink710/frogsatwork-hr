@@ -338,6 +338,28 @@ enum RejectionReason {
   OTHER
 }
 
+// How a notification reached (or failed to reach) someone (M8).
+//
+// Only EMAIL exists. The in-portal banner is deliberately NOT a channel: it is derived at render
+// time from the event trail the portal already reads, so there is nothing to deliver and nothing to
+// record. The enum exists so M9's interviewer notifications can add one without a migration to
+// widen a boolean.
+enum NotificationChannel {
+  EMAIL
+}
+
+// PENDING is written by the CLAIM, before the send is attempted — see app_claim_notification. It is
+// the state that makes the claim atomic, not a queue.
+//
+// ⚠️ FAILED is the NORMAL state in production, by design: prod has no SMTP provider (see
+// docs/DEPLOYMENT.md), so every send throws and is recorded as failed. That is the honest answer to
+// "did we tell them" rather than a silence that reads as success.
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
 // The ten EEO-1 Component 1 job categories (M12). A real filing reports headcounts BY category, so
 // without this the export would be EEO-1-shaped without being an EEO-1.
 enum EeoJobCategory {
@@ -468,6 +490,7 @@ model User {
   jobsCreated            Job[]                  @relation("JobCreatedBy")
   jobMembersAdded        JobMember[]            @relation("JobMemberAddedBy")
   applicationEvents      ApplicationEvent[]     @relation("ApplicationEventActor")
+  notificationsReceived  NotificationDelivery[] @relation("NotificationRecipient")
   // Compliance (ATS M12): EEO exports this user produced.
   eeoExports             EeoExportLog[]         @relation("EeoExportActor")
   // Compensation (ATS M14): who wrote an offer.
@@ -1076,6 +1099,7 @@ model Job {
   members           JobMember[]
   applications      Application[]
   applicationEvents ApplicationEvent[] @relation("ApplicationEventJob")
+  notificationDeliveries NotificationDelivery[] @relation("NotificationDeliveryJob")
   competencies      JobCompetency[]
   scorecards        Scorecard[]        @relation("ScorecardJob")
   eeoResponses      EeoResponse[]      @relation("EeoResponseJob")
@@ -1369,6 +1393,20 @@ model Candidate {
   // Object-storage key for the resume (like EmployeeDocument.fileUrl) — never a public URL.
   resumeKey      String?
   resumeFileName String?
+  // THE LANGUAGE WE WRITE TO THEM IN (M8).
+  //
+  // ⚠️ IT HAS TO LIVE ON THE PERSON, and this is not a preference feature. Locale everywhere else in
+  // the suite is read from a COOKIE ON THE CURRENT REQUEST (packages/ui/src/server/i18n.server.js) —
+  // which is correct while someone is browsing, and completely wrong for an email. A stage-change
+  // notification is triggered by a RECRUITER's request, so `getT()` there yields the recruiter's
+  // language; a cron job has no request at all and silently yields "en". Either way the candidate
+  // gets a message in someone else's language, and it looks fine in development because everyone is
+  // testing in English.
+  //
+  // Captured at APPLY time, gap-filled with COALESCE like `phone` and `source` — first touch wins.
+  // Both apply paths are public pages, so the visitor's own cookie is authoritative there; it is the
+  // only moment in the whole flow when it is. NULL falls back to "en" at render time.
+  locale         String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -1675,7 +1713,70 @@ model ApplicationEvent {
   actorId String
   actor   User   @relation("ApplicationEventActor", fields: [actorId], references: [id])
 
+  deliveries NotificationDelivery[]
+
   @@index([applicationId, occurredAt])
+}
+
+// ONE ATTEMPT TO DELIVER NEWS OF ONE EVENT, to one recipient, down one channel (M8).
+//
+// ⚠️ THIS IS NOT "A NOTIFICATION". The notification IS the `ApplicationEvent` — it already exists, it
+// is append-only, and the portal already renders it. This table records only what we tried to SEND,
+// which is why the in-portal banner has no row here: it is derived at render time from the event
+// trail, so there is nothing to deliver.
+//
+// ⚠️ IT HOLDS NO PERSONAL DATA, AND THAT IS LOAD-BEARING. No address, no subject, no body. The
+// recipient is derivable — a null `recipientUserId` means "the candidate on this event", which is
+// every row M8 writes. Because it describes the process rather than the person,
+// `app_erase_candidate` deliberately does NOT touch it: events survive an erasure exactly as stages
+// and ratings do, and so does the record that we wrote to someone about one.
+//
+// ⚠️ NEVER ADD AN ERROR-MESSAGE COLUMN. An SMTP bounce reads `550 no such user: nora@example.com` —
+// storing it would put the recipient's address in the one table that promises not to hold it, and
+// would do so only on the failure path where nobody is looking. Log the cause; store the status.
+model NotificationDelivery {
+  id          String              @id @default(uuid())
+  channel     NotificationChannel
+  status      NotificationStatus  @default(PENDING)
+  // Null until a send is actually attempted; PENDING rows are claims, not queued work.
+  attemptedAt DateTime?
+  createdAt   DateTime            @default(now())
+
+  // The idempotency key. Each stage move writes exactly one event, so its id identifies the news
+  // precisely — no window, no fuzzy matching, no "did we already send something like this".
+  applicationEventId String
+  applicationEvent   ApplicationEvent @relation(fields: [applicationEventId], references: [id], onDelete: Cascade)
+
+  // Denormalized owner column, so the RLS policy is the same one-liner as every other scoped table.
+  jobId String
+  job   Job    @relation("NotificationDeliveryJob", fields: [jobId], references: [id])
+
+  // NULL = the candidate on this event (M8 writes nothing else). Present only so M9 can address a
+  // staff interviewer about a slot awaiting confirmation without reopening this table. A real FK,
+  // never a copy of anyone's contact details.
+  recipientUserId String?
+  recipientUser   User?   @relation("NotificationRecipient", fields: [recipientUserId], references: [id])
+
+  // ⚠️ THE REAL INDEX CARRIES `NULLS NOT DISTINCT`, WHICH PRISMA CANNOT EXPRESS. It is created that
+  // way in the migration; this `@@unique` is the same three columns without the clause.
+  //
+  // That is not a fudge, it is the arrangement that makes both halves work, and it took a drift
+  // check to get right:
+  //   · Prisma CANNOT SEE the difference — `migrate diff` reports "no difference" against the live
+  //     index — so the declaration here is accepted and the database keeps the stronger constraint.
+  //   · The declaration is REQUIRED. Without it Prisma sees an index it does not know about and a
+  //     future `migrate dev` generates a migration to DROP it, silently destroying the idempotency
+  //     this table exists to provide.
+  //   · `map:` pins the name to the migration's, or Prisma's own naming convention makes it want to
+  //     rename the index on every diff.
+  //
+  // Why the clause matters at all: in Postgres NULLs in a unique index are DISTINCT by default, and
+  // every row M8 writes has `recipientUserId IS NULL`. Without it two claims for the same event do
+  // not collide, `ON CONFLICT` never fires, and the same person is emailed twice — with no error
+  // anywhere. There is a psql check that claims twice, and a control proving the check can fail.
+  @@unique([applicationEventId, channel, recipientUserId], map: "NotificationDelivery_event_channel_recipient_key")
+  @@index([applicationEventId])
+  @@index([jobId])
 }
 
 // ---------------------------------------------------------------------------
