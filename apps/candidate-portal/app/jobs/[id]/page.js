@@ -9,8 +9,12 @@ import { SiteHeader, SiteFooter, SalaryRange } from "@/components/site-ui";
 // paused or confidential req is indistinguishable from guessing an id that never existed. That
 // equivalence is the point: a different response for "exists but hidden" would turn this page into a
 // way to enumerate unannounced roles.
-export default async function JobDetailPage({ params }) {
+export default async function JobDetailPage({ params, searchParams }) {
   const { id } = await params; // async in Next 16
+  // M6: carry a tracking link's campaign slug through to the apply form, so attribution survives the
+  // click from listing to submission.
+  const sp = await searchParams;
+  const source = typeof sp?.source === "string" ? sp.source : null;
   const t = await getT();
   const locale = INTL_LOCALE[await getLocale()];
   const job = await getPublishedJob(id);
@@ -43,11 +47,14 @@ export default async function JobDetailPage({ params }) {
           </div>
         )}
 
-        {/* No apply form yet — it arrives in M6, together with work history, education, the job's
-            custom questions and versioned consent. Deliberately NOT a link across to the ATS
-            careers site in the meantime: cross-app linking would need a base URL this app has no
-            reason to know, and it would be thrown away in a milestone's time. */}
-        <p className="mt-8 text-sm text-muted-foreground">{t("job.applyHint")}</p>
+        {/* M6: this app is the front door now, so applying happens here. The campaign slug rides
+            along so a tracked link keeps its attribution across the click from listing to form. */}
+        <Link
+          href={`/jobs/${id}/apply${source ? `?source=${encodeURIComponent(source)}` : ""}`}
+          className="mt-8 inline-block rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+        >
+          {t("job.apply")}
+        </Link>
       </main>
       <SiteFooter />
     </>

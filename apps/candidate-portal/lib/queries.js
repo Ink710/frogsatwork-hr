@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@hris/database";
-import { publicStatusFor, buildApplicantTimeline } from "@hris/recruiting";
+import { publicStatusFor, buildApplicantTimeline, dateToMonth } from "@hris/recruiting";
 
 // The PUBLIC read path. Every function here runs with a BARE prisma client and no `withViewer`,
 // because there is no viewer — the caller is an anonymous stranger on the internet.
@@ -34,6 +34,19 @@ export async function getPublishedJob(jobId) {
            currency, "payBasis"::text AS "payBasis"
     FROM app_public_jobs() WHERE id = ${jobId}`;
   return row ?? null;
+}
+
+/**
+ * The screening questions a job asks (M6b) — public, for the apply form.
+ *
+ * Doorway again: "JobQuestion" is gated by app_can_see_job ("are you on this hiring team"), so an
+ * applicant reads nothing directly. app_public_job_questions applies the same OPEN+published gate as
+ * app_public_jobs, so an unadvertised req's questions are as invisible as the req, and archived
+ * questions are excluded — they exist to explain old answers, not to be asked again.
+ */
+export async function getJobQuestions(jobId) {
+  return prisma.$queryRaw`
+    SELECT id, prompt, type, required, options FROM app_public_job_questions(${jobId})`;
 }
 
 // ---------------------------------------------------------------------------
@@ -85,4 +98,52 @@ export async function getMyApplications(accountId) {
       timeline: buildApplicantTimeline(eventsByApplication.get(a.application_id) ?? []),
     };
   });
+}
+
+/**
+ * The signed-in applicant's PROFILE, for prefilling the apply form.
+ *
+ * Through doorways again: CandidateEmployment / CandidateEducation are governed by
+ * app_can_see_candidate(), which asks "are you STAFF who may see this candidate" — an applicant is
+ * not, and has no session variables at all, so a bare read returns nothing.
+ *
+ * Dates come back as timestamps and are converted to the YYYY-MM the form's month inputs use.
+ */
+export async function getMyProfile(accountId) {
+  if (!accountId) return null;
+
+  const [candidate, employment, education] = await Promise.all([
+    // ⚠️ Through a doorway, NOT a join. "Candidate" is under RLS and this connection has no session
+    // variables, so `JOIN "Candidate"` matches zero rows and the prefill comes back silently empty.
+    // (Exactly what the first version of this did.)
+    prisma.$queryRaw`
+      SELECT first_name, last_name, email, phone FROM app_applicant_person(${accountId})`,
+    prisma.$queryRaw`
+      SELECT employer, title, start_date, end_date, summary FROM app_applicant_employment(${accountId})`,
+    prisma.$queryRaw`
+      SELECT institution, qualification, start_date, end_date FROM app_applicant_education(${accountId})`,
+  ]);
+
+  const person = candidate[0];
+  if (!person) return null;
+
+  return {
+    firstName: person.first_name,
+    lastName: person.last_name,
+    email: person.email,
+    phone: person.phone ?? "",
+    employment: employment.map((e) => ({
+      employer: e.employer,
+      title: e.title,
+      startDate: dateToMonth(e.start_date),
+      endDate: dateToMonth(e.end_date),
+      summary: e.summary ?? "",
+    })),
+    education: education.map((e) => ({
+      institution: e.institution,
+      qualification: e.qualification,
+      startDate: dateToMonth(e.start_date),
+      endDate: dateToMonth(e.end_date),
+    })),
+  };
 }

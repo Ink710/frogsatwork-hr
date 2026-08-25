@@ -215,6 +215,16 @@ enum JobStatus {
   FILLED
 }
 
+// What SHAPE a per-job screening question takes (M6b). Deliberately small: these are screening
+// questions, not a form builder. Each value is one renderer on the public form and one validation
+// path — every addition costs both, plus an erasure consideration if it can hold free text.
+enum QuestionType {
+  SHORT_TEXT
+  LONG_TEXT
+  YES_NO
+  SINGLE_SELECT
+}
+
 // Where applicants come from, as a CLASSIFICATION (M2). Deliberately coarse and deliberately an
 // enum: this is the axis /reports rolls up on, and a roll-up is only meaningful over a vocabulary
 // that cannot drift. Named campaigns are the fine-grained layer above it — see Campaign.
@@ -1073,6 +1083,9 @@ model Job {
   // readable by the whole hiring team — interviewers included — and RLS cannot hide a column.
   salaryBand        SalaryBand?
   offers            Offer[]            @relation("OfferJob")
+  consents          ApplicationConsent[] @relation("ApplicationConsentJob")
+  questions         JobQuestion[]
+  answers           ApplicationAnswer[]  @relation("ApplicationAnswerJob")
 
   @@index([orgId, status])
 }
@@ -1120,6 +1133,142 @@ model JobMember {
 // rather than hard-deleted — the deliberate inverse of the employee "never delete" rule, because the
 // obligation follows the RELATIONSHIP: an applicant is not an employee, and only the employment
 // relationship carries a retention duty that outranks the right to be forgotten.
+// ── The applicant's PROFILE (M6) ───────────────────────────────────────────────────────────────
+//
+// One work history per person, maintained by them, reused every time they apply. The immutable
+// record of what any given application carried lives on Application.employmentSnapshot — see there
+// for why the two exist together.
+//
+// ⚠️ ENTIRELY PII, INCLUDING ABOUT THIRD PARTIES. An employer name plus dates identifies where
+// someone worked and when; a "reason for leaving" would say more still. app_erase_candidate DELETES
+// these rows rather than blanking them: with the person erased, nothing here is a fact about our
+// process worth keeping.
+model CandidateEmployment {
+  id        String    @id @default(uuid())
+  employer  String
+  title     String
+  // Month precision is enough for a CV and asks for less than a full date does.
+  startDate DateTime
+  // NULL means "still there" — the ordinary state of a current job, not missing data.
+  endDate   DateTime?
+  summary   String?
+  // Display order the applicant chose; newest-first is their job to decide, not ours to infer.
+  position  Int
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([candidateId, position])
+}
+
+model CandidateEducation {
+  id           String    @id @default(uuid())
+  institution  String
+  qualification String
+  startDate    DateTime?
+  endDate      DateTime?
+  position     Int
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([candidateId, position])
+}
+
+// Proof that consent was given, for one application, under a named policy version (M6).
+//
+// ⚠️ THIS TABLE HOLDS NO PERSONAL DATA, AND THAT IS THE WHOLE DESIGN. No name, no email, no IP —
+// a version string, a timestamp and a link. Which is why it is the one applicant-facing table that
+// app_erase_candidate does NOT touch: after an erasure it attaches to a shell and says "consent was
+// given for this application under policy v…", proving the processing we did was lawful without
+// describing anyone. Destroying it would delete the evidence and keep nothing.
+//
+// The version is a constant in @hris/recruiting, not a row here: it changes when the policy TEXT
+// changes, and that text lives in code.
+model ApplicationConsent {
+  id            String   @id @default(uuid())
+  policyVersion String
+  acceptedAt    DateTime @default(now())
+
+  applicationId String      @unique
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  // Denormalized so the RLS policy is the same one-liner as every other job-scoped table, without
+  // joining an RLS-protected table from inside a policy — same reasoning as EeoResponse.jobId.
+  jobId String
+  job   Job    @relation("ApplicationConsentJob", fields: [jobId], references: [id])
+
+  @@index([jobId])
+}
+
+// A screening question attached to ONE requisition (M6b) — "Are you authorised to work here?",
+// "What is your notice period?". Same shape as JobCompetency: an ordered child of Job, cascade-
+// deleted with it, defined by whoever manages the req.
+//
+// ⚠️ NO @@unique([jobId, position]), UNLIKE JobCompetency and InterviewRound. Those are never
+// archived, so their positions stay dense and the constraint is free. Questions ARE archived, which
+// leaves gaps and makes every insert-in-the-middle a shuffle needing a temporary value to dodge the
+// constraint. An index gives the ordering without the ceremony.
+model JobQuestion {
+  id       String       @id @default(uuid())
+  prompt   String
+  type     QuestionType
+  required Boolean      @default(false)
+  // Only meaningful for SINGLE_SELECT. A Postgres text[] rather than a child table: the options ARE
+  // the question, they are never queried independently, and a table would need its own ordering,
+  // its own policy and its own erasure consideration for no gain.
+  options  String[]     @default([])
+  position Int
+  // Retire a question without destroying what people already answered — the same reversible
+  // timestamp as Campaign.archivedAt. An archived question stops being ASKED; its answers stay.
+  archivedAt DateTime?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  jobId String
+  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  answers ApplicationAnswer[]
+
+  @@index([jobId, position])
+}
+
+// One applicant's answer to one question (M6b).
+//
+// ⚠️ `promptSnapshot` IS NOT REDUNDANT. It records the question AS ASKED. Reword a question next
+// quarter and every past answer would otherwise appear to respond to the new wording — the same
+// failure ApplicationEvent.roundName, Application.source and M6's history snapshots all exist to
+// prevent. The FK answers "which question is this", the snapshot answers "what were they asked".
+//
+// ⚠️ ENTIRELY THE PERSON'S OWN WORDS. app_erase_candidate DELETES these rows; an emptied row saying
+// "they answered something" preserves nothing worth keeping.
+model ApplicationAnswer {
+  id             String   @id @default(uuid())
+  promptSnapshot String
+  value          String
+  createdAt      DateTime @default(now())
+
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  // SetNull so hard-deleting a question (which the UI does not offer — it archives) can never
+  // destroy an answer.
+  questionId String?
+  question   JobQuestion? @relation(fields: [questionId], references: [id], onDelete: SetNull)
+
+  // Denormalized so the RLS policy stays the same one-liner as every other job-scoped table, without
+  // joining an RLS-protected table from inside a policy. Same trick as EeoResponse.jobId.
+  jobId String
+  job   Job    @relation("ApplicationAnswerJob", fields: [jobId], references: [id])
+
+  @@unique([applicationId, questionId])
+  @@index([jobId])
+}
+
 // An applicant's LOGIN to the candidate portal (app 4) — the suite's first non-employee identity.
 //
 // ⚠️ DELIBERATELY NOT A `User` WITH A NEW `Role`. Every staff gate in this system is an allow-list
@@ -1271,6 +1420,10 @@ model Candidate {
 
   applications    Application[]
   erasureRequests ErasureRequest[]
+  // The profile an applicant maintains (M6). DELETED by app_erase_candidate — unlike a stage or a
+  // rating there is nothing about the PROCESS here, only the person.
+  employment      CandidateEmployment[]
+  education       CandidateEducation[]
   // The portal login for this person, if they have ever signed in (M4). Optional: most candidates
   // never create one, and app_erase_candidate DELETES it outright.
   account         CandidateAccount?
@@ -1345,6 +1498,22 @@ model Application {
   campaignId String?
   campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
 
+  // WHAT THEY ACTUALLY SUBMITTED (M6) — work history and education, frozen at submit time.
+  //
+  // JSON rather than two more child tables, deliberately. This is display-only: a recruiter reads
+  // "what did they send us", and nothing ever joins or filters it. A relational copy would buy
+  // nothing and cost two more tables in the erasure registry, where every extra table is another
+  // chance to forget one. Querying PEOPLE by employer stays possible through CandidateEmployment.
+  //
+  // The pairing is the point: the candidate edits their PROFILE freely, and an application already
+  // under review does not change underneath the recruiter reading it — the same reasoning as
+  // Application.source and ApplicationEvent.roundName.
+  //
+  // ⚠️ Both are blanked by app_erase_candidate: employers, dates and institutions are entirely about
+  // the person (and name third parties).
+  employmentSnapshot Json?
+  educationSnapshot  Json?
+
   // The interview round the candidate is currently in (only while stage = INTERVIEW). SetNull so
   // editing/removing a round never destroys the application.
   currentRoundId String?
@@ -1369,6 +1538,10 @@ model Application {
   // unreadable through Prisma by design, so `include: { eeoResponse: true }` returns nothing for
   // anyone. The relation exists for the schema's integrity, not for querying.
   eeoResponse EeoResponse?
+  // Versioned consent (M6). Survives erasure by design — see the model.
+  consent     ApplicationConsent?
+  // Answers to the req's screening questions (M6b).
+  answers     ApplicationAnswer[]
 
   @@unique([jobId, candidateId])
   @@index([jobId, stage])

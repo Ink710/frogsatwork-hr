@@ -28,6 +28,12 @@ function eventLabel(ev, t) {
   return ev.roundName ? `${label} · ${ev.roundName}` : label;
 }
 
+// The snapshot stores ISO timestamps (the form collects month precision). Rendered as YYYY-MM
+// rather than a full date so it reads like the CV it came from.
+function monthLabel(value) {
+  return typeof value === "string" ? value.slice(0, 7) : "";
+}
+
 export default async function ApplicationDetailPage({ params }) {
   const { id, appId } = await params; // async in Next 16
   const t = await getT();
@@ -102,6 +108,65 @@ export default async function ApplicationDetailPage({ params }) {
             )}
           </FieldGrid>
         </Card>
+
+        {/* Their answers to this req's screening questions (M6b). The prompt shown is the SNAPSHOT
+            taken when they answered — reword the question next quarter and this still reads as the
+            question they were actually asked. */}
+        {app.answers?.length > 0 && (
+          <Card title={t("answers.title")}>
+            <dl className="flex flex-col gap-3">
+              {app.answers.map((a) => (
+                <div key={a.id} className="rounded-lg border border-border p-3">
+                  <dt className="text-xs text-muted-foreground">{a.promptSnapshot}</dt>
+                  <dd className="mt-1 text-sm whitespace-pre-line">{a.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </Card>
+        )}
+
+        {/* WHAT THEY SUBMITTED (M6) — read from the application's frozen snapshot, never from the
+            candidate's live profile. The applicant can edit their profile at any time; what a
+            recruiter reviews must stay exactly what arrived, or a decision gets made against
+            different facts than the ones on screen. */}
+        {(app.employmentSnapshot?.length > 0 || app.educationSnapshot?.length > 0) && (
+          <Card title={t("submitted.title")}>
+            <p className="mb-3 text-xs text-muted-foreground">{t("submitted.hint")}</p>
+
+            {app.employmentSnapshot?.length > 0 && (
+              <ul className="flex flex-col gap-3">
+                {app.employmentSnapshot.map((e, i) => (
+                  <li key={`emp-${i}`} className="rounded-lg border border-border p-3">
+                    <p className="font-medium">{e.title}</p>
+                    <p className="text-sm text-muted-foreground">{e.employer}</p>
+                    <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+                      {monthLabel(e.startDate)} – {e.endDate ? monthLabel(e.endDate) : t("submitted.present")}
+                    </p>
+                    {e.summary && <p className="mt-2 text-sm">{e.summary}</p>}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            {app.educationSnapshot?.length > 0 && (
+              <ul className="mt-3 flex flex-col gap-3">
+                {app.educationSnapshot.map((e, i) => (
+                  <li key={`edu-${i}`} className="rounded-lg border border-border p-3">
+                    <p className="font-medium">{e.qualification}</p>
+                    <p className="text-sm text-muted-foreground">{e.institution}</p>
+                    {(e.startDate || e.endDate) && (
+                      <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+                        {[e.startDate && monthLabel(e.startDate), e.endDate && monthLabel(e.endDate)]
+                          .filter(Boolean)
+                          .join(" – ")}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        )}
 
         {offerPanel && (
           <Card title={t("offer.title")}>

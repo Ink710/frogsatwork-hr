@@ -308,6 +308,23 @@ export async function getJobForManage(jobId) {
       orderBy: { position: "asc" },
       select: { id: true, name: true, position: true },
     });
+    // M6b: screening questions, ARCHIVED ONES INCLUDED. The editor must show them so a recruiter can
+    // see what used to be asked and restore it — the public form is what filters them out.
+    const jobQuestions = await tx.jobQuestion.findMany({
+      where: { jobId },
+      orderBy: { position: "asc" },
+      select: { id: true, prompt: true, type: true, required: true, options: true, archivedAt: true },
+    });
+    // Answer counts, so archiving reads as a decision with consequences rather than a tidy-up.
+    // Sequential, not concurrent: same pinned-client reason as everything else in this function.
+    const answerCounts = await tx.applicationAnswer.groupBy({
+      by: ["questionId"],
+      where: { jobId },
+      _count: { _all: true },
+    });
+    const answersByQuestion = new Map(answerCounts.map((a) => [a.questionId, a._count._all]));
+    const questions = jobQuestions.map((q) => ({ ...q, answerCount: answersByQuestion.get(q.id) ?? 0 }));
+
     // Deliberately NOT `include: { employee }` — that relation is Employee-RLS-filtered, so a
     // recruiter would see null for every teammate. Names come from the directory below.
     const jobMembers = await tx.jobMember.findMany({
@@ -333,7 +350,7 @@ export async function getJobForManage(jobId) {
     const band = bandFor(await tx.salaryBand.findFirst({ where: { jobId } }));
 
     const canManage = await viewerCanManageJob(tx, jobId);
-    return { job: { ...job, interviewRounds, competencies, members, band }, canManage };
+    return { job: { ...job, interviewRounds, competencies, questions, members, band }, canManage };
   });
 }
 
@@ -834,8 +851,17 @@ export async function getApplicationDetail(jobId, appId) {
         })
       : null;
 
+    // M6b: the applicant's answers to this req's screening questions. Ordered by the question's
+    // position so they read in the order they were asked; the prompt comes from the SNAPSHOT, not
+    // the live question, so a reword cannot change what a past applicant appears to have answered.
+    const answers = await tx.applicationAnswer.findMany({
+      where: { applicationId: appId },
+      orderBy: [{ question: { position: "asc" } }, { createdAt: "asc" }],
+      select: { id: true, promptSnapshot: true, value: true },
+    });
+
     const canManage = await viewerCanManageJob(tx, jobId);
-    return { app: { ...app, job, events, currentRound, hiredEmployee }, canManage };
+    return { app: { ...app, job, events, currentRound, hiredEmployee, answers }, canManage };
   });
 }
 

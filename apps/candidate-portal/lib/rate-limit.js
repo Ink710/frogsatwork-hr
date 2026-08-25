@@ -39,3 +39,32 @@ export async function allowLoginLinkRequest(identifier) {
   const { success } = await rl.limit(identifier);
   return success;
 }
+
+// The PUBLIC apply endpoint gets its own budget — more generous than a login link, because a real
+// applicant may legitimately retry a failed submission or apply to several roles in one sitting,
+// but still far below what a spam bot wants. Same fixed window, same single counter, same env gate.
+const APPLY_ATTEMPTS = 8;
+const APPLY_WINDOW = "10 m";
+
+let applyLimiter = null;
+function getApplyLimiter() {
+  if (applyLimiter) return applyLimiter;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  applyLimiter = new Ratelimit({
+    redis: new Redis({ url, token }),
+    limiter: Ratelimit.fixedWindow(APPLY_ATTEMPTS, APPLY_WINDOW),
+    analytics: false,
+    ephemeralCache: new Map(),
+    prefix: "portal:apply",
+  });
+  return applyLimiter;
+}
+
+export async function allowApplyAttempt(identifier) {
+  const rl = getApplyLimiter();
+  if (!rl) return true;
+  const { success } = await rl.limit(identifier);
+  return success;
+}

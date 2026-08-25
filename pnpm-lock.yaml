@@ -310,6 +310,9 @@ importers:
       '@hris/recruiting':
         specifier: workspace:*
         version: link:../../packages/recruiting
+      '@hris/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
       '@hris/ui':
         specifier: workspace:*
         version: link:../../packages/ui

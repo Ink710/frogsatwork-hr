@@ -8,6 +8,7 @@ import { JobStatusBadge } from "@/components/recruiting-ui";
 import { JobForm } from "@/components/JobForm";
 import { RoundEditor } from "@/components/RoundEditor";
 import { CompetencyEditor } from "@/components/CompetencyEditor";
+import { QuestionEditor } from "@/components/QuestionEditor";
 import { TeamEditor } from "@/components/TeamEditor";
 import { JobStatusControl } from "@/components/JobStatusControl";
 import { PublishControl } from "@/components/PublishControl";
@@ -63,6 +64,10 @@ export default async function ManageJobPage({ params }) {
         <Card title={t("comps.title")}>
           <p className="mb-3 text-xs text-muted-foreground">{t("comps.subtitle")}</p>
           <CompetencyEditor jobId={id} competencies={job.competencies} />
+        </Card>
+
+        <Card title={t("questions.title")}>
+          <QuestionEditor jobId={id} questions={job.questions} />
         </Card>
 
         <Card title={t("team.title")}>
