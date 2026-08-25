@@ -41,8 +41,23 @@ const en = {
 
   // The private portal
   "portal.title": "Your applications",
-  "portal.placeholder": "You're signed in. Your application timeline lands here next.",
+  "portal.subtitle": "Where each of your applications stands.",
+  "portal.empty": "We don't have any applications on file for you right now.",
+  "portal.appliedOn": "Applied {date}",
   "portal.signOut": "Sign out",
+  "portal.closingMessage":
+    "Thank you for your application. After reviewing your qualifications, we have decided not to move forward with your application for this position. We appreciate your interest and encourage you to apply for future opportunities.",
+
+  // The applicant-facing names for pipeline stages. ⚠️ These are PUBLIC copy: adding a stage to
+  // ApplicationStage breaks packages/recruiting/src/portal.test.js until a label is decided here.
+  "enum.applicantStage.APPLIED": "Applied",
+  "enum.applicantStage.SCREEN": "Screening",
+  "enum.applicantStage.INTERVIEW": "Interview",
+  "enum.applicantStage.OFFER": "Offer",
+  "enum.applicantStage.HIRED": "Hired",
+  "enum.applicantStage.REJECTED": "Not selected",
+  "enum.applicantStage.WITHDRAWN": "Withdrawn",
+  "enum.applicantStage.UNKNOWN": "In progress",
 
   // Errors
   "error.title": "Something went wrong",

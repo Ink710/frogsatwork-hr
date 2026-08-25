@@ -4,6 +4,7 @@
 export * from "./job";
 export * from "./candidate";
 export * from "./campaign";
+export * from "./portal";
 export * from "./scorecard";
 export * from "./reporting";
 export * from "./eeo";

@@ -35,8 +35,22 @@ const es = {
 
   // El portal privado
   "portal.title": "Tus postulaciones",
-  "portal.placeholder": "Sesión iniciada. Aquí aparecerá el estado de tus postulaciones.",
+  "portal.subtitle": "En qué punto está cada una de tus postulaciones.",
+  "portal.empty": "Ahora mismo no tenemos ninguna postulación tuya registrada.",
+  "portal.appliedOn": "Postulaste el {date}",
   "portal.signOut": "Cerrar sesión",
+  "portal.closingMessage":
+    "Gracias por tu postulación. Tras revisar tu perfil, hemos decidido no continuar con tu candidatura para esta vacante. Agradecemos tu interés y te animamos a postular a futuras oportunidades.",
+
+  // Nombres de las etapas visibles para la persona candidata. ⚠️ Son copy PÚBLICO.
+  "enum.applicantStage.APPLIED": "Postulaste",
+  "enum.applicantStage.SCREEN": "Preselección",
+  "enum.applicantStage.INTERVIEW": "Entrevista",
+  "enum.applicantStage.OFFER": "Oferta",
+  "enum.applicantStage.HIRED": "Contratado/a",
+  "enum.applicantStage.REJECTED": "No seleccionado/a",
+  "enum.applicantStage.WITHDRAWN": "Retirada",
+  "enum.applicantStage.UNKNOWN": "En curso",
 
   // Errores
   "error.title": "Algo salió mal",

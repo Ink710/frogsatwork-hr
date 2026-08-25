@@ -307,6 +307,9 @@ importers:
       '@hris/notifications':
         specifier: workspace:*
         version: link:../../packages/notifications
+      '@hris/recruiting':
+        specifier: workspace:*
+        version: link:../../packages/recruiting
       '@hris/ui':
         specifier: workspace:*
         version: link:../../packages/ui

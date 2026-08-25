@@ -19,7 +19,8 @@
     "@hris/notifications": "workspace:*",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.38.2",
-    "next-auth": "^5.0.0-beta.25"
+    "next-auth": "^5.0.0-beta.25",
+    "@hris/recruiting": "workspace:*"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
