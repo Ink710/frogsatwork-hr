@@ -491,6 +491,7 @@ model User {
   jobMembersAdded        JobMember[]            @relation("JobMemberAddedBy")
   applicationEvents      ApplicationEvent[]     @relation("ApplicationEventActor")
   notificationsReceived  NotificationDelivery[] @relation("NotificationRecipient")
+  interviewSlotsProposed InterviewSlot[]        @relation("InterviewSlotProposedBy")
   // Compliance (ATS M12): EEO exports this user produced.
   eeoExports             EeoExportLog[]         @relation("EeoExportActor")
   // Compensation (ATS M14): who wrote an offer.
@@ -563,6 +564,7 @@ model Employee {
   meetingAssignments      MeetingAssignment[]
   jobMemberships          JobMember[]
   scorecardsAuthored      Scorecard[]            @relation("ScorecardAuthor")
+  interviewSlots          InterviewSlot[]        @relation("InterviewSlotInterviewer")
   // The ATS application this person was hired from, if they came through recruiting (M8).
   hiredFromApplication    Application?           @relation("ApplicationHire")
   // Compliance (ATS M10): the erasures this person carried out, and the requests they resolved.
@@ -1100,6 +1102,7 @@ model Job {
   applications      Application[]
   applicationEvents ApplicationEvent[] @relation("ApplicationEventJob")
   notificationDeliveries NotificationDelivery[] @relation("NotificationDeliveryJob")
+  interviewSlots         InterviewSlot[]        @relation("InterviewSlotJob")
   competencies      JobCompetency[]
   scorecards        Scorecard[]        @relation("ScorecardJob")
   eeoResponses      EeoResponse[]      @relation("EeoResponseJob")
@@ -1127,9 +1130,96 @@ model InterviewRound {
 
   applications Application[]
   scorecards   Scorecard[]
+  slots        InterviewSlot[]
 
   @@unique([jobId, position])
   @@index([jobId])
+}
+
+// A bookable interview time (M9) — the thing `InterviewRound` never had. A round is a NAME and an
+// order; this is when it actually happens, with whom.
+//
+// ⚠️ FOLLOWS `Shift`, NOT `Meeting`. Shift stores real `startAt`/`endAt` instants plus a published
+// flag and a nullable assignee — which is almost exactly a slot. `Meeting` stores `"HH:MM"` with a
+// `dayOfWeek` because it is a weekly RECURRENCE: it cannot express "Tuesday 3 March" at all, and a
+// wall-clock string means whatever the reader's frame says it means. Fine for one org's staff;
+// ambiguous to a candidate abroad, who would arrive at the right number and the wrong moment.
+//
+// ⚠️ A SHARED POOL PER (job, round), NOT PER APPLICATION. Several candidates can be looking at the
+// same times, which is why claiming is an atomic conditional UPDATE in a doorway
+// (app_claim_interview_slot) and never a read-then-write.
+//
+// ⚠️ NO FREE-TEXT NOTE FIELD, DELIBERATELY. A note is exactly where someone would write something
+// about the candidate, and its absence is what keeps this table free of personal data — so
+// app_erase_candidate does not touch it, and a claimed slot survives an erasure the way stages and
+// ratings do. If a note is ever added, it arrives WITH its erasure handling.
+model InterviewSlot {
+  id String @id @default(uuid())
+
+  // An absolute instant. `timeZone` is the IANA zone it was SET in — kept so the canonical rendering
+  // can name it ("15:00 America/Mexico_City"), which is the only unambiguous thing to show someone
+  // whose own zone we do not know. It is a label for display, never the source of truth for when.
+  startAt  DateTime
+  endAt    DateTime
+  timeZone String
+
+  // Video link or room. Optional: some interviews are a phone call arranged separately.
+  meetingUrl String?
+
+  // ── The lifecycle, as nullable timestamps rather than a status enum ────────────────────────────
+  // Same idiom as Candidate.archivedAt / anonymisedAt / leadMarkedAt: every step reverses by setting
+  // NULL, and WHEN each happened survives — which one enum column would throw away. The derived
+  // status is a pure function in @hris/recruiting, where it is testable without a database.
+  //
+  //   proposed (row exists) → confirmedAt → publishedAt → claimedAt
+  //
+  // Nothing is visible to a candidate before `publishedAt`, so an unconfirmed proposal cannot leak a
+  // date to the person it concerns.
+  confirmedAt DateTime?
+  publishedAt DateTime?
+  claimedAt   DateTime?
+  // Cancelling RELEASES the claim (claimedAt + claimedByApplicationId back to NULL), so the
+  // candidate can be rebooked for that round — see the unique constraint below.
+  cancelledAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Denormalized owner column, so the RLS policy is the same one-liner as every other scoped table.
+  jobId String
+  job   Job    @relation("InterviewSlotJob", fields: [jobId], references: [id], onDelete: Cascade)
+
+  // Required: the pool is per (job, round). A slot without a round has no meaning, and Cascade
+  // because a deleted round's times are equally meaningless.
+  roundId String
+  round   InterviewRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+
+  // The person who has to CONFIRM it, and then sit in it. They are typically a JobMember with role
+  // INTERVIEWER — who can see the req but NOT manage it, which is why confirming needs its own gate
+  // (app_can_confirm_interview_slot) rather than the ordinary write policy.
+  interviewerEmployeeId String
+  interviewer           Employee @relation("InterviewSlotInterviewer", fields: [interviewerEmployeeId], references: [id])
+
+  proposedById String
+  proposedBy   User   @relation("InterviewSlotProposedBy", fields: [proposedById], references: [id])
+
+  claimedByApplicationId String?
+  claimedByApplication   Application? @relation(fields: [claimedByApplicationId], references: [id], onDelete: SetNull)
+
+  deliveries NotificationDelivery[]
+
+  // ⚠️ THE ONCE-PER-ROUND RULE, ENFORCED IN THE DATABASE. An application may hold at most one slot
+  // per round — it may hold one for round 1 AND one for round 2, which is why the constraint is the
+  // PAIR and not the application alone (that would block round 2 forever).
+  //
+  // Unclaimed slots have a NULL applicationId and Postgres treats NULLs as DISTINCT here, so any
+  // number of them coexist — which is exactly right, and the one place in this schema where the
+  // DEFAULT null behaviour is the one we want (contrast NotificationDelivery, which needs
+  // NULLS NOT DISTINCT). M11 relies on this: it is what makes "you may pick exactly once" a
+  // constraint rather than a promise in application code.
+  @@unique([claimedByApplicationId, roundId])
+  @@index([jobId, startAt])
+  @@index([interviewerEmployeeId])
 }
 
 // A member of a job's hiring team + their role on it — the join that powers the ATS access model.
@@ -1552,6 +1642,9 @@ model Application {
   employmentSnapshot Json?
   educationSnapshot  Json?
 
+  // M9: the interview slot(s) this application holds — at most one per round.
+  interviewSlots InterviewSlot[]
+
   // THE CV THEY SENT FOR THIS ROLE (M7) — the third member of the snapshot family above, and the
   // one that escaped M6.
   //
@@ -1742,10 +1835,22 @@ model NotificationDelivery {
   attemptedAt DateTime?
   createdAt   DateTime            @default(now())
 
-  // The idempotency key. Each stage move writes exactly one event, so its id identifies the news
-  // precisely — no window, no fuzzy matching, no "did we already send something like this".
-  applicationEventId String
-  applicationEvent   ApplicationEvent @relation(fields: [applicationEventId], references: [id], onDelete: Cascade)
+  // ── THE SUBJECT: exactly ONE of these two is set ──────────────────────────────────────────────
+  //
+  // M8 keyed every delivery on an ApplicationEvent — each stage move writes exactly one, so its id
+  // identifies the news precisely, with no window and no fuzzy "did we already send something like
+  // this". M9 needs to notify an INTERVIEWER that a slot awaits their confirmation, and that is not
+  // an event about an application at all.
+  //
+  // ⚠️ TWO REAL FOREIGN KEYS, NOT A `subjectType` + `subjectId` PAIR. A polymorphic id would have no
+  // referential integrity, and every RLS'd table here relies on a denormalized owner column for a
+  // one-line policy — which a polymorphic subject cannot express either. A CHECK constraint in the
+  // migration enforces that exactly one is present.
+  applicationEventId String?
+  applicationEvent   ApplicationEvent? @relation(fields: [applicationEventId], references: [id], onDelete: Cascade)
+
+  interviewSlotId String?
+  interviewSlot   InterviewSlot? @relation(fields: [interviewSlotId], references: [id], onDelete: Cascade)
 
   // Denormalized owner column, so the RLS policy is the same one-liner as every other scoped table.
   jobId String
@@ -1774,8 +1879,14 @@ model NotificationDelivery {
   // every row M8 writes has `recipientUserId IS NULL`. Without it two claims for the same event do
   // not collide, `ON CONFLICT` never fires, and the same person is emailed twice — with no error
   // anywhere. There is a psql check that claims twice, and a control proving the check can fail.
-  @@unique([applicationEventId, channel, recipientUserId], map: "NotificationDelivery_event_channel_recipient_key")
+  // ⚠️ `interviewSlotId` HAD TO JOIN THIS INDEX, and leaving it out would have been silent.
+  // The real index is NULLS NOT DISTINCT, so a NULL compares EQUAL. Every M9 slot notification has
+  // `applicationEventId IS NULL`, which means without the slot id in the key, two notifications
+  // about DIFFERENT slots to the SAME interviewer would collide as (NULL, EMAIL, user) — and the
+  // second would be silently refused as an already-sent duplicate.
+  @@unique([applicationEventId, interviewSlotId, channel, recipientUserId], map: "NotificationDelivery_subject_channel_recipient_key")
   @@index([applicationEventId])
+  @@index([interviewSlotId])
   @@index([jobId])
 }
 
