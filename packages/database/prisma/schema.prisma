@@ -397,6 +397,8 @@ model Organization {
   applications    Application[]
   // Attribution registry (ATS M2).
   campaigns       Campaign[]
+  // Applicant logins for the candidate portal (M4).
+  candidateAccounts CandidateAccount[]
   // Compliance (ATS M10).
   eeoResponses    EeoResponse[]
   erasureRequests ErasureRequest[]
@@ -1118,6 +1120,51 @@ model JobMember {
 // rather than hard-deleted — the deliberate inverse of the employee "never delete" rule, because the
 // obligation follows the RELATIONSHIP: an applicant is not an employee, and only the employment
 // relationship carries a retention duty that outranks the right to be forgotten.
+// An applicant's LOGIN to the candidate portal (app 4) — the suite's first non-employee identity.
+//
+// ⚠️ DELIBERATELY NOT A `User` WITH A NEW `Role`. Every staff gate in this system is an allow-list
+// (`role IN (…)` in the RLS helpers, `ALL_RECORDS_ROLES`/`isRecruiter` in roles.ts), so a new enum
+// value would fail closed — but "fails closed today" is a property of code that can change, whereas
+// a separate table makes "an applicant cannot hold a staff session" true by construction. It also
+// sidesteps a real collision: `User.email` is globally unique while `Candidate.email` is unique
+// PER ORG, so an employee applying to an internal req would clash.
+//
+// ⚠️ THERE IS NO EMAIL COLUMN HERE, AND NO PASSWORD. Both absences are the design:
+//   • The login address is `candidate.email` — one source of truth, nothing to drift. It also means
+//     app_erase_candidate's existing email scramble instantly makes an erased person unreachable by
+//     their old address, before this table is even considered.
+//   • Login is passwordless (a one-time emailed link), so there is no hash to leak, no reset flow to
+//     abuse, and no password for someone to reuse from another breach.
+//
+// What's left holds NO personal data at all — an id, a token hash, timestamps. That is precisely
+// what makes it safe for this table to sit OUTSIDE RLS, exactly like `User`: the auth flow has to
+// read it BEFORE any session exists, so a policy keyed on session variables could never match.
+model CandidateAccount {
+  id String @id @default(uuid())
+
+  // SHA-256 of a 256-bit random token — never the token itself, so a database leak yields no usable
+  // link. @unique both to enforce one live link per account and to make redemption an index hit.
+  // Cleared on redemption: that is what makes a link single-use.
+  loginTokenHash    String?   @unique
+  loginTokenExpires DateTime?
+  lastLoginAt       DateTime?
+
+  // Set when this person is HIRED. Their record belongs to the employee system from then on, and
+  // the internet-facing portal stops being a door into their interview and offer history. Written
+  // by app_link_hire, in the same statement that records the hire — see that function.
+  closedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orgId String
+  org   Organization @relation(fields: [orgId], references: [id])
+
+  // One account per candidate, and the account cannot outlive the person's record.
+  candidateId String    @unique
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+}
+
 // A named recruitment campaign — the fine-grained half of attribution (M2).
 //
 // WHY A TABLE AND AN ENUM, not one or the other. The enum (SourceChannel) is what /reports rolls up
@@ -1224,6 +1271,9 @@ model Candidate {
 
   applications    Application[]
   erasureRequests ErasureRequest[]
+  // The portal login for this person, if they have ever signed in (M4). Optional: most candidates
+  // never create one, and app_erase_candidate DELETES it outright.
+  account         CandidateAccount?
 
   @@unique([orgId, email])
   // The candidate list hides anonymised shells and archived people by default, so these indexes

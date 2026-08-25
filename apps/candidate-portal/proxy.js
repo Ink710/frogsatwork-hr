@@ -1,5 +1,11 @@
 // Next 16 renamed the "middleware" file convention to "proxy". Runs on every matched request.
-import { auth } from "@hris/auth/middleware";
+//
+// ⚠️ THIS IMPORTS THE APPLICANT REALM, NOT @hris/auth. M3 wired this to `@hris/auth/middleware` —
+// the STAFF instance — which was wrong in a way worth recording: it would have let a staff session
+// satisfy /portal while REFUSING the applicants the area exists for. It was inert only because
+// nothing lived under /portal yet. The two realms use different cookie names and different secrets,
+// so importing the wrong one fails in both directions rather than failing open.
+import { auth } from "@/lib/auth.edge";
 
 export default auth;
 

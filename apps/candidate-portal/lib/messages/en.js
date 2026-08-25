@@ -23,6 +23,27 @@ const en = {
   "job.apply": "Apply for this role",
   "job.applyHint": "Applications are handled on our careers site.",
 
+  // Sign in (M4) — passwordless, one-time emailed link
+  "signin.title": "Sign in",
+  "signin.subtitle": "Enter the email you applied with and we'll send you a link. No password needed.",
+  "signin.email": "Email",
+  "signin.submit": "Email me a link",
+  "signin.sending": "Sending…",
+  "signin.invalidEmail": "Enter a valid email address.",
+  "signin.sentTitle": "Check your email",
+  "signin.sentBody":
+    "If we have an application for that address, a sign-in link is on its way.",
+  "signin.sentHint": "The link works once and expires in 30 minutes.",
+  "signin.invalidTitle": "That link didn't work",
+  "signin.invalidBody":
+    "Sign-in links can only be used once and expire after 30 minutes. Request a fresh one and it'll work.",
+  "signin.requestAnother": "Request a new link →",
+
+  // The private portal
+  "portal.title": "Your applications",
+  "portal.placeholder": "You're signed in. Your application timeline lands here next.",
+  "portal.signOut": "Sign out",
+
   // Errors
   "error.title": "Something went wrong",
   "error.generic": "An unexpected error occurred. Please try again.",

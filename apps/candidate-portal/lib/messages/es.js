@@ -17,6 +17,27 @@ const es = {
   "job.apply": "Postular a esta vacante",
   "job.applyHint": "Las postulaciones se gestionan en nuestro sitio de empleo.",
 
+  // Inicio de sesión (M4) — sin contraseña, enlace de un solo uso
+  "signin.title": "Iniciar sesión",
+  "signin.subtitle": "Escribe el correo con el que postulaste y te enviamos un enlace. Sin contraseña.",
+  "signin.email": "Correo",
+  "signin.submit": "Enviarme un enlace",
+  "signin.sending": "Enviando…",
+  "signin.invalidEmail": "Escribe un correo válido.",
+  "signin.sentTitle": "Revisa tu correo",
+  "signin.sentBody":
+    "Si tenemos una postulación con ese correo, el enlace de acceso va en camino.",
+  "signin.sentHint": "El enlace sirve una sola vez y caduca en 30 minutos.",
+  "signin.invalidTitle": "Ese enlace no funcionó",
+  "signin.invalidBody":
+    "Los enlaces sirven una sola vez y caducan a los 30 minutos. Pide uno nuevo y funcionará.",
+  "signin.requestAnother": "Pedir un enlace nuevo →",
+
+  // El portal privado
+  "portal.title": "Tus postulaciones",
+  "portal.placeholder": "Sesión iniciada. Aquí aparecerá el estado de tus postulaciones.",
+  "portal.signOut": "Cerrar sesión",
+
   // Errores
   "error.title": "Algo salió mal",
   "error.generic": "Ocurrió un error inesperado. Inténtalo de nuevo.",

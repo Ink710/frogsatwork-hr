@@ -301,18 +301,27 @@ importers:
 
   apps/candidate-portal:
     dependencies:
-      '@hris/auth':
-        specifier: workspace:*
-        version: link:../../packages/auth
       '@hris/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@hris/notifications':
+        specifier: workspace:*
+        version: link:../../packages/notifications
       '@hris/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@upstash/ratelimit':
+        specifier: ^2.0.8
+        version: 2.0.8(@upstash/redis@1.38.2)
+      '@upstash/redis':
+        specifier: ^1.38.2
+        version: 1.38.2
       next:
         specifier: 16.2.9
         version: 16.2.9(@babel/core@7.29.7)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      next-auth:
+        specifier: ^5.0.0-beta.25
+        version: 5.0.0-beta.31(next@16.2.9(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)
       react:
         specifier: 19.2.4
         version: 19.2.4
@@ -522,7 +531,11 @@ importers:
         specifier: ^7.8.0
         version: 7.8.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@7.0.2)
 
-  packages/notifications: {}
+  packages/notifications:
+    dependencies:
+      nodemailer:
+        specifier: ^6.9.16
+        version: 6.10.1
 
   packages/recruiting:
     dependencies:
