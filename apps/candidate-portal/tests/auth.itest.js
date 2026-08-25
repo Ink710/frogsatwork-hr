@@ -19,7 +19,12 @@ vi.mock("@/lib/i18n.server", async () => {
 // Never hit SMTP in tests, but DO record what would have been sent — several assertions below turn
 // on whether an email was attempted at all.
 const sent = [];
-vi.mock("@hris/notifications", () => ({
+// ⚠️ Spreads the real module rather than replacing it. M8 added `deliverCandidateStageEmail` and
+// `candidateStageEmail` to this package; a factory returning only `sendMail` makes those undefined
+// for anything this file imports transitively — a break that would surface as a confusing
+// "not a function" far from here.
+vi.mock("../../../packages/notifications/src/transport.js", () => ({
+  DEFAULT_FROM: "FrogsAtWorkHR <no-reply@test>",
   sendMail: vi.fn(async (msg) => {
     sent.push(msg);
   }),

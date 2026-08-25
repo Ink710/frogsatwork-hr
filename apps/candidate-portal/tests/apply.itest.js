@@ -1,5 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { resetDb } from "../../../test/resetDb.js";
+// M8: stub ONLY the network hop — the claim/mark/idempotency logic runs for real.
+// Target the transport module, not the package: deliver.js imports it relatively, so mocking
+// "@hris/notifications" would leave the real nodemailer in place and the mailbox silently empty.
+import { resetMailbox, mailbox } from "../../../test/mailbox.js";
+vi.mock("../../../packages/notifications/src/transport.js", async () => {
+  const { fakeSendMail } = await import("../../../test/mailbox.js");
+  return { sendMail: fakeSendMail, DEFAULT_FROM: "FrogsAtWorkHR <no-reply@test>" };
+});
+
 
 vi.mock("next/navigation", () => ({
   redirect: vi.fn((url) => {
@@ -64,6 +73,7 @@ const candidateByEmail = (email) => asAna((tx) => tx.candidate.findFirst({ where
 
 beforeEach(async () => {
   await resetDb();
+  resetMailbox();
 });
 
 describe("a full submission lands atomically", () => {
@@ -227,5 +237,57 @@ describe("profile prefill", () => {
 
     await prisma.$executeRaw`SELECT app_close_candidate_account(${issued.candidate_id})`;
     expect(await getMyProfile(account.id)).toBeNull();
+  });
+});
+
+// ── M8: the receipt ──────────────────────────────────────────────────────────────────────────
+
+describe("applying acknowledges the application", () => {
+  it("sends a receipt to the applicant and records the delivery", async () => {
+    await apply();
+
+    expect(mailbox).toHaveLength(1);
+    expect(mailbox[0].to).toBe("ada@example.com");
+    expect(mailbox[0].text).toContain("Senior Backend Engineer");
+
+    // Keyed on the APPLIED event the doorway returned — which is the only reason it returns one.
+    const rows = await asAna((tx) =>
+      tx.notificationDelivery.findMany({ select: { status: true, applicationEventId: true } }),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe("SENT");
+
+    // ⚠️ Scoped to ADA's application: the seed already contains APPLIED events for other
+    // candidates, so an unscoped query picks a seeded row and compares the wrong ids.
+    const [event] = await asAna((tx) =>
+      tx.applicationEvent.findMany({
+        where: { toStage: "APPLIED", application: { candidate: { email: "ada@example.com" } } },
+        select: { id: true },
+      }),
+    );
+    expect(rows[0].applicationEventId).toBe(event.id);
+  });
+
+  it("captures the applicant's own locale at apply time", async () => {
+    // The i18n mock pins the request locale to "en", and on a PUBLIC page that cookie is the
+    // applicant's own — the one moment in the whole flow when it is.
+    await apply();
+    const c = await candidateByEmail("ada@example.com");
+    expect(c.locale).toBe("en");
+  });
+
+  it("a refused duplicate acknowledges nothing", async () => {
+    await apply();
+    resetMailbox();
+
+    const res = await apply();
+    expect(res.error).toBeTruthy();
+    expect(mailbox).toHaveLength(0);
+  });
+
+  it("a submission that fails validation acknowledges nothing", async () => {
+    const res = await apply("job-be", { email: "not-an-email" });
+    expect(res.error).toBeTruthy();
+    expect(mailbox).toHaveLength(0);
   });
 });

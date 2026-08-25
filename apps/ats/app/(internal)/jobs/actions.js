@@ -4,6 +4,8 @@ import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getViewer, withViewer } from "@hris/auth";
+import { deliverCandidateStageEmail } from "@hris/notifications";
+import { prisma } from "@hris/database";
 import {
   stageTransitionSchema,
   canTransition,
@@ -15,9 +17,11 @@ import {
   jobMemberSchema,
   competencySchema,
   JOB_STATUSES,
+  publicStatusFor,
 } from "@hris/recruiting";
 import { viewerCanManageJob, canCreateJob, isInOrgDirectory } from "@/lib/queries";
 import { getT } from "@/lib/i18n.server";
+import { portalUrl } from "@/lib/portal-url";
 
 function errorMessage(e) {
   // Never surface internal DB errors (Prisma throws PrismaClient* errors) — only intentional messages.
@@ -469,6 +473,9 @@ export async function moveApplication(jobId, appId, _prevState, formData) {
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? t("err.invalidInput") };
   const { toStage, note, rejectionReason, rejectionCategory } = parsed.data;
 
+  // Filled inside the transaction, used after it commits — see the send below.
+  let pending;
+
   try {
     await withViewer(viewer, async (tx) => {
       const app = await requireManageableApplication(tx, viewer, jobId, appId, t);
@@ -512,7 +519,7 @@ export async function moveApplication(jobId, appId, _prevState, formData) {
           rejectionCategory: toStage === "REJECTED" ? (rejectionCategory ?? null) : null,
         },
       });
-      await tx.applicationEvent.create({
+      const event = await tx.applicationEvent.create({
         data: {
           applicationId: appId,
           jobId,
@@ -523,9 +530,54 @@ export async function moveApplication(jobId, appId, _prevState, formData) {
           actorId: viewer.userId,
         },
       });
+
+      // M8: everything the notification needs, gathered while we are already inside the
+      // transaction. One extra read here beats a second transaction afterwards, and it is the only
+      // place the candidate's row is cheaply to hand.
+      //
+      // ⚠️ `locale` IS THE CANDIDATE'S. Do NOT reach for getT() when composing this message: on this
+      // code path it resolves the RECRUITER's cookie, so the applicant would be written to in
+      // whatever language the person clicking the button happens to browse in.
+      const candidate = await tx.candidate.findUnique({
+        where: { id: app.candidateId },
+        select: { firstName: true, email: true, locale: true, anonymisedAt: true },
+      });
+      const job = await tx.job.findUnique({ where: { id: jobId }, select: { title: true } });
+
+      pending = {
+        eventId: event.id,
+        stageKey: publicStatusFor(toStage).key,
+        notify: publicStatusFor(toStage).notify,
+        // An erased candidate's address is scrambled to @anonymised.invalid. Never write to it.
+        to: candidate?.anonymisedAt ? null : candidate?.email,
+        firstName: candidate?.firstName,
+        locale: candidate?.locale,
+        jobTitle: job?.title,
+      };
     });
   } catch (e) {
     return { error: errorMessage(e) ?? t("err.moveFailed") };
+  }
+
+  // ⚠️ SENT AFTER THE TRANSACTION COMMITS, AND DELIBERATELY SO. Inside `withViewer` this would hold
+  // an interactive transaction — and a pinned pg client — open across an SMTP round trip, and a mail
+  // failure would ROLL BACK the stage change. That is exactly backwards: the stage change is the
+  // fact, the email is the courtesy. Same shape as createEmployee's post-commit invite in
+  // employee-records.
+  //
+  // Bare `prisma`, not `withViewer`: the delivery doorways are SECURITY DEFINER and scoped by the
+  // event, so they need no session — and re-entering a transaction here would defeat the point.
+  if (pending?.notify) {
+    await deliverCandidateStageEmail({
+      db: prisma,
+      eventId: pending.eventId,
+      stageKey: pending.stageKey,
+      to: pending.to,
+      firstName: pending.firstName,
+      jobTitle: pending.jobTitle,
+      locale: pending.locale,
+      portalUrl: portalUrl(),
+    });
   }
 
   revalidatePath(`/jobs/${jobId}`);

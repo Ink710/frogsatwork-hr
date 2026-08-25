@@ -1,5 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { resetDb } from "../../../test/resetDb.js";
+// M8: stub ONLY the network hop — the claim/mark/idempotency logic runs for real.
+// Target the transport module, not the package: deliver.js imports it relatively, so mocking
+// "@hris/notifications" would leave the real nodemailer in place and the mailbox silently empty.
+import { resetMailbox } from "../../../test/mailbox.js";
+vi.mock("../../../packages/notifications/src/transport.js", async () => {
+  const { fakeSendMail } = await import("../../../test/mailbox.js");
+  return { sendMail: fakeSendMail, DEFAULT_FROM: "FrogsAtWorkHR <no-reply@test>" };
+});
+
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/i18n.server", async () => {
@@ -48,6 +57,7 @@ const download = (variant) =>
 
 beforeEach(async () => {
   await resetDb();
+  resetMailbox();
   as(V.ana);
 });
 

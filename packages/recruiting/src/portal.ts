@@ -20,6 +20,15 @@ export interface ApplicantStageView {
   terminal: boolean;
   /** Only a REJECTED outcome carries the standard closing message. */
   closingMessage: boolean;
+  /**
+   * Whether reaching this stage sends the applicant a message (M8).
+   *
+   * ⚠️ IT LIVES HERE, ON THE SAME RECORD AS THE DISCLOSURE DECISION, AND THAT IS THE POINT. The
+   * exhaustiveness guard below already fails the build when a stage is added — putting `notify`
+   * anywhere else would mean a new stage could ship with a decided LABEL and an undecided
+   * NOTIFICATION, silently defaulting to either emailing strangers or telling them nothing.
+   */
+  notify: boolean;
 }
 
 // ⚠️ EVERY ApplicationStage MUST HAVE AN ENTRY. `Record<ApplicationStage, …>` makes TypeScript
@@ -28,16 +37,26 @@ export interface ApplicantStageView {
 // THE BUILD UNTIL SOMEONE DECIDES WHAT APPLICANTS SHOULD SEE — which is the whole point: the
 // decision becomes deliberate instead of shipping by default.
 export const APPLICANT_STAGE_VIEW: Record<ApplicationStage, ApplicantStageView> = {
-  APPLIED: { key: "APPLIED", terminal: false, closingMessage: false },
-  SCREEN: { key: "SCREEN", terminal: false, closingMessage: false },
-  INTERVIEW: { key: "INTERVIEW", terminal: false, closingMessage: false },
-  OFFER: { key: "OFFER", terminal: false, closingMessage: false },
-  HIRED: { key: "HIRED", terminal: true, closingMessage: false },
+  // Notified: the receipt. The most expected message in hiring, and the one whose absence is most
+  // noticed. Written from the apply path, keyed on the APPLIED event that submission creates.
+  APPLIED: { key: "APPLIED", terminal: false, closingMessage: false, notify: true },
+  SCREEN: { key: "SCREEN", terminal: false, closingMessage: false, notify: true },
+  INTERVIEW: { key: "INTERVIEW", terminal: false, closingMessage: false, notify: true },
+  OFFER: { key: "OFFER", terminal: false, closingMessage: false, notify: true },
+  // NOT notified: by the time an application is marked HIRED the person has accepted an offer and
+  // heard from a human. An automated "you've been hired" would arrive after the fact and read as a
+  // machine catching up. app_link_hire also closes their portal account in the same statement.
+  HIRED: { key: "HIRED", terminal: true, closingMessage: false, notify: false },
   // The outcome, never the internal reason. rejectionCategory is chosen in one click to feed
   // /reports; it is not written to be read by the person it describes.
-  REJECTED: { key: "REJECTED", terminal: true, closingMessage: true },
-  // Their own action — the standard "we've decided not to proceed" message would read absurdly.
-  WITHDRAWN: { key: "WITHDRAWN", terminal: true, closingMessage: false },
+  //
+  // ⚠️ Notified BOTH by email and in the portal, and the copy is M5's existing courtesy message,
+  // reused verbatim. Never interpolate `rejectionReason` or `rejectionCategory` into it: those are
+  // written by recruiters for colleagues, and a rejection email is a document the person keeps.
+  REJECTED: { key: "REJECTED", terminal: true, closingMessage: true, notify: true },
+  // Their own action — the standard "we've decided not to proceed" message would read absurdly, and
+  // mailing someone about a thing they just did themselves is worse than silence.
+  WITHDRAWN: { key: "WITHDRAWN", terminal: true, closingMessage: false, notify: false },
 };
 
 // The neutral label for a stage we have no entry for. Unreachable while the guard holds, and that
@@ -47,6 +66,9 @@ export const UNKNOWN_STAGE_VIEW: ApplicantStageView = {
   key: "UNKNOWN",
   terminal: false,
   closingMessage: false,
+  // ⚠️ Fails CLOSED. A stage nobody has decided about must not generate mail to a stranger; showing
+  // "In progress" and saying nothing is the safe half of an unreachable branch.
+  notify: false,
 };
 
 export function publicStatusFor(stage: string): ApplicantStageView {

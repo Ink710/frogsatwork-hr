@@ -237,6 +237,9 @@ importers:
       '@hris/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@hris/notifications':
+        specifier: workspace:*
+        version: link:../../packages/notifications
       '@hris/recruiting':
         specifier: workspace:*
         version: link:../../packages/recruiting
@@ -545,6 +548,10 @@ importers:
       nodemailer:
         specifier: ^6.9.16
         version: 6.10.1
+    devDependencies:
+      '@hris/recruiting':
+        specifier: workspace:*
+        version: link:../recruiting
 
   packages/recruiting:
     dependencies:

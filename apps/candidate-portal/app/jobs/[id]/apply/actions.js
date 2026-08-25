@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@hris/database";
 import { createStorage } from "@hris/storage";
+import { deliverCandidateStageEmail } from "@hris/notifications";
 import {
   publicApplicationSchema,
   eeoResponseSchema,
@@ -17,7 +18,7 @@ import {
   resumeFileError,
 } from "@hris/recruiting";
 import { getT, getLocale } from "@/lib/i18n.server";
-import { getJobQuestions } from "@/lib/queries";
+import { getJobQuestions, getPublishedJob } from "@/lib/queries";
 import { allowApplyAttempt } from "@/lib/rate-limit";
 
 const storage = createStorage();
@@ -192,6 +193,33 @@ export async function submitApplication(jobId, sourceSlug, _prevState, formData)
   if (result === "MISSING_ANSWERS") return { error: t("apply.missingAnswers") };
   if (result === "DUPLICATE") return { error: t("apply.duplicate") };
   if (result === "CLOSED") return { error: t("apply.closed") };
+
+  // M8: the receipt, keyed on the APPLIED event the doorway just created and returned. Sent after
+  // the submission has already succeeded, and never allowed to change its outcome — an
+  // acknowledgement that fails to send is not a failed application.
+  //
+  // ⚠️ Before `redirect()`, which throws to unwind: nothing after it runs.
+  if (eventId) {
+    try {
+      // Re-read through the public doorway rather than trusting anything from the form. Cheap, and
+      // it is the same projection the apply page already renders from.
+      const job = await getPublishedJob(jobId);
+      await deliverCandidateStageEmail({
+        db: prisma,
+        eventId,
+        stageKey: "APPLIED",
+        to: d.email,
+        firstName: d.firstName,
+        jobTitle: job?.title ?? "",
+        locale: payload.locale,
+        // This app IS the portal, so its own base URL is the right one — unlike the ATS, which has
+        // to be told where the portal lives.
+        portalUrl: `${process.env.APP_BASE_URL ?? "http://localhost:3003"}/portal`,
+      });
+    } catch (e) {
+      console.error("[apply] receipt failed", { eventId, error: e });
+    }
+  }
 
   redirect(`/jobs/${jobId}/applied`);
 }

@@ -70,6 +70,20 @@ export default async function PortalPage() {
                   </span>
                 </div>
 
+                {/* M8: the in-portal half of a stage notification. Derived from the same event
+                    trail the timeline below renders, so it stores nothing and needs no read state.
+                    ⚠️ It carries the STAGE ONLY — never a rejection reason or category, which M5
+                    established are written by recruiters for colleagues and are not for the person
+                    they describe. A rejection shows the standard courtesy message further down. */}
+                {app.latestUpdate && !app.closingMessage && (
+                  <p className="mt-4 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
+                    {t("portal.latestUpdate", {
+                      stage: t(`enum.applicantStage.${app.latestUpdate.key}`),
+                      date: formatDate(app.latestUpdate.occurredAt, locale),
+                    })}
+                  </p>
+                )}
+
                 {/* The timeline. Round names are never here — see app_applicant_events — so an
                     applicant sees that they reached the interview stage, not how our process is
                     built. Consecutive round advances have already collapsed into one entry. */}

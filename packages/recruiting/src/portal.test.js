@@ -31,6 +31,31 @@ describe("the exhaustiveness guard", () => {
     expect(terminal).toEqual(["HIRED", "REJECTED", "WITHDRAWN"]);
   });
 
+  // ⚠️ The M8 half of the same guard. `notify` sends MAIL TO A STRANGER, so a stage added without a
+  // decision here would either spam people or silently tell them nothing — and both are decisions
+  // nobody made. Asserting the exact set (rather than "is a boolean") is what forces the argument.
+  it("notifies exactly the stages someone decided to notify on", () => {
+    const notifying = Object.entries(APPLICANT_STAGE_VIEW)
+      .filter(([, v]) => v.notify)
+      .map(([k]) => k)
+      .sort();
+    expect(notifying).toEqual(["APPLIED", "INTERVIEW", "OFFER", "REJECTED", "SCREEN"]);
+  });
+
+  it("never notifies on HIRED or WITHDRAWN", () => {
+    // HIRED: they accepted an offer and heard from a human; an automated note arrives after the
+    // fact. WITHDRAWN: their own action — mailing someone about what they just did is worse than
+    // silence.
+    expect(APPLICANT_STAGE_VIEW.HIRED.notify).toBe(false);
+    expect(APPLICANT_STAGE_VIEW.WITHDRAWN.notify).toBe(false);
+  });
+
+  it("fails closed for an unknown stage", () => {
+    // Unreachable while the guard above holds — which is exactly why the safe default matters.
+    expect(UNKNOWN_STAGE_VIEW.notify).toBe(false);
+    expect(publicStatusFor("SKILLS_ASSESSMENT").notify).toBe(false);
+  });
+
   it("attaches the closing message ONLY to a rejection", () => {
     // WITHDRAWN is the applicant's own action; "we've decided not to move forward" would be absurd.
     const withMessage = Object.entries(APPLICANT_STAGE_VIEW)

@@ -86,6 +86,7 @@ export async function getMyApplications(accountId) {
 
   return applications.map((a) => {
     const status = publicStatusFor(a.stage);
+    const timeline = buildApplicantTimeline(eventsByApplication.get(a.application_id) ?? []);
     return {
       id: a.application_id,
       jobTitle: a.job_title,
@@ -95,7 +96,15 @@ export async function getMyApplications(accountId) {
       statusKey: status.key,
       terminal: status.terminal,
       closingMessage: status.closingMessage,
-      timeline: buildApplicantTimeline(eventsByApplication.get(a.application_id) ?? []),
+      timeline,
+      // M8's in-portal notification, and it needs NO new storage: the most recent thing that
+      // happened, which the event trail already says. There is no read state by design — a banner
+      // that always shows the latest move is honest without inventing "unread", which would mean
+      // candidate-side writes and a table to hold them.
+      //
+      // Null when APPLIED is the only entry: the card already says "Applied", and a banner
+      // announcing the thing they just did themselves is noise.
+      latestUpdate: timeline.length > 1 ? timeline[timeline.length - 1] : null,
     };
   });
 }

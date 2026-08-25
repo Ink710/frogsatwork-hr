@@ -1,5 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { resetDb } from "../../../test/resetDb.js";
+// M8: stub ONLY the network hop — the claim/mark/idempotency logic runs for real.
+// Target the transport module, not the package: deliver.js imports it relatively, so mocking
+// "@hris/notifications" would leave the real nodemailer in place and the mailbox silently empty.
+import { resetMailbox } from "../../../test/mailbox.js";
+vi.mock("../../../packages/notifications/src/transport.js", async () => {
+  const { fakeSendMail } = await import("../../../test/mailbox.js");
+  return { sendMail: fakeSendMail, DEFAULT_FROM: "FrogsAtWorkHR <no-reply@test>" };
+});
+
 
 // getT/getLocale + revalidatePath call request-scoped APIs (cookies / the router cache) that throw
 // outside a Next request. Mock them to no-ops / a real EN translator; the actions always run in a
@@ -38,6 +47,7 @@ const app = (id) => withViewer(V.marcus, (tx) => tx.application.findUnique({ whe
 
 beforeEach(async () => {
   await resetDb();
+  resetMailbox();
 });
 
 describe("getJobBoard scoping", () => {

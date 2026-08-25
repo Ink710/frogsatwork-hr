@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@hris/database";
 import { createStorage } from "@hris/storage";
+import { deliverCandidateStageEmail } from "@hris/notifications";
 import {
   publicApplicationSchema,
   erasureRequestSchema,
@@ -15,6 +16,7 @@ import {
 } from "@hris/recruiting";
 import { allowApplyAttempt, allowErasureAttempt } from "@/lib/rate-limit";
 import { getT, getLocale } from "@/lib/i18n.server";
+import { portalUrl } from "@/lib/portal-url";
 
 const storage = createStorage();
 
@@ -98,6 +100,7 @@ export async function submitApplication(jobId, sourceSlug, _prevState, formData)
   //    function itself decides what is allowed.
   let result;
   let eventId;
+  let locale;
   try {
     // M2: the source argument is a campaign SLUG now, not a display label. A tracked link supplies
     // one; an untracked visit to the careers site falls back to the built-in `careers-page`
@@ -109,6 +112,7 @@ export async function submitApplication(jobId, sourceSlug, _prevState, formData)
     // caller). What it must never do is refuse the application: a mangled marketing link is our
     // bookkeeping problem, never the applicant's.
     const source = typeof sourceSlug === "string" && sourceSlug.trim() ? sourceSlug.trim() : "careers-page";
+    locale = await getLocale();
 
     // M8: one jsonb payload instead of twelve positional arguments. This fallback still sends no
     // employment, education, consent or answers — those belong to app 4's richer flow — and omitting
@@ -125,7 +129,7 @@ export async function submitApplication(jobId, sourceSlug, _prevState, formData)
       source,
       resumeKey,
       resumeName,
-      locale: await getLocale(),
+      locale,
       eeo: {
         gender: eeo.gender,
         ethnicity: eeo.ethnicity,
@@ -149,7 +153,39 @@ export async function submitApplication(jobId, sourceSlug, _prevState, formData)
   if (result === "DUPLICATE") return { error: t("apply.duplicate") };
   if (result === "CLOSED") return { error: t("apply.closed") };
 
+  // M8: the receipt. Sent AFTER the doorway commits, and never allowed to affect the outcome — the
+  // application is accepted whether or not we manage to acknowledge it.
+  //
+  // ⚠️ `redirect()` throws to unwind, so this must come BEFORE it. Anything after the redirect call
+  // is unreachable.
+  await sendReceipt({ eventId, jobId, email: d.email, firstName: d.firstName, locale });
+
   redirect(`/careers/${jobId}/applied`);
+}
+
+// The receipt is keyed on the APPLIED event the doorway just created — which is why that function
+// returns `event_id` at all. The apply path is anonymous and "ApplicationEvent" is RLS'd, so it
+// cannot read the event back; without the returned id there would be nothing to make the send
+// idempotent, and a resubmitted form would acknowledge the same application twice.
+async function sendReceipt({ eventId, jobId, email, firstName, locale }) {
+  if (!eventId) return;
+  try {
+    const [job] = await prisma.$queryRaw`SELECT title FROM app_public_jobs() WHERE id = ${jobId}`;
+    await deliverCandidateStageEmail({
+      db: prisma,
+      eventId,
+      stageKey: "APPLIED",
+      to: email,
+      firstName,
+      jobTitle: job?.title ?? "",
+      locale,
+      portalUrl: portalUrl(),
+    });
+  } catch (e) {
+    // Belt and braces: deliverCandidateStageEmail does not throw, but nothing about acknowledging an
+    // application is worth failing a successful submission over.
+    console.error("[careers] receipt failed", { eventId, error: e });
+  }
 }
 
 // ── The public "erase my data" request (M10) ─────────────────────────────────────────────────────

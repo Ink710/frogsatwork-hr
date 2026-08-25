@@ -44,6 +44,7 @@ const en = {
   "portal.empty": "We don't have any applications on file for you right now.",
   "portal.appliedOn": "Applied {date}",
   "portal.signOut": "Sign out",
+  "portal.latestUpdate": "Update: your application moved to {stage} on {date}.",
   "portal.editProfile": "Your profile →",
   "portal.closingMessage":
     "Thank you for your application. After reviewing your qualifications, we have decided not to move forward with your application for this position. We appreciate your interest and encourage you to apply for future opportunities.",
