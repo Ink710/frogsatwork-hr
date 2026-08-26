@@ -9,6 +9,7 @@ import {
   utcToZonedWallClock,
   formatSlotWhen,
   interviewSlotSchema,
+  canSelfSchedule,
 } from "./slot";
 
 describe("the derived status", () => {
@@ -188,5 +189,25 @@ describe("the proposal schema", () => {
     expect(interviewSlotSchema.safeParse({ ...valid, meetingUrl: "" }).success).toBe(true);
     expect(interviewSlotSchema.safeParse({ ...valid, meetingUrl: "https://meet.example/abc" }).success).toBe(true);
     expect(interviewSlotSchema.safeParse({ ...valid, meetingUrl: "not a url" }).success).toBe(false);
+  });
+});
+
+// ── M11: the once-only rule ──────────────────────────────────────────────────────────────────
+
+describe("canSelfSchedule", () => {
+  it("allows a first choice and refuses a second", () => {
+    expect(canSelfSchedule({ booked: false })).toBe(true);
+    expect(canSelfSchedule({ booked: true })).toBe(false);
+  });
+
+  // ⚠️ The predicate and the doorway must agree, because the UI asks one and the database enforces
+  // the other. This asserts the shape of that agreement: a slot being claimable is about the SLOT,
+  // while being allowed to choose is about the APPLICATION — two different questions, and conflating
+  // them is how a picker ends up offering a time that will be refused.
+  it("is about the application, not the slot", () => {
+    const freeSlot = { confirmedAt: new Date(), publishedAt: new Date() };
+    expect(isClaimable(freeSlot)).toBe(true);
+    // …but if this application already booked its round, it may still not choose.
+    expect(canSelfSchedule({ booked: true })).toBe(false);
   });
 });

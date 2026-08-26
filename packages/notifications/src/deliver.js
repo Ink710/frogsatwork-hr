@@ -48,7 +48,15 @@ export async function deliverCandidateStageEmail({
   const mail = candidateStageEmail({ stageKey, locale, firstName, jobTitle, portalUrl });
   if (!mail) return { sent: false, skipped: "NO_TEMPLATE" };
 
-  return claimSendMark({ db, subject: { eventId }, to, mail, label: stageKey });
+  return claimSendMark({
+    db,
+    subject: { eventId },
+    to,
+    mail,
+    label: stageKey,
+    // Candidate-facing: give them somewhere to reply. Staff mail below deliberately omits it.
+    replyTo: process.env.RECRUITING_REPLY_TO,
+  });
 }
 
 /**
@@ -89,7 +97,7 @@ export async function deliverInterviewerSlotEmail({
 // Extracted when M9 added a second kind of notification, so the ORDER — claim, then send, then
 // record — has one implementation. Getting that order wrong in one of two copies is exactly the kind
 // of divergence that produces a duplicate email months later.
-async function claimSendMark({ db, subject, to, mail, label }) {
+async function claimSendMark({ db, subject, to, mail, label, replyTo }) {
   const eventId = subject.eventId ?? null;
   const slotId = subject.slotId ?? null;
   const recipient = subject.recipientUserId ?? null;
@@ -109,7 +117,7 @@ async function claimSendMark({ db, subject, to, mail, label }) {
   if (!claimed) return { sent: false, skipped: "ALREADY_SENT" };
 
   try {
-    await sendMail({ to, subject: mail.subject, text: mail.text, html: mail.html });
+    await sendMail({ to, subject: mail.subject, text: mail.text, html: mail.html, replyTo });
   } catch (e) {
     // Expected in production, where no SMTP provider is configured. One line, with the cause.
     console.error("[notify] send failed", { eventId, slotId, label, error: e?.message ?? e });

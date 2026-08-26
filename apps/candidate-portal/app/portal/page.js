@@ -3,10 +3,11 @@ import { redirect } from "next/navigation";
 import { INTL_LOCALE, formatDate } from "@hris/ui";
 import { getApplicant } from "@/lib/auth";
 import { getT, getLocale } from "@/lib/i18n.server";
-import { getMyApplications, getMyInterviews } from "@/lib/queries";
+import { getMyApplications, getMyInterviews, getMySchedulableSlots } from "@/lib/queries";
 import { SiteHeader, SiteFooter } from "@/components/site-ui";
 import { SignOutButton } from "@/components/SignOutButton";
 import { InterviewTime } from "@/components/InterviewTime";
+import { SlotPicker } from "@/components/SlotPicker";
 
 export const metadata = { title: "Your applications · FrogsAtWorkHR" };
 
@@ -26,6 +27,13 @@ export default async function PortalPage() {
   const applications = await getMyApplications(applicant.accountId);
   // M9: one extra doorway call, keyed by application, rather than a query per card.
   const interviews = await getMyInterviews(applicant.accountId);
+  // M11: times still open to them. The doorway returns NOTHING for a round already booked, so these
+  // two are mutually exclusive per round without the page having to reason about it.
+  const schedulable = await getMySchedulableSlots(applicant.accountId);
+
+  // ⚠️ Shown only when a contact actually exists. Telling someone to "get in touch" without saying
+  // where is the dead end this milestone existed to close — our own mail comes from no-reply@.
+  const contact = process.env.RECRUITING_REPLY_TO ?? null;
 
   return (
     <>
@@ -92,6 +100,21 @@ export default async function PortalPage() {
                 {(interviews.get(app.id) ?? []).map((iv, i) => (
                   <InterviewTime key={`${app.id}-${i}`} interview={iv} locale={locale} />
                 ))}
+
+                {/* M11 — the once-only rule, stated NEXT TO the booked time rather than saved for a
+                    refusal. Julian's requirement is that a reschedule attempt is told to contact
+                    whoever is following up; saying it here means most people never reach the
+                    refusal at all. The doorway still answers ALREADY_BOOKED if they do. */}
+                {(interviews.get(app.id) ?? []).length > 0 && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {contact
+                      ? t("schedule.booked", { contact })
+                      : t("schedule.bookedNoContact")}
+                  </p>
+                )}
+
+                {/* …and the picker, only while nothing is booked for this round. */}
+                <SlotPicker slots={schedulable.get(app.id) ?? []} locale={locale} />
 
                 {/* The timeline. Round names are never here — see app_applicant_events — so an
                     applicant sees that they reached the interview stage, not how our process is

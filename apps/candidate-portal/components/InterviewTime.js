@@ -1,8 +1,8 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
 import { useT } from "@hris/ui/client";
 import { formatSlotWhen } from "@hris/recruiting";
+import { useViewerZone } from "@/components/useViewerZone";
 
 /**
  * One scheduled interview, shown to the candidate (M9).
@@ -18,20 +18,9 @@ import { formatSlotWhen } from "@hris/recruiting";
  * replacement: if scripting is off or hydration fails, the candidate still has a complete, correct
  * time rather than a bare number.
  */
-// The viewer's own zone, or null on the server.
-//
-// ⚠️ `useSyncExternalStore` rather than an effect that calls setState. React's lint rule rejects the
-// effect version (it triggers a cascading render), and this is what the hook exists for: a value
-// that lives outside React and differs between server and client. The server snapshot is `null`, so
-// the first client render matches the HTML exactly and there is no hydration mismatch — the local
-// line simply appears once React takes over.
-const subscribe = () => () => {};
-const clientZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
-const serverZone = () => null;
-
 export function InterviewTime({ interview, locale }) {
   const t = useT();
-  const zone = useSyncExternalStore(subscribe, clientZone, serverZone);
+  const zone = useViewerZone();
 
   // Nothing to add when the viewer is already in the slot's own zone — repeating the same time
   // under a different label reads as a mistake.

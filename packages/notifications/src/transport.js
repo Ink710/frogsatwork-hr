@@ -49,6 +49,18 @@ export const DEFAULT_FROM = "FrogsAtWorkHR <no-reply@frogsatwork.test>";
  * that choice if it hears about the failure at all. A tidy catch here would recreate the blind spot
  * that left the platform logs empty during a real outage.
  */
-export async function sendMail({ to, subject, text, html, from = DEFAULT_FROM }) {
-  await getTransport().sendMail({ from: process.env.SMTP_FROM ?? from, to, subject, text, html });
+export async function sendMail({ to, subject, text, html, from = DEFAULT_FROM, replyTo }) {
+  await getTransport().sendMail({
+    from: process.env.SMTP_FROM ?? from,
+    // ⚠️ REPLY-TO MATTERS MORE THAN IT LOOKS (M11). Everything here is sent from `no-reply@`, so
+    // until this existed a candidate told to "contact the person following up" had nowhere to write:
+    // replying to our own notification bounced. Callers that write to CANDIDATES pass the recruiting
+    // address; staff mail (an invite, a slot confirmation) needs none, because those people can
+    // already reach us.
+    ...(replyTo ? { replyTo } : {}),
+    to,
+    subject,
+    text,
+    html,
+  });
 }

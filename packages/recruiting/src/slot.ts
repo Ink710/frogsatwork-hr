@@ -55,6 +55,22 @@ export function isClaimable(slot: SlotTimestamps): boolean {
   return !slot.cancelledAt && !slot.claimedAt && !!slot.publishedAt;
 }
 
+/**
+ * THE ONCE-ONLY RULE (M11), as a predicate.
+ *
+ * A candidate may choose a time for a round exactly once. There is no self-service reschedule: a
+ * second attempt is refused and told to contact whoever is following up on their process.
+ *
+ * ⚠️ THIS IS THE UI's COPY OF A RULE THE DATABASE ENFORCES, never the enforcement itself. The unique
+ * index on ("claimedByApplicationId", "roundId") is what makes it true, and
+ * app_applicant_claim_slot answers ALREADY_BOOKED regardless of what any page decided to render.
+ * The predicate exists so the portal can show the rule BEFORE someone runs into it — the refusal is
+ * a worse way to learn it than a sentence next to their booked time.
+ */
+export function canSelfSchedule({ booked }: { booked: boolean }): boolean {
+  return !booked;
+}
+
 // ── Wall clock in a named zone → an absolute instant ─────────────────────────────────────────
 
 const WALL_CLOCK = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;

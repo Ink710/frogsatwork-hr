@@ -104,3 +104,34 @@ export async function allowProfileWrite(identifier) {
   const { success } = await rl.limit(identifier);
   return success;
 }
+
+// Booking an interview time (M11). Keyed by ACCOUNT id like the profile limiter — the caller is
+// identified, so an IP key would be both weaker and worse.
+//
+// Tight on purpose and safe to be: the once-only rule means a legitimate applicant books once per
+// round, so anything beyond a couple of attempts is a retry after losing a race, not normal use.
+const SCHEDULE_ATTEMPTS = 10;
+const SCHEDULE_WINDOW = "10 m";
+
+let scheduleLimiter = null;
+function getScheduleLimiter() {
+  if (scheduleLimiter) return scheduleLimiter;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  scheduleLimiter = new Ratelimit({
+    redis: new Redis({ url, token }),
+    limiter: Ratelimit.fixedWindow(SCHEDULE_ATTEMPTS, SCHEDULE_WINDOW),
+    analytics: false,
+    ephemeralCache: new Map(),
+    prefix: "portal:schedule",
+  });
+  return scheduleLimiter;
+}
+
+export async function allowScheduleAttempt(identifier) {
+  const rl = getScheduleLimiter();
+  if (!rl) return true;
+  const { success } = await rl.limit(identifier);
+  return success;
+}

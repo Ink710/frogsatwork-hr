@@ -153,6 +153,34 @@ export async function getMyInterviews(accountId) {
 }
 
 /**
+ * Times this applicant may still choose from (M11), keyed by application.
+ *
+ * The doorway does the filtering — published, unclaimed, uncancelled, this account's own
+ * application at the round it is actually in, and NOTHING for a round already booked. A picker that
+ * offered a time the claim would refuse would make the once-only rule read as a bug.
+ */
+export async function getMySchedulableSlots(accountId) {
+  if (!accountId) return new Map();
+  const rows = await prisma.$queryRaw`
+    SELECT application_id, round_name, slot_id, start_at, end_at, time_zone
+    FROM app_applicant_available_slots(${accountId})`;
+
+  const byApplication = new Map();
+  for (const r of rows) {
+    const list = byApplication.get(r.application_id) ?? [];
+    list.push({
+      id: r.slot_id,
+      roundName: r.round_name,
+      startAt: r.start_at,
+      endAt: r.end_at,
+      timeZone: r.time_zone,
+    });
+    byApplication.set(r.application_id, list);
+  }
+  return byApplication;
+}
+
+/**
  * The CV currently on the applicant's profile (M7) — the editor's "on file" line, and the only
  * thing `/portal/resume` needs in order to stream it.
  *
