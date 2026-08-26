@@ -46,7 +46,8 @@ const es = {
   "schedule.choose": "Elegir este horario",
   "schedule.booking": "Reservando\u2026",
   "schedule.booked": "El horario se elige una sola vez. Si necesitas cambiarlo, escr\u00edbenos a {contact} y lo reprogramamos.",
-  "schedule.bookedNoContact": "El horario se elige una sola vez. Si necesitas cambiarlo, responde al mensaje que te enviamos sobre esta entrevista.",
+  // ⚠️ Sin mencionar ningún mensaje: en producción no hay SMTP, así que esa frase sería falsa.
+  "schedule.bookedNoContact": "El horario se elige una sola vez. Si necesitas cambiarlo, comunícate con la persona que lleva tu proceso y lo reprogramamos.",
   "schedule.taken": "Alguien acaba de tomar ese horario. Elige otro.",
   "schedule.alreadyBooked": "Ya elegiste un horario para esta entrevista. Escr\u00edbenos si necesitas cambiarlo.",
   "schedule.notEligible": "Ese horario no est\u00e1 disponible para tu postulaci\u00f3n.",

@@ -244,7 +244,23 @@ long-lived secret in the project. `BLOB_READ_WRITE_TOKEN` is only for code runni
    | `STORAGE_DRIVER` | `vercel-blob` |
    | `ENABLE_EXPERIMENTAL_COREPACK` | `1` — see the note below |
    | `UPSTASH_REDIS_REST_URL` / `_TOKEN` | optional; the limiters are env-gated no-ops without them |
+   | `PORTAL_BASE_URL` | **the CANDIDATE PORTAL's URL** (app 4, Part I) — ⚠️ *not* this project's own. See below |
+   | `RECRUITING_REPLY_TO` | an address a candidate can actually write to; set as `Reply-To` on candidate email |
 4. Deploy. `prebuild` generates the Prisma client, then `next build`; every route is dynamic.
+
+> ⚠️ **`PORTAL_BASE_URL` IS THE PORTAL'S URL, NOT THIS PROJECT'S — and it cannot be set until app 4
+> exists.** The ATS sends most candidate notifications, and its own `APP_BASE_URL` points at the ATS,
+> which is a staff tool behind a login. Linking an applicant there sends them to a sign-in page for
+> an account they do not have and must never have.
+>
+> So there is an ORDER: deploy app 4 (Part I) → it gets a URL → come back, set this, and **redeploy
+> the ATS**. Until then every notification links to `http://localhost:3003`, and nothing errors to
+> tell you. Added in M8; this runbook did not mention it until M12.
+
+> ⚠️ **`RECRUITING_REPLY_TO` exists because everything sends from `no-reply@`.** Interview times can
+> be chosen only ONCE (M11), and the refusal tells a candidate to get in touch — which needs somewhere
+> to get in touch. Deliberately an address rather than a named person: it survives someone leaving and
+> publishes no personal staff address to strangers. Set it on this project **and** on app 4.
 
 > ⚠️ **Give every project its OWN `AUTH_SECRET` and `CRON_SECRET`.** An earlier version of this
 > runbook said the auth secret could be reused across projects because "sessions are per-domain
@@ -290,6 +306,134 @@ and reversible.
 - employee-records: upload and download an employee document on the live demo.
 - `curl` `/api/cron/archive-stale` with no `Authorization` → **401**.
 - Fill in the README's ATS live-demo link.
+
+---
+
+## Part I — 🛠️/👤 Fourth app: Candidate portal (`apps/candidate-portal`)
+
+Same shape as Parts F and G — a separate Vercel project on the shared Neon DB — with three
+differences that matter more than the similarities, all called out below.
+
+**This app is PUBLIC.** Unlike the other three it has no login wall in front of the whole site: job
+listings, job detail and the apply form are open to strangers, and only `/portal` requires a session.
+Its proxy matcher is the INVERSE of the other apps' for that reason.
+
+### I1 — 👤 Push first
+
+Vercel builds from GitHub. Push everything through M12 before creating the project; a project
+pointed at an un-pushed branch builds the wrong tree.
+
+### I2 — 👤 Bring the shared Neon DB up to date
+
+Neon has seen everything through the ATS deploy. It needs the **13 migrations from
+`20260824120000_application_source` through `20260828120000_applicant_self_schedule`** — the whole
+applicant-portal line (M1–M11). All additive to the three live apps.
+
+```bash
+DIRECT_URL='<owner direct url>' DATABASE_URL='<hris_app pooled url>' \
+  pnpm --filter @hris/database exec prisma migrate deploy
+
+# Reseed: one unified demo dataset across all FOUR apps. Same choice as Parts F and G, and the same
+# accepted cost — it resets any drift reviewers created on the three live demos.
+DIRECT_URL='<owner direct url>' DATABASE_URL='<hris_app pooled url>' \
+  pnpm --filter @hris/database db:seed
+```
+
+> ✅ **This step is lower-risk than it looks.** `test/globalSetup.js` runs `prisma migrate deploy`
+> against a **freshly created** database on every integration test run — the same thing Neon does. All
+> 49 migrations replaying cleanly from empty is continuously proven, not assumed.
+
+⚠️ Several of these migrations `DROP` and `CREATE` functions rather than replacing them
+(`app_submit_application` twice, `app_erase_candidate`, the notification claim pair). That is normal
+and safe on a forward-only deploy — but it means **`prisma migrate deploy` must run to completion**.
+Prisma does NOT wrap a migration in a transaction, so a half-applied file leaves objects dropped. If
+one fails, see Part H's recovery notes before retrying.
+
+### I3 — 👤 Connect the EXISTING Blob store — do **not** create one
+
+> ⚠️⚠️ **THE MOST DAMAGING MISTAKE AVAILABLE IN THIS PART.** App 4 WRITES résumés (the apply flow and
+> the profile editor) and the ATS READS them through its own download routes. They must be the same
+> store.
+>
+> A new store would mean **every CV submitted through the front door 404s in the ATS** — and it would
+> present as a permissions or signing bug, not a wiring one, because the routes, the signatures and
+> RLS would all be working perfectly.
+
+Storage → Blob → the existing **`frogsatwork-files`** store → *Connect to Project* → the new
+candidate-portal project. Connecting injects OIDC credentials automatically; there is no token to
+copy. **Connect before the first deploy**, as in Part G.
+
+### I4 — 👤 Vercel project
+
+1. Import the **same** repo as a **new** project.
+2. **Root Directory** = `apps/candidate-portal`.
+3. **Environment Variables** (Production):
+   | Var | Value |
+   | --- | --- |
+   | `DATABASE_URL` | `hris_app` **pooled** Neon URL (same as the other three), `sslmode=verify-full` |
+   | `DIRECT_URL` | owner **direct** Neon URL (same), `sslmode=verify-full` |
+   | `CANDIDATE_AUTH_SECRET` | a **fresh** secret — `openssl rand -base64 33`. ⚠️ Different NAME from the staff apps, see below |
+   | `APP_BASE_URL` | **this project's own** URL — magic-link redemption and the apply receipt both build links on it |
+   | `RECRUITING_REPLY_TO` | the same address set on the ATS |
+   | `STORAGE_DRIVER` | `vercel-blob` |
+   | `ENABLE_EXPERIMENTAL_COREPACK` | `1` |
+   | `UPSTASH_REDIS_REST_URL` / `_TOKEN` | optional; **four** limiters here (login, apply, profile, schedule), all env-gated no-ops without it |
+4. Deploy.
+
+**No `CRON_SECRET`, and no `vercel.json`** — unlike Parts F and G, this app has no cron routes. Do not
+copy one across; an unused secret is a credential nobody rotates.
+
+**No SMTP variables.** Production has no mail provider by design (see Part G's decisions): every send
+is attempted, fails, and is logged as `FAILED` on `NotificationDelivery`. The in-portal banner is what
+carries the notification feature on the live demo, and it needs nothing configured.
+
+> ⚠️ **The auth secret has a different NAME, not just a different value.** It is
+> `CANDIDATE_AUTH_SECRET`, and the cookie is `candidate-portal.session-token`. Applicants and staff
+> are deliberately disjoint realms: a live staff session must not satisfy `/portal`, and this is what
+> makes that structural rather than a rule someone remembers. Setting `AUTH_SECRET` here instead
+> would leave the app with no secret at all.
+
+### I5 — 👤 Then go back and finish the ATS
+
+⚠️ **The step whose omission produces no error anywhere.** `PORTAL_BASE_URL` lives on the **ATS**
+project and points at the URL app 4 just got:
+
+1. ATS project → Environment Variables → `PORTAL_BASE_URL` = app 4's production URL.
+2. **Redeploy the ATS.**
+
+Until this is done, every candidate notification the ATS sends links to `http://localhost:3003`.
+Nothing fails; the links are simply wrong.
+
+### I6 — 👤/🛠️ Verify
+
+Run these and paste the results back.
+
+```bash
+# 1. Public surfaces — all 200, no session required.
+curl -s -o /dev/null -w '%{http_code} %{time_total}s  /\n'            https://<portal>/
+curl -s -o /dev/null -w '%{http_code} %{time_total}s  /api/health\n'  https://<portal>/api/health
+curl -s -o /dev/null -w '%{http_code} %{time_total}s  /brand\n'       https://<portal>/brand/frog-dark.png
+
+# 2. The private area redirects when signed out (307 → /sign-in), and a bogus job 404s.
+curl -s -o /dev/null -w '%{http_code}  /portal (expect 307)\n'        https://<portal>/portal
+curl -s -o /dev/null -w '%{http_code}  /jobs/bogus (expect 404)\n'    https://<portal>/jobs/bogus
+```
+
+| Result | Means |
+| --- | --- |
+| all 200, `/portal` 307, `/jobs/bogus` 404 | Working. The 307 proves the inverted proxy matcher is live |
+| `/brand/*.png` 307s to `/sign-in` | The matcher is wrong — it must match ONLY `/portal/:path*` |
+| `/` 200 but `/api/health` 503 and DB pages 500, **sub-second** | ⚠️ Not a cold start. Sub-second means quota, auth, or a missing DB — check the Neon usage page for the RIGHT org and project (match the host against `DATABASE_URL`) |
+| `/api/health` slow then 200 | A Neon cold start. Expected and accepted — the keep-warm pinger is what exhausted the free tier on 2026-08-19 |
+| build fails at install with `ERR_INVALID_THIS` | `ENABLE_EXPERIMENTAL_COREPACK=1` |
+
+Then, in a browser: apply for a job, request a sign-in link (⚠️ **no mail provider in production**, so
+redeem it from the token in the Vercel function logs rather than an inbox), and confirm `/portal`
+shows the application.
+
+⚠️ **NO NEON HEARTBEAT.** A fourth app raises the baseline again. The 5-minute keep-warm pinger is
+exactly what exhausted the free tier on 2026-08-19 — 720 h/month at 0.25 CU ≈ 180 CU-hrs against a
+100 CU-hr quota. Cold starts and quota are the same dial; the cold start is the accepted cost.
 
 ---
 

@@ -52,7 +52,10 @@ const en = {
   "schedule.choose": "Choose this time",
   "schedule.booking": "Booking\u2026",
   "schedule.booked": "Times are chosen once. If you need to change this one, contact us at {contact} and we'll rearrange it.",
-  "schedule.bookedNoContact": "Times are chosen once. If you need to change this one, reply to the message we sent you about this interview.",
+  // ⚠️ Says nothing about a message. Production has no SMTP provider by design, so telling someone
+  // to "reply to the message we sent you" would be false exactly where it is read — the same dead
+  // end M11 existed to close. Set RECRUITING_REPLY_TO and the branch above runs instead.
+  "schedule.bookedNoContact": "Times are chosen once. If you need to change this one, get in touch with the person handling your application and we'll rearrange it.",
   "schedule.taken": "That time was just taken by someone else. Please choose another.",
   "schedule.alreadyBooked": "You've already chosen a time for this interview. Get in touch if you need to change it.",
   "schedule.notEligible": "That time isn't available for your application.",
