@@ -693,6 +693,17 @@ const en = {
   "err.slotNotFound": "That interview time no longer exists.",
   "err.slotTaken": "That time was just taken. Please choose another.",
   "err.slotAlreadyBooked": "This candidate already has a time booked for this round.",
+
+  // M10 — campaign tracking links
+  "links.title": "Tracking links",
+  "links.hint": "Share these instead of typing a link by hand \u2014 a mistyped source is discarded silently, so the campaign shows no applications at all.",
+  "links.portal": "Candidate portal (recommended)",
+  "links.careers": "Careers page (fallback)",
+  "links.careersCaveat": "Applicants who arrive here apply anonymously \u2014 no account, and no way for them to follow their application.",
+  "links.copy": "Copy",
+  "links.copied": "Copied",
+  "links.notPublished": "Publish this requisition to get tracking links \u2014 until then the link would show a 404 to anyone who clicked it.",
+  "links.noCampaigns": "No live campaigns. Create one under Campaigns to start tracking where applications come from.",
 };
 
 export default en;

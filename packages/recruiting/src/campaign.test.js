@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { campaignSlugSchema, campaignSchema, slugify, SOURCE_CHANNELS } from "./campaign";
+import { campaignSlugSchema, campaignSchema, slugify, SOURCE_CHANNELS, trackingLinks } from "./campaign";
 
 const ok = (v) => campaignSlugSchema.safeParse(v).success;
 
@@ -72,5 +72,49 @@ describe("slugify", () => {
     const suggestion = slugify(`${"a".repeat(39)} extra words here`);
     expect(suggestion.endsWith("-")).toBe(false);
     expect(ok(suggestion)).toBe(true);
+  });
+});
+
+// ── M10: tracking links ──────────────────────────────────────────────────────────────────────
+
+describe("trackingLinks", () => {
+  const base = {
+    portalBaseUrl: "https://portal.example",
+    careersBaseUrl: "https://ats.example",
+    jobId: "job-be",
+    slug: "linkedin-march-grads",
+  };
+
+  it("builds both front doors for one campaign", () => {
+    const links = trackingLinks(base);
+    expect(links.map((l) => l.kind)).toEqual(["portal", "careers"]);
+    expect(links[0].url).toBe("https://portal.example/jobs/job-be?source=linkedin-march-grads");
+    expect(links[1].url).toBe("https://ats.example/careers/job-be?source=linkedin-march-grads");
+  });
+
+  // ⚠️ Points at the POSTING, not the form — the source rides through to the apply page from there,
+  // and this way the funnel counts everyone who saw the advert.
+  it("targets the job posting rather than the apply form", () => {
+    for (const l of trackingLinks(base)) expect(l.url).not.toContain("/apply");
+  });
+
+  it("tolerates a base url with trailing slashes", () => {
+    const links = trackingLinks({ ...base, portalBaseUrl: "https://portal.example///" });
+    expect(links[0].url).toBe("https://portal.example/jobs/job-be?source=linkedin-march-grads");
+  });
+
+  it("encodes the slug and the job id", () => {
+    const links = trackingLinks({ ...base, slug: "a b&c", jobId: "job/1" });
+    expect(links[0].url).toContain("?source=a%20b%26c");
+    expect(links[0].url).toContain("/jobs/job%2F1");
+    // A real slug can never contain these — campaignSlugSchema forbids them — but a helper that
+    // assumes its callers are careful is a helper that breaks the day one is not.
+  });
+
+  it("produces a slug-free url for an empty slug rather than a broken one", () => {
+    const links = trackingLinks({ ...base, slug: "" });
+    expect(links[0].url).toBe("https://portal.example/jobs/job-be?source=");
+    // Still a valid URL; the doorway discards the unrecognised (empty) slug and accepts the
+    // application, which is the documented behaviour rather than an error.
   });
 });

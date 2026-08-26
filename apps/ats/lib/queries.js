@@ -389,6 +389,18 @@ export async function getJobForManage(jobId) {
     const band = bandFor(await tx.salaryBand.findFirst({ where: { jobId } }));
 
     const canManage = await viewerCanManageJob(tx, jobId);
+    // M10: LIVE campaigns only, for the tracking-link generator.
+    //
+    // ⚠️ `archivedAt: null` is the correctness point, not a tidy-up. app_submit_application
+    // DISCARDS an archived campaign's slug and still accepts the application, so a link built from a
+    // retired campaign works perfectly and attributes nothing — no error, just a number that never
+    // moves. The generator must never offer one.
+    const liveCampaigns = await tx.campaign.findMany({
+      where: { archivedAt: null },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, slug: true, channel: true },
+    });
+
     // The proposing recruiter's own zone, as the slot form's default. Nullable on Employee, so the
     // form still needs a value — UTC is the honest fallback rather than guessing at the server's.
     const me = viewer.employeeId
@@ -399,6 +411,7 @@ export async function getJobForManage(jobId) {
       job: { ...job, interviewRounds, competencies, questions, members, band, slots },
       canManage,
       defaultZone: me?.timeZone ?? "UTC",
+      liveCampaigns,
     };
   });
 }

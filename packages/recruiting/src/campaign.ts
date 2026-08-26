@@ -62,3 +62,57 @@ export function slugify(name: string): string {
     // A trailing hyphen can reappear after the slice, and would fail the pattern.
     .replace(/-+$/g, "");
 }
+
+// ── Tracking links (M10) ─────────────────────────────────────────────────────────────────────
+//
+// The single place that knows the SHAPE of a tracked URL. It exists because the alternative — a
+// recruiter assembling `?source=<slug>` onto a base by hand — is exactly how a campaign silently
+// loses its attribution: `app_submit_application` DISCARDS an unrecognised slug and accepts the
+// application anyway (a mangled marketing link must never cost someone a job), so a typo produces no
+// error anywhere, just a number that never moves.
+//
+// ⚠️ POINTS AT THE JOB POSTING, NOT THE APPLY FORM. Someone clicking an advert wants to read the
+// role first, and app 4 carries `?source=` through from the posting to the form
+// (apps/candidate-portal/app/jobs/[id]/page.js). It is also the honest funnel: you measure everyone
+// who saw the posting, not only those who reached the form.
+
+/** Strip any trailing slashes so `https://x.test/` and `https://x.test` build the same URL. */
+function trimBase(baseUrl: string): string {
+  return String(baseUrl ?? "").replace(/\/+$/, "");
+}
+
+export interface TrackingLink {
+  /** "portal" is the front door; "careers" is the ATS's anonymous fallback. */
+  kind: "portal" | "careers";
+  url: string;
+}
+
+/**
+ * Both tracked URLs for one campaign on one requisition.
+ *
+ * ⚠️ THE TWO ARE NOT INTERCHANGEABLE, even though they attribute identically. `getSourceReport`
+ * groups by `Application.campaignId`, and both front doors call the same doorway with the same slug
+ * — so a campaign gets the same credit either way. What differs is the APPLICANT's experience: the
+ * careers page is anonymous, so someone arriving there gets no account and no way to follow their
+ * own application. That is why the caller labels them rather than presenting a pair of equals.
+ */
+export function trackingLinks({
+  portalBaseUrl,
+  careersBaseUrl,
+  jobId,
+  slug,
+}: {
+  portalBaseUrl: string;
+  careersBaseUrl: string;
+  jobId: string;
+  slug: string;
+}): TrackingLink[] {
+  // A slug is `[a-z0-9-]` by construction (campaignSlugSchema), but encoding here is the difference
+  // between a helper that is safe for any caller and one that is safe for today's callers.
+  const q = `?source=${encodeURIComponent(slug)}`;
+  const id = encodeURIComponent(jobId);
+  return [
+    { kind: "portal", url: `${trimBase(portalBaseUrl)}/jobs/${id}${q}` },
+    { kind: "careers", url: `${trimBase(careersBaseUrl)}/careers/${id}${q}` },
+  ];
+}

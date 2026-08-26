@@ -15,6 +15,7 @@ import { JobStatusControl } from "@/components/JobStatusControl";
 import { PublishControl } from "@/components/PublishControl";
 import { SalaryBandEditor } from "@/components/SalaryBandEditor";
 import { SlotEditor } from "@/components/SlotEditor";
+import { TrackingLinks } from "@/components/TrackingLinks";
 
 // The requisition manage screen: details, interview rounds, hiring team, and the status lifecycle.
 // 404s both when RLS hides the job AND when the viewer can see it but may not manage it (an
@@ -62,6 +63,18 @@ export default async function ManageJobPage({ params }) {
         <Card title={t("rounds.title")}>
           <p className="mb-3 text-xs text-muted-foreground">{t("rounds.subtitle")}</p>
           <RoundEditor jobId={id} rounds={job.interviewRounds} />
+        </Card>
+
+        {/* M10 — where to advertise this req. Reuses PORTAL_BASE_URL, which M8 added for
+            notification links, rather than inventing a second way to name the portal. */}
+        <Card title={t("links.title")}>
+          <TrackingLinks
+            jobId={id}
+            campaigns={data.liveCampaigns}
+            portalBaseUrl={process.env.PORTAL_BASE_URL ?? "http://localhost:3003"}
+            careersBaseUrl={process.env.APP_BASE_URL ?? "http://localhost:3002"}
+            published={data.job.status === "OPEN" && Boolean(data.job.publishedAt)}
+          />
         </Card>
 
         {/* M9. Rendered only when the req has rounds and a team: a slot needs both, and an empty

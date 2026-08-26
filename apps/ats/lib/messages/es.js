@@ -682,6 +682,17 @@ const es = {
   "err.slotNotFound": "Ese horario ya no existe.",
   "err.slotTaken": "Ese horario se acaba de ocupar. Elige otro.",
   "err.slotAlreadyBooked": "Esta persona ya tiene un horario reservado para esta ronda.",
+
+  // M10 — enlaces de seguimiento de campa\u00f1a
+  "links.title": "Enlaces de seguimiento",
+  "links.hint": "Comparte estos en lugar de escribir el enlace a mano: una fuente mal escrita se descarta en silencio y la campa\u00f1a no registra ninguna postulaci\u00f3n.",
+  "links.portal": "Portal de candidatos (recomendado)",
+  "links.careers": "P\u00e1gina de empleo (alternativa)",
+  "links.careersCaveat": "Quien llegue por aqu\u00ed postula de forma an\u00f3nima: sin cuenta y sin poder seguir su postulaci\u00f3n.",
+  "links.copy": "Copiar",
+  "links.copied": "Copiado",
+  "links.notPublished": "Publica esta vacante para obtener enlaces de seguimiento; hasta entonces el enlace mostrar\u00eda un 404.",
+  "links.noCampaigns": "No hay campa\u00f1as activas. Crea una en Campa\u00f1as para empezar a medir de d\u00f3nde vienen las postulaciones.",
 };
 
 export default es;
