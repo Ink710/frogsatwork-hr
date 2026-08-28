@@ -43,10 +43,21 @@ const COPY = {
     },
     SCREEN: {
       subject: (job) => `Your application for ${job} is being reviewed`,
-      paragraphs: (name, job) => [
+      // ⚠️ THE ONLY TEMPLATE THAT VARIES ON SOMETHING OTHER THAN THE STAGE (M13). When the req has a
+      // screening call window configured, this is the channel that carries it: "be available for a
+      // call" is time-sensitive, and email interrupts where a portal the applicant may not revisit
+      // does not. With no window configured the copy is exactly what M8 shipped — the hours are the
+      // whole point of the extra sentences, and promising a call with no hours is worse than silence.
+      paragraphs: (name, job, callWindow) => [
         `Hi ${name},`,
         `Your application for ${job} is now being reviewed by our team.`,
-        `We'll let you know as soon as there's an update. You can also check the latest here:`,
+        ...(callWindow
+          ? [
+              `We would like to inform you that our team will contact you within the next few days. Please be available to receive a call between ${callWindow}.`,
+              `We appreciate your patience and look forward to speaking with you.`,
+              `You can check the latest here:`,
+            ]
+          : [`We'll let you know as soon as there's an update. You can also check the latest here:`]),
       ],
     },
     INTERVIEW: {
@@ -88,10 +99,16 @@ const COPY = {
     },
     SCREEN: {
       subject: (job) => `Estamos revisando tu postulación para ${job}`,
-      paragraphs: (name, job) => [
+      paragraphs: (name, job, callWindow) => [
         `Hola ${name}:`,
         `Nuestro equipo está revisando tu postulación para ${job}.`,
-        `Te avisaremos en cuanto haya novedades. También puedes consultarlo aquí:`,
+        ...(callWindow
+          ? [
+              `Te informamos que nuestro equipo se comunicará contigo en los próximos días. Por favor, mantente disponible para recibir una llamada entre ${callWindow}.`,
+              `Agradecemos tu paciencia y esperamos poder conversar contigo.`,
+              `Puedes consultar el estado aquí:`,
+            ]
+          : [`Te avisaremos en cuanto haya novedades. También puedes consultarlo aquí:`]),
       ],
     },
     INTERVIEW: {
@@ -131,6 +148,10 @@ const COPY = {
  * @param {string} args.firstName
  * @param {string} args.jobTitle
  * @param {string} args.portalUrl  where the applicant can see their applications
+ * @param {string} [args.callWindow] SCREEN only (M13): the req's screening call hours, ALREADY
+ *        FORMATTED by formatCallWindow — which names its zone. Passed preformatted for the same
+ *        reason `when` is on the staff template: this package stays free of time-zone logic, and
+ *        the portal and the email are then guaranteed to state the hours identically.
  * @returns {{subject: string, text: string, html: string} | null} null when the stage has no copy,
  *          which the caller must treat as "send nothing" rather than as an error.
  *
@@ -138,13 +159,20 @@ const COPY = {
  * APP_BASE_URL points at the ATS — linking a candidate there would send them to a staff login. Each
  * caller supplies the portal's address, and this package stays free of environment assumptions.
  */
-export function candidateStageEmail({ stageKey, locale, firstName, jobTitle, portalUrl }) {
+export function candidateStageEmail({
+  stageKey,
+  locale,
+  firstName,
+  jobTitle,
+  portalUrl,
+  callWindow,
+}) {
   const pack = COPY[locale] ?? COPY[FALLBACK_LOCALE];
   const template = pack[stageKey];
   if (!template) return null;
 
   const name = firstName || (locale === "es" ? "hola" : "there");
-  const paragraphs = template.paragraphs(name, jobTitle);
+  const paragraphs = template.paragraphs(name, jobTitle, callWindow);
 
   const text = [...paragraphs, "", portalUrl, "", `— ${pack.signoff}`].join("\n\n");
   const html =

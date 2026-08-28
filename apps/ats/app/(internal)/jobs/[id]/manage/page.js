@@ -15,6 +15,7 @@ import { JobStatusControl } from "@/components/JobStatusControl";
 import { PublishControl } from "@/components/PublishControl";
 import { SalaryBandEditor } from "@/components/SalaryBandEditor";
 import { SlotEditor } from "@/components/SlotEditor";
+import { ScreeningWindowEditor } from "@/components/ScreeningWindowEditor";
 import { TrackingLinks } from "@/components/TrackingLinks";
 
 // The requisition manage screen: details, interview rounds, hiring team, and the status lifecycle.
@@ -58,6 +59,22 @@ export default async function ManageJobPage({ params }) {
             the people who can reach this screen. */}
         <Card title={t("band.title")}>
           <SalaryBandEditor jobId={id} band={job.band} />
+        </Card>
+
+        {/* M13 — when this req's recruiters make screening calls. Sits ABOVE the interview rounds
+            because it is the earlier step in the process, and because the two are easily confused:
+            this is a phone window nobody books, those are interview slots a candidate picks. */}
+        <Card title={t("screening.title")}>
+          <ScreeningWindowEditor
+            jobId={id}
+            window={{
+              from: job.screeningCallFrom,
+              to: job.screeningCallTo,
+              timeZone: job.screeningCallTimeZone,
+            }}
+            defaultZone={data.defaultZone}
+            locale={locale}
+          />
         </Card>
 
         <Card title={t("rounds.title")}>

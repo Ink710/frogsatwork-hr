@@ -2,28 +2,20 @@
 
 import { useActionState } from "react";
 import { useT } from "@hris/ui/client";
-import { formatSlotWhen, slotStatus, canPublish, canCancel, SLOT_DURATIONS } from "@hris/recruiting";
+import {
+  formatSlotWhen,
+  slotStatus,
+  canPublish,
+  canCancel,
+  SLOT_DURATIONS,
+  SCHEDULING_ZONES,
+} from "@hris/recruiting";
 import { proposeSlot, publishSlot, cancelSlot } from "@/app/(internal)/jobs/actions";
 
 const INPUT =
   "rounded-md border border-input bg-background px-3 py-1.5 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30";
 const LABEL = "text-xs font-medium text-muted-foreground";
 
-// A short list of zones to choose from. Deliberately not the full tz database in a <select>: a
-// recruiter schedules in a handful of places, and 400 options is a worse experience than a typed
-// override would be. The stored value is a real IANA name either way.
-const ZONES = [
-  "America/Mexico_City",
-  "America/New_York",
-  "America/Los_Angeles",
-  "America/Bogota",
-  "America/Sao_Paulo",
-  "Europe/Madrid",
-  "Europe/London",
-  "Asia/Tokyo",
-  "Australia/Sydney",
-  "UTC",
-];
 
 const BADGE = {
   PROPOSED: "bg-muted text-muted-foreground",
@@ -138,7 +130,7 @@ export function SlotEditor({ jobId, slots, rounds, members, defaultZone, locale 
         <label className="flex flex-col gap-1">
           <span className={LABEL}>{t("slots.timeZone")}</span>
           <select name="timeZone" defaultValue={defaultZone} required className={INPUT}>
-            {ZONES.map((z) => (
+            {SCHEDULING_ZONES.map((z) => (
               <option key={z} value={z}>{z}</option>
             ))}
           </select>

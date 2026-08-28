@@ -22,6 +22,9 @@ import {
   zonedWallClockToUtc,
   canPublish,
   formatSlotWhen,
+  screeningWindowSchema,
+  hasScreeningWindow,
+  formatCallWindow,
 } from "@hris/recruiting";
 import { viewerCanManageJob, canCreateJob, isInOrgDirectory } from "@/lib/queries";
 import { getT } from "@/lib/i18n.server";
@@ -261,6 +264,49 @@ export async function addRound(jobId, _prevState, formData) {
     });
   } catch (e) {
     return { error: errorMessage(e) ?? t("err.roundFailed") };
+  }
+  revalidatePath(`/jobs/${jobId}/manage`);
+  return { ok: true };
+}
+
+/**
+ * Set (or clear) the screening call window for a req — M13.
+ *
+ * Recruiters run screening calls themselves; this is the promise an applicant sitting at SCREEN is
+ * shown so they know when to be reachable, and it is carried in the SCREEN email too.
+ *
+ * ⚠️ CLEARING IS A NORMAL SAVE, NOT AN ERROR. An emptied form sends three empty strings, which the
+ * schema accepts and this writes back as three NULLs — otherwise a window could be set once and
+ * never removed. `Job_screening_call_window_ck` refuses every state in between regardless of what
+ * this function decides, which is the point of it being a CHECK rather than only a Zod refine.
+ */
+export async function saveScreeningWindow(jobId, _prevState, formData) {
+  const t = await getT();
+  const viewer = await getViewer();
+  if (!viewer) return { error: t("err.notAuthorized") };
+
+  const parsed = screeningWindowSchema.safeParse({
+    from: formData.get("screeningCallFrom") ?? "",
+    to: formData.get("screeningCallTo") ?? "",
+    timeZone: formData.get("screeningCallTimeZone") ?? "",
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? t("err.invalidInput") };
+  const { from, to, timeZone } = parsed.data;
+
+  try {
+    await withViewer(viewer, async (tx) => {
+      await requireManageableJob(tx, jobId, t);
+      await tx.job.update({
+        where: { id: jobId },
+        data: {
+          screeningCallFrom: from || null,
+          screeningCallTo: to || null,
+          screeningCallTimeZone: timeZone || null,
+        },
+      });
+    });
+  } catch (e) {
+    return { error: errorMessage(e) ?? t("err.screeningWindowFailed") };
   }
   revalidatePath(`/jobs/${jobId}/manage`);
   return { ok: true };
@@ -546,17 +592,42 @@ export async function moveApplication(jobId, appId, _prevState, formData) {
         where: { id: app.candidateId },
         select: { firstName: true, email: true, locale: true, anonymisedAt: true },
       });
-      const job = await tx.job.findUnique({ where: { id: jobId }, select: { title: true } });
+      // M13: the screening call window rides along on the same read. It is only ever used for the
+      // SCREEN copy, but fetching it unconditionally costs nothing and keeps the branch in one place.
+      const job = await tx.job.findUnique({
+        where: { id: jobId },
+        select: {
+          title: true,
+          screeningCallFrom: true,
+          screeningCallTo: true,
+          screeningCallTimeZone: true,
+        },
+      });
+
+      const stageKey = publicStatusFor(toStage).key;
+      // ⚠️ FORMATTED IN THE CANDIDATE'S LOCALE, like every other word in this message — not the
+      // recruiter's. And only for SCREEN: the hours answer "when will you call me", which is a
+      // question only someone at that stage is asking.
+      const window = {
+        from: job?.screeningCallFrom,
+        to: job?.screeningCallTo,
+        timeZone: job?.screeningCallTimeZone,
+      };
+      const callWindow =
+        stageKey === "SCREEN" && hasScreeningWindow(window)
+          ? formatCallWindow(window, candidate?.locale ?? "en")
+          : undefined;
 
       pending = {
         eventId: event.id,
-        stageKey: publicStatusFor(toStage).key,
+        stageKey,
         notify: publicStatusFor(toStage).notify,
         // An erased candidate's address is scrambled to @anonymised.invalid. Never write to it.
         to: candidate?.anonymisedAt ? null : candidate?.email,
         firstName: candidate?.firstName,
         locale: candidate?.locale,
         jobTitle: job?.title,
+        callWindow,
       };
     });
   } catch (e) {
@@ -581,6 +652,7 @@ export async function moveApplication(jobId, appId, _prevState, formData) {
       jobTitle: pending.jobTitle,
       locale: pending.locale,
       portalUrl: portalUrl(),
+      callWindow: pending.callWindow,
     });
   }
 

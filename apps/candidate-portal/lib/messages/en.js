@@ -45,6 +45,14 @@ const en = {
   "portal.appliedOn": "Applied {date}",
   "portal.signOut": "Sign out",
   "portal.latestUpdate": "Update: your application moved to {stage} on {date}.",
+
+  // M13 — the screening call. The recruiting team phones; nothing here is bookable, so the copy
+  // promises a call rather than offering a choice. The hours ALWAYS carry their zone: an
+  // unlabelled "between 9 and 5" means a different afternoon to a candidate in another country.
+  "portal.screeningCall":
+    "We would like to inform you that our team will contact you within the next few days. Please be available to receive a call between {window}.",
+  "portal.screeningCallThanks":
+    "We appreciate your patience and look forward to speaking with you.",
   // M11 — self-scheduling
   "schedule.title": "Choose a time for your {round} interview",
   "schedule.onceOnly": "You can choose a time once. If you need to change it afterwards, get in touch and we'll rearrange it for you.",

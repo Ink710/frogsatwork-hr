@@ -658,6 +658,20 @@ const en = {
   "err.invalidOfferStatus": "That isn’t a valid next step for this offer.",
   "err.notAtOffer": "Offers can only be written while the application is at the offer stage.",
 
+  // M13 — the screening call window. Recruiters call; nobody self-books.
+  "screening.title": "Screening call window",
+  "screening.hint":
+    "When your team makes screening calls for this req. Applicants at the screening stage are shown these hours — with the time zone — so they know when to be reachable. Clear all three fields to remove it.",
+  "screening.current": "Applicants are told: {window}",
+  "screening.none": "No screening call window set. Applicants are told nothing about when to expect a call.",
+  "screening.from": "From",
+  "screening.to": "To",
+  "screening.timeZone": "Time zone",
+  "screening.noZone": "— none —",
+  "screening.save": "Save window",
+  "screening.saving": "Saving…",
+  "err.screeningWindowFailed": "That screening call window could not be saved.",
+
   // M9 — interview slots
   "slots.title": "Interview times",
   "slots.hint": "Propose a time, the interviewer confirms it, then publish it to offer it to candidates.",

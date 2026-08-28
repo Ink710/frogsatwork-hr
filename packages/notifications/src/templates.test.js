@@ -97,3 +97,42 @@ describe("interpolated values are escaped in the HTML body", () => {
     expect(mail.html).toContain("&lt;script&gt;");
   });
 });
+
+// ── The screening call window (M13) ──────────────────────────────────────────────────────────
+describe("the screening call window in the SCREEN message", () => {
+  const CALL_WINDOW = "09:00–17:00 (America/Mexico_City)";
+
+  for (const locale of NOTIFICATION_LOCALES) {
+    it(`${locale}: names the hours when the req has a window`, () => {
+      const mail = candidateStageEmail({ ...base, stageKey: "SCREEN", locale, callWindow: CALL_WINDOW });
+      expect(mail.text).toContain(CALL_WINDOW);
+      // The hours must survive HTML rendering too — the en dash and the parenthesised zone are
+      // exactly the sort of thing an over-eager escape would mangle.
+      expect(mail.html).toContain(CALL_WINDOW);
+    });
+
+    it(`${locale}: falls back to M8's copy when there is no window`, () => {
+      const withWindow = candidateStageEmail({ ...base, stageKey: "SCREEN", locale, callWindow: CALL_WINDOW });
+      const without = candidateStageEmail({ ...base, stageKey: "SCREEN", locale });
+      expect(without.text).not.toContain(CALL_WINDOW);
+      // Same subject either way: the window changes what the message says, not what it is about.
+      expect(without.subject).toBe(withWindow.subject);
+      expect(without.text).toContain(base.portalUrl);
+    });
+  }
+
+  // Promising a call and then naming no hours is worse than saying nothing, which is why the
+  // window is all-or-nothing at every layer — schema, CHECK constraint, and here.
+  it("never emits the sentence with an empty window", () => {
+    const mail = candidateStageEmail({ ...base, stageKey: "SCREEN", callWindow: "" });
+    expect(mail.text).not.toContain("available to receive a call");
+  });
+
+  // The hours answer "when will you call me". No other stage is asking it.
+  it("is ignored by every other stage's copy", () => {
+    for (const stageKey of ["APPLIED", "INTERVIEW", "OFFER", "REJECTED"]) {
+      const mail = candidateStageEmail({ ...base, stageKey, callWindow: CALL_WINDOW });
+      expect(mail.text, stageKey).not.toContain(CALL_WINDOW);
+    }
+  });
+});

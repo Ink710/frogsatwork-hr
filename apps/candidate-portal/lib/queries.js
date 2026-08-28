@@ -70,7 +70,8 @@ export async function getMyApplications(accountId) {
 
   const [applications, events] = await Promise.all([
     prisma.$queryRaw`
-      SELECT application_id, job_title, job_location, applied_at, stage
+      SELECT application_id, job_title, job_location, applied_at, stage,
+             screening_call_from, screening_call_to, screening_call_time_zone
       FROM app_applicant_applications(${accountId})`,
     prisma.$queryRaw`
       SELECT application_id, to_stage, occurred_at
@@ -105,6 +106,21 @@ export async function getMyApplications(accountId) {
       // Null when APPLIED is the only entry: the card already says "Applied", and a banner
       // announcing the thing they just did themselves is noise.
       latestUpdate: timeline.length > 1 ? timeline[timeline.length - 1] : null,
+      // M13 — when this req's recruiters make screening calls. Nobody self-books; this is a
+      // promise, so the applicant knows when to be reachable.
+      //
+      // ⚠️ THE DOORWAY ALREADY GATED THIS ON THE SCREEN STAGE — it returns NULLs for an application
+      // at any other stage even when the req HAS a window configured. So `null` here means "not
+      // yours to see yet", and no page needs to re-check the stage to avoid showing it early.
+      // Formatted at render time rather than here, because the string names its zone and the
+      // formatter needs the viewer's locale.
+      callWindow: a.screening_call_from
+        ? {
+            from: a.screening_call_from,
+            to: a.screening_call_to,
+            timeZone: a.screening_call_time_zone,
+          }
+        : null,
     };
   });
 }

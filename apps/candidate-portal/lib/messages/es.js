@@ -39,6 +39,12 @@ const es = {
   "portal.appliedOn": "Postulaste el {date}",
   "portal.signOut": "Cerrar sesión",
   "portal.latestUpdate": "Novedad: tu postulación pasó a {stage} el {date}.",
+
+  // M13 — la llamada de preselección. Llama el equipo; aquí no se reserva nada.
+  "portal.screeningCall":
+    "Te informamos que nuestro equipo se comunicará contigo en los próximos días. Por favor, mantente disponible para recibir una llamada entre {window}.",
+  "portal.screeningCallThanks":
+    "Agradecemos tu paciencia y esperamos poder conversar contigo.",
   // M11 — autoagendamiento
   "schedule.title": "Elige un horario para tu entrevista de {round}",
   "schedule.onceOnly": "Puedes elegir un horario una sola vez. Si luego necesitas cambiarlo, escr\u00edbenos y lo reprogramamos.",

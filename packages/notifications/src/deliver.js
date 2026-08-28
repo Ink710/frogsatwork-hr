@@ -29,6 +29,9 @@ import { candidateStageEmail, interviewerSlotEmail } from "./templates.js";
  * @param {string} args.jobTitle
  * @param {string} [args.locale]   the CANDIDATE's locale — never the sender's
  * @param {string} args.portalUrl
+ * @param {string} [args.callWindow] SCREEN only (M13): the req's screening call hours, already
+ *                 formatted by formatCallWindow. Absent for every other stage and for a req that
+ *                 has no window set, in which case the SCREEN copy is exactly what M8 shipped.
  * @returns {Promise<{sent: boolean, skipped?: string, failed?: boolean}>}
  */
 export async function deliverCandidateStageEmail({
@@ -40,12 +43,13 @@ export async function deliverCandidateStageEmail({
   jobTitle,
   locale,
   portalUrl,
+  callWindow,
 }) {
   if (!eventId || !to) return { sent: false, skipped: "NO_RECIPIENT" };
 
   // Built BEFORE the claim: a stage with no copy must not burn the one claim that exists for this
   // event, or adding the template later would silently never send.
-  const mail = candidateStageEmail({ stageKey, locale, firstName, jobTitle, portalUrl });
+  const mail = candidateStageEmail({ stageKey, locale, firstName, jobTitle, portalUrl, callWindow });
   if (!mail) return { sent: false, skipped: "NO_TEMPLATE" };
 
   return claimSendMark({

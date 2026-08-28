@@ -644,9 +644,14 @@ async function main() {
   //     (RECRUITER) + Marcus (HIRING_MANAGER) manage; Diego (INTERVIEWER) is read-only. The seed runs
   //     as the OWNER, which bypasses RLS and the ApplicationEvent append-only revoke, so it writes freely.
   const JOBS = [
+    // M13: this req has a SCREENING CALL WINDOW, so an applicant sitting at SCREEN (Owen) sees the
+    // "be available for a call" notice in the portal. job-pd deliberately has none — the contrast
+    // is the demo: the notice appears for one application and not the other, for the same person.
     { id: "job-be", title: "Senior Backend Engineer", status: "OPEN", dept: DEPT.eng, openings: 2,
       location: "Remote (US)", employmentType: "FULL_TIME", eeoJobCategory: "PROFESSIONALS",
-      description: "Own core services on our Postgres + Node stack. Strong SQL and API design." },
+      description: "Own core services on our Postgres + Node stack. Strong SQL and API design.",
+      screeningCallFrom: "09:00", screeningCallTo: "17:00",
+      screeningCallTimeZone: "America/Mexico_City" },
     // Left WITHOUT an EEO-1 category on purpose, so the filing export's "uncategorised" warning is
     // demoable — the gap it exists to surface is more interesting than a tidy dataset.
     { id: "job-pd", title: "Product Designer", status: "OPEN", dept: DEPT.eng, openings: 1,
@@ -662,11 +667,20 @@ async function main() {
       update: {
         title: j.title, status: j.status, openings: j.openings, location: j.location,
         description: j.description, publishedAt, eeoJobCategory: j.eeoJobCategory ?? null,
+        // ⚠️ Written on UPDATE too, and `?? null` on every one of the three. Job_screening_call_window_ck
+        // requires all-or-nothing, so re-seeding a job that has none must CLEAR any window a demo left
+        // behind rather than leave two of three columns from a previous run.
+        screeningCallFrom: j.screeningCallFrom ?? null,
+        screeningCallTo: j.screeningCallTo ?? null,
+        screeningCallTimeZone: j.screeningCallTimeZone ?? null,
       },
       create: {
         id: j.id, title: j.title, description: j.description, location: j.location,
         employmentType: j.employmentType, status: j.status, openings: j.openings, publishedAt,
         eeoJobCategory: j.eeoJobCategory ?? null,
+        screeningCallFrom: j.screeningCallFrom ?? null,
+        screeningCallTo: j.screeningCallTo ?? null,
+        screeningCallTimeZone: j.screeningCallTimeZone ?? null,
         orgId: ORG_ID, departmentId: j.dept, createdById: PEOPLE.raj.userId,
       },
     });

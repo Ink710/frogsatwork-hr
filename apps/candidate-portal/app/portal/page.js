@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { INTL_LOCALE, formatDate } from "@hris/ui";
+import { formatCallWindow } from "@hris/recruiting";
 import { getApplicant } from "@/lib/auth";
 import { getT, getLocale } from "@/lib/i18n.server";
 import { getMyApplications, getMyInterviews, getMySchedulableSlots } from "@/lib/queries";
@@ -92,6 +93,25 @@ export default async function PortalPage() {
                       stage: t(`enum.applicantStage.${app.latestUpdate.key}`),
                       date: formatDate(app.latestUpdate.occurredAt, locale),
                     })}
+                  </p>
+                )}
+
+                {/* M13 — the screening call. Nobody books anything here: the recruiting team
+                    phones, and this is when to be reachable.
+
+                    ⚠️ NO STAGE CHECK IN THIS CONDITION, and that is deliberate.
+                    app_applicant_applications returns the hours ONLY while the application is at
+                    SCREEN — it answers NULL for every other stage even when the req has a window
+                    set — so the gate is in the database rather than in a template someone could
+                    later copy without it. `callWindow` being present IS "you are at screening". */}
+                {app.callWindow && (
+                  <p className="mt-4 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
+                    {t("portal.screeningCall", {
+                      window: formatCallWindow(app.callWindow, locale),
+                    })}
+                    <span className="mt-2 block text-muted-foreground">
+                      {t("portal.screeningCallThanks")}
+                    </span>
                   </p>
                 )}
 

@@ -1084,6 +1084,27 @@ model Job {
   // silently mis-file a regulatory return, so an unset one is surfaced as a warning on the filing
   // export instead of being quietly bucketed somewhere plausible.
   eeoJobCategory EeoJobCategory?
+
+  // ── The screening call window (M13) ───────────────────────────────────────────────────────
+  //
+  // When this req's recruiters make screening calls, shown to an applicant sitting at SCREEN so
+  // they know when to be reachable. Nobody self-books: the recruiter calls, and this is the promise.
+  //
+  // ⚠️ "HH:MM" STRINGS, NOT TIMESTAMPS — the one place `Meeting`'s idiom beats `Shift`'s, which is
+  // the exact reverse of what InterviewSlot argues below. A slot is a specific instant, so it stores
+  // real DateTimes. This is a RECURRING WALL CLOCK with no date ("we call between 9 and 5"), and a
+  // timestamp would have to invent a day — the very thing nobody has committed to yet.
+  //
+  // ⚠️ ALL THREE OR NONE, and the DATABASE enforces it (`Job_screening_call_window_ck`, which also
+  // pins the "HH:MM" format and requires from < to). Prisma cannot express a CHECK, so it is
+  // invisible here and lives in the migration — verified with `migrate diff` to produce no drift.
+  // A half-set window is the one state that renders an instruction nobody can follow.
+  screeningCallFrom     String?
+  screeningCallTo       String?
+  // The IANA zone the two wall clocks are read in. Not decoration: "9:00" means nothing to a
+  // candidate abroad without it, so it is rendered beside the hours everywhere they appear.
+  screeningCallTimeZone String?
+
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 

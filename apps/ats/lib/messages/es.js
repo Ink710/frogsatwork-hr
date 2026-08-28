@@ -647,6 +647,20 @@ const es = {
   "err.invalidOfferStatus": "Ese no es un paso válido para esta oferta.",
   "err.notAtOffer": "Las ofertas solo se pueden escribir mientras la candidatura está en la etapa de oferta.",
 
+  // M13 — la franja de llamadas de preselección. Llama el equipo; nadie reserva.
+  "screening.title": "Franja de llamadas de preselección",
+  "screening.hint":
+    "Cuándo hace tu equipo las llamadas de preselección para esta vacante. A las personas en la etapa de preselección se les muestran estos horarios —con la zona horaria— para que sepan cuándo estar disponibles. Borra los tres campos para quitarla.",
+  "screening.current": "A las personas candidatas se les indica: {window}",
+  "screening.none": "Sin franja de llamadas. No se les indica cuándo esperar una llamada.",
+  "screening.from": "Desde",
+  "screening.to": "Hasta",
+  "screening.timeZone": "Zona horaria",
+  "screening.noZone": "— ninguna —",
+  "screening.save": "Guardar franja",
+  "screening.saving": "Guardando…",
+  "err.screeningWindowFailed": "No se pudo guardar la franja de llamadas.",
+
   // M9 — horarios de entrevista
   "slots.title": "Horarios de entrevista",
   "slots.hint": "Propón un horario, la persona entrevistadora lo confirma y luego se publica para ofrecerlo.",

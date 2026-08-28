@@ -162,6 +162,26 @@ export function formatSlotWhen(
 
 // ── What a recruiter submits ─────────────────────────────────────────────────────────────────
 
+// A short list of zones to choose from. Deliberately not the full tz database in a <select>: a
+// recruiter schedules in a handful of places, and 400 options is a worse experience than a typed
+// override would be. The stored value is a real IANA name either way.
+//
+// ⚠️ SHARED, not per-component (M13). It began as a module-local const in SlotEditor; the screening
+// call window needs the same list, and two copies of a list like this drift the moment someone adds
+// a zone to one of them.
+export const SCHEDULING_ZONES = [
+  "America/Mexico_City",
+  "America/New_York",
+  "America/Los_Angeles",
+  "America/Bogota",
+  "America/Sao_Paulo",
+  "Europe/Madrid",
+  "Europe/London",
+  "Asia/Tokyo",
+  "Australia/Sydney",
+  "UTC",
+] as const;
+
 export const SLOT_DURATIONS = [15, 30, 45, 60, 90, 120] as const;
 
 export const interviewSlotSchema = z.object({
