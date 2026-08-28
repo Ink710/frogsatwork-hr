@@ -71,7 +71,8 @@ describe("revocation happens at the DATA layer, because sessions are stateless",
     const account = await accountFor("owen.zhang@example.com");
     expect(await getMyApplications(account)).toHaveLength(2);
 
-    await prisma.$executeRaw`SELECT app_close_candidate_account('cand-owen')`;
+    // M14: the doorway is role-guarded now — call it as HR_ADMIN, as a real hire would.
+    await withViewer(ANA, (tx) => tx.$executeRaw`SELECT app_close_candidate_account('cand-owen')`);
 
     expect(await getMyApplications(account)).toEqual([]);
   });

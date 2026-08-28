@@ -171,7 +171,8 @@ describe("accounts an applicant must not be able to use", () => {
   it("refuses a CLOSED account (the hired case) and kills its live link", async () => {
     await requestLink(NORA);
     const token = linkToken();
-    await prisma.$executeRaw`SELECT app_close_candidate_account('cand-nora')`;
+    // M14: the doorway is role-guarded now — call it as HR_ADMIN, as a real hire would.
+    await withViewer(ANA, (tx) => tx.$executeRaw`SELECT app_close_candidate_account('cand-nora')`);
 
     expect(await redeem(token)).toHaveLength(0);
     sent.length = 0;

@@ -43,6 +43,7 @@ const es = {
   "login.submit": "Iniciar sesión",
   "login.signingIn": "Iniciando sesión…",
   "login.invalid": "Correo o contraseña inválidos.",
+  "login.rateLimited": "Demasiados intentos. Espera un momento e inténtalo de nuevo.",
   "login.activated": "Contraseña establecida — ya puede iniciar sesión.",
   "login.seededHint": "Cuentas de prueba (contraseña: password123)",
 

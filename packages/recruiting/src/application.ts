@@ -54,8 +54,15 @@ export const educationListSchema = z.array(educationEntrySchema).max(MAX_HISTORY
 // Consent is a REQUIRED checkbox on the new apply flow. Modelled as a literal `true` rather than a
 // boolean so an unchecked box is a validation failure with a message, not a silent `false` that
 // records a consent nobody gave.
+// ⚠️ `message`, NOT `errorMap` (fixed M14). `errorMap` is zod v3's API; v4 SILENTLY IGNORES the
+// unknown key, so this schema's custom text never reached anyone — an unchecked box produced zod's
+// default "Invalid literal value" instead. It also made `tsc --noEmit` fail on this package, which
+// nothing noticed because no package had a typecheck script until now.
+//
+// No user-visible change today: both apply actions return their own i18n message and never read
+// zod's. This makes the schema honest for the next caller that does.
 export const consentSchema = z.literal(true, {
-  errorMap: () => ({ message: "Please accept the privacy notice to apply." }),
+  message: "Please accept the privacy notice to apply.",
 });
 
 /**

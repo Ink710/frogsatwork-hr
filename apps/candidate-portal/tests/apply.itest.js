@@ -235,7 +235,10 @@ describe("profile prefill", () => {
       select: { id: true },
     });
 
-    await prisma.$executeRaw`SELECT app_close_candidate_account(${issued.candidate_id})`;
+    // M14: this doorway now checks the caller's role, so it is invoked AS HR_ADMIN — which is
+    // also more faithful than the old unauthenticated call: closing an account is a hire-time act.
+    await withViewer(ANA, (tx) =>
+      tx.$executeRaw`SELECT app_close_candidate_account(${issued.candidate_id})`);
     expect(await getMyProfile(account.id)).toBeNull();
   });
 });

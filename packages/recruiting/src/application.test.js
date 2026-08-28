@@ -165,3 +165,23 @@ describe("resumeFileError", () => {
     expect(resumeFileError(file({ name: "CV.PDF" }))).toBeNull();
   });
 });
+
+// ── Consent (M14 fix) ────────────────────────────────────────────────────────────────────────
+describe("the consent checkbox", () => {
+  it("accepts a ticked box and rejects an unticked one", () => {
+    expect(consentSchema.safeParse(true).success).toBe(true);
+    expect(consentSchema.safeParse(false).success).toBe(false);
+    // Modelled as a literal `true`, so an absent value is a failure rather than a silent false.
+    expect(consentSchema.safeParse(undefined).success).toBe(false);
+  });
+
+  // ⚠️ THE REGRESSION THIS LOCKS. The schema was written with zod v3's `errorMap`, which v4 ignores
+  // as an unknown key — so the custom sentence never reached anyone and zod's generic
+  // "Invalid literal value" was produced instead. Asserting the TEXT is the only way that failure
+  // is visible; `success: false` was true both before and after the fix.
+  it("carries its own message, not zod's default", () => {
+    const result = consentSchema.safeParse(false);
+    expect(result.success).toBe(false);
+    expect(result.error.issues[0].message).toBe("Please accept the privacy notice to apply.");
+  });
+});

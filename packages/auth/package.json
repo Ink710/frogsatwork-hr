@@ -17,5 +17,8 @@
   "peerDependencies": {
     "next": ">=15",
     "react": ">=19"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
   }
 }

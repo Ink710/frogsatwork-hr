@@ -386,6 +386,12 @@ importers:
       '@hris/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@upstash/ratelimit':
+        specifier: ^2.0.8
+        version: 2.0.8(@upstash/redis@1.38.2)
+      '@upstash/redis':
+        specifier: ^1.38.2
+        version: 1.38.2
       bcryptjs:
         specifier: ^3.0.2
         version: 3.0.3

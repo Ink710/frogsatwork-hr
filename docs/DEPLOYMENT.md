@@ -318,16 +318,114 @@ differences that matter more than the similarities, all called out below.
 listings, job detail and the apply form are open to strangers, and only `/portal` requires a session.
 Its proxy matcher is the INVERSE of the other apps' for that reason.
 
-### I1 — 👤 Push first
+### The whole sequence, in order
 
-Vercel builds from GitHub. Push everything through M12 before creating the project; a project
-pointed at an un-pushed branch builds the wrong tree.
+⚠️ **The order is load-bearing, not stylistic.** Schema leads code (I2 before I4). The Blob store is
+connected before the first deploy (I3 before I4), because a project that deploys without it writes
+to nowhere. The two redeploys of ALREADY-LIVE apps (I4b, I5) come last, because both depend on a
+value that does not exist until app 4 has a URL.
+
+| Step | What | Where | Reversible? |
+| --- | --- | --- | --- |
+| **I0** | Pre-flight: green suite, no drift | local | yes — nothing remote is touched |
+| **I1** | Commit + push | local → GitHub | yes |
+| **I2** | Migrate + reseed shared Neon DB | Neon | ⚠️ **partly** — see I7; the reseed resets demo drift on the three live apps |
+| **I3** | Connect the **existing** Blob store | Vercel | yes |
+| **I4** | New Vercel project + env + deploy | Vercel | yes (delete the project) |
+| **I4b** | Upstash vars on employee-records + redeploy | Vercel | yes (remove the vars) |
+| **I5** | `PORTAL_BASE_URL` on the ATS + redeploy | Vercel | yes |
+| **I6** | Verify reachability | curl | — |
+| **I6b** | Verify M13 + M14 actually shipped | psql + browser | — |
+| **I7** | Recovery table if anything above misbehaves | — | — |
+
+**I2 is the only step that changes anything for the three apps already in production.** It is safe —
+the DELETE revokes cover four tables no deployed code deletes, and the role-guard fix only changes
+behaviour for a caller with *no* session, which the live apps never are — but it is the one to run
+with attention rather than on autopilot.
+
+### I0 — 👤 Pre-flight, locally, before touching anything remote
+
+Everything here is local and reversible. Nothing below this step is.
+
+⚠️ **START THE LOCAL DATABASE FIRST.** Docker Desktop does **not** auto-start after a Mac restart,
+and the failure is confusing rather than obvious: `pnpm run test:unit` and `pnpm typecheck` are pure
+and pass regardless, while all four integration projects and the drift check fail with
+`P1001 Can't reach database server at localhost:5433` — which reads like a broken config.
+
+```bash
+open -a Docker
+# Then wait for the container, and only continue once it reports (healthy).
+# macOS has no `timeout`, so poll instead of guessing:
+until docker inspect -f '{{.State.Health.Status}}' hris-postgres 2>/dev/null | grep -q healthy; do sleep 2; done; docker ps --format '{{.Names}}\t{{.Status}}'
+```
+
+The compose containers restart with the daemon, so nothing needs re-creating — `hris-postgres` and
+`hris-mailpit` should both come back on their own.
+
+```bash
+# 1. The tree must be GREEN before it becomes production.
+pnpm run test:unit                                    # expect 363 passed
+pnpm exec vitest run --project integration            # expect  85
+pnpm exec vitest run --project integration-tm         # expect  76
+pnpm exec vitest run --project integration-ats        # expect 297
+pnpm exec vitest run --project integration-portal     # expect 103
+# ⚠️ ONE PROJECT AT A TIME. Concurrent runs deadlock on hris_test and emit meaningless
+# 300–800-second "failures". `pnpm test` is &&-chained, so an early failure ABORTS the later
+# projects — re-run those individually rather than assuming they passed.
+
+pnpm typecheck                                        # packages; expect exit 0
+for a in ats candidate-portal employee-records time-management; do pnpm --filter $a lint; done
+for a in ats candidate-portal employee-records time-management; do pnpm --filter $a build; done
+
+# 2. The database the code expects must match the code.
+cd packages/database && pnpm exec prisma migrate diff \
+  --from-config-datasource --to-schema prisma/schema.prisma --exit-code; cd ../..
+# exit 0 = no drift. Exit 2 = schema.prisma and the migrations disagree — STOP and fix.
+```
+
+### I1 — 👤 Commit and push — Vercel builds from GitHub, not from your working tree
+
+```bash
+git add -A
+# Commit M13 and M14 as separate commits — they are two milestones and the history should say so.
+git push origin main
+
+# Both of these must come back EMPTY before you continue:
+git status --porcelain                 # uncommitted work
+git log --oneline origin/main..main    # unpushed commits
+```
+
+⚠️ **THE MOST LIKELY STEP TO BE SKIPPED, AND IT FAILS SILENTLY.** A Vercel project pointed at an
+un-pushed tree deploys *successfully* and simply ships older code. Worse, I2 then migrates the
+shared database to a schema the deployed code does not know about — the live ATS would be running
+against columns and guards it was never built for.
+
+M13 (the screening call window) and M14 (the hardening migration, the employee-records limiter,
+app 4's loading states) must **both** be committed and pushed before I2.
 
 ### I2 — 👤 Bring the shared Neon DB up to date
 
-Neon has seen everything through the ATS deploy. It needs the **13 migrations from
-`20260824120000_application_source` through `20260828120000_applicant_self_schedule`** — the whole
-applicant-portal line (M1–M11). All additive to the three live apps.
+Neon has seen everything through the ATS deploy. It needs the **15 migrations from
+`20260824120000_application_source` through `20260830120000_delete_and_doorway_hardening`** — the
+applicant-portal line (M1–M11), M13's screening call window, and M14's hardening.
+
+⚠️ **Two of them change behaviour for the THREE ALREADY-LIVE apps, so this is not a portal-only
+migration run:**
+
+- `20260829120000_screening_call_window` adds three columns to `Job` and **DROPs/RECREATEs
+  `app_applicant_applications`** (a `RETURNS TABLE` change cannot be `CREATE OR REPLACE`d). The ATS
+  must be **redeployed after it**, because `moveApplication` now reads the new columns. That is
+  already the plan in I5; this is the reason for it.
+- `20260830120000_delete_and_doorway_hardening` **REVOKEs DELETE** on `Employee`, `EmployeeHistory`,
+  `Candidate` and `Application` from `hris_app`, and adds a role guard to two doorways. Verified
+  before writing that no application code deletes those tables and no foreign key cascades into
+  them — but it is a privilege change against a live database, so if anything unexpected starts
+  failing with `permission denied for table …`, that migration is the first place to look. It is
+  reversible with a `GRANT DELETE` on the four tables.
+
+⚠️ It also fixes a role guard that **did not fire for a caller with no session role** (a
+`NULL NOT IN (...)` returns NULL, so the `IF` was skipped). After deploying, `app_link_hire` called
+without session variables returns `FORBIDDEN`; before, it fell through to a later business check.
 
 ```bash
 DIRECT_URL='<owner direct url>' DATABASE_URL='<hris_app pooled url>' \
@@ -341,7 +439,10 @@ DIRECT_URL='<owner direct url>' DATABASE_URL='<hris_app pooled url>' \
 
 > ✅ **This step is lower-risk than it looks.** `test/globalSetup.js` runs `prisma migrate deploy`
 > against a **freshly created** database on every integration test run — the same thing Neon does. All
-> 49 migrations replaying cleanly from empty is continuously proven, not assumed.
+> **51** migrations replaying cleanly from empty is continuously proven, not assumed — and M14
+> additionally rehearsed it by hand into a throwaway database, confirming zero drift against
+> `schema.prisma` and the runtime security posture (RLS, `EeoResponse` unreachable, audit
+> append-only) on the freshly migrated result.
 
 ⚠️ Several of these migrations `DROP` and `CREATE` functions rather than replacing them
 (`app_submit_application` twice, `app_erase_candidate`, the notification claim pair). That is normal
@@ -393,6 +494,36 @@ carries the notification feature on the live demo, and it needs nothing configur
 > makes that structural rather than a rule someone remembers. Setting `AUTH_SECRET` here instead
 > would leave the app with no secret at all.
 
+### I4b — 👤 Turn on login rate limiting for employee-records (M14)
+
+App 1 was the only password-auth app in the suite with **no login throttle** — the ATS and
+time-management have gated theirs since they shipped. M14 adds `apps/employee-records/lib/rate-limit.js`
+with the prefix `er:login`.
+
+⚠️ **The code alone changes nothing.** The limiter is env-gated: with the Upstash vars absent it
+returns `true` unconditionally and never contacts Redis, which is exactly why it is safe to deploy
+ahead of this step. It only starts throttling once both vars exist.
+
+1. employee-records project → Environment Variables:
+
+   | Variable | Value |
+   |---|---|
+   | `UPSTASH_REDIS_REST_URL` | the **same** Upstash database the other apps use |
+   | `UPSTASH_REDIS_REST_TOKEN` | its token |
+
+   ⚠️ **Do NOT create a second Upstash database.** All three apps share one; the per-app key prefix
+   (`ats:login`, `tm:login`, `er:login`) is what keeps their counters separate. A separate database
+   would work but doubles the thing to pay for and monitor for no benefit.
+
+2. **Redeploy employee-records.**
+3. Confirm: six rapid failed logins from one IP should produce *"Too many attempts…"* rather than
+   *"Invalid email or password."* — the two messages are deliberately different, because telling a
+   throttled user their password is wrong sends them to reset a password that was never the problem.
+
+Removing the two variables disables the throttle again, with no code change.
+
+---
+
 ### I5 — 👤 Then go back and finish the ATS
 
 ⚠️ **The step whose omission produces no error anywhere.** `PORTAL_BASE_URL` lives on the **ATS**
@@ -430,6 +561,67 @@ curl -s -o /dev/null -w '%{http_code}  /jobs/bogus (expect 404)\n'    https://<p
 Then, in a browser: apply for a job, request a sign-in link (⚠️ **no mail provider in production**, so
 redeem it from the token in the Vercel function logs rather than an inbox), and confirm `/portal`
 shows the application.
+
+### I6b — 👤 Verify what M13 and M14 actually shipped
+
+I6 proves the app is *reachable*. These prove the last two milestones are *live* — each is a claim
+the project makes about itself, so each is worth one command.
+
+**1. The hardening migration reached production.** Run against the Neon database as the OWNER:
+
+```sql
+-- (a) The retention rule is a privilege. Expect FOUR rows, none listing DELETE.
+SELECT table_name, string_agg(privilege_type, ',' ORDER BY privilege_type) AS privs
+FROM information_schema.role_table_grants
+WHERE grantee = 'hris_app'
+  AND table_name IN ('Employee','EmployeeHistory','Candidate','Application')
+GROUP BY table_name ORDER BY table_name;
+
+-- (b) CONTROL — a table outside the retention set MUST still show DELETE. If this one also
+--     lacks it, something revoked far more than intended.
+SELECT privilege_type FROM information_schema.role_table_grants
+WHERE grantee = 'hris_app' AND table_name = 'JobCompetency' AND privilege_type = 'DELETE';
+
+-- (c) The role guard fires for a caller with no session identity. Expect FORBIDDEN.
+--     Before M14 this returned NOT_HIRED — a check BELOW the gate, i.e. the gate was skipped.
+SELECT app_link_hire('app-owen', '40000000-0000-0000-0000-000000000002');
+```
+
+| Result | Means |
+| --- | --- |
+| (a) four rows reading `INSERT,SELECT,UPDATE`, (b) one row `DELETE`, (c) `FORBIDDEN` | M14 is live |
+| (a) any row still lists `DELETE` | The migration did not apply — re-check I2 |
+| (b) returns no row | ⚠️ Over-revoked. Something beyond this migration ran; investigate before using the app |
+| (c) `NOT_HIRED` | The **old** function is still installed — the `CREATE OR REPLACE` did not take |
+
+**2. The screening call window renders (M13).** In the ATS, open a req → **Manage** → *Screening call
+window*, set `09:00`–`17:00` in a zone, save. The card should echo back
+*"Applicants are told: 09:00–17:00 (America/Mexico_City)"*. Then move a candidate to **Screening** and
+open that person's portal: the notice appears with the hours **and the zone named**.
+
+⚠️ The hours are a LABEL, never a conversion — `09:00` must read `09:00` whichever zone is selected.
+If a distant zone shifts the numbers, the formatter is converting when it must not.
+
+**3. The employee-records throttle (only after I4b).** Six rapid failed logins from one IP:
+
+| Result | Means |
+| --- | --- |
+| *"Too many attempts…"* on the 6th | Working |
+| *"Invalid email or password."* every time | The Upstash vars are missing or misspelled — the limiter is env-gated and silently disabled |
+
+⚠️ The two messages are deliberately different. Telling a throttled user their password is wrong
+sends them to reset a password that was never the problem, and generates more attempts against the
+limiter that just fired.
+
+### I7 — 🛠️ If something goes wrong
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `permission denied for table Employee` (or Candidate / Application / EmployeeHistory) anywhere in the live apps | M14's REVOKE hit a delete path the audit did not find | `GRANT DELETE ON "<table>" TO hris_app;` restores the old behaviour instantly. Then tell me which code path did it — the audit found none, so it would be a real finding |
+| `migrate deploy` fails partway through | ⚠️ **Prisma does NOT wrap a migration in one transaction**, so a failed file can leave objects half-created | Drop the partial objects by hand, `prisma migrate resolve --rolled-back <name>`, then `migrate deploy` again. ⚠️ `--rolled-back` only works on a migration in a FAILED state; one that applied successfully must be undone by hand |
+| Build fails at install with `ERR_INVALID_THIS` | Corepack | `ENABLE_EXPERIMENTAL_COREPACK=1` |
+| Résumés 404 in the ATS after app 4 goes live | A second Blob store was created | Reconnect the existing `frogsatwork-files` store to project 4 and redeploy. See I3 |
+| Candidate emails link to `localhost:3003` | `PORTAL_BASE_URL` not set on the **ATS** | I5. Nothing errors; the links are simply wrong |
 
 ⚠️ **NO NEON HEARTBEAT.** A fourth app raises the baseline again. The 5-minute keep-warm pinger is
 exactly what exhausted the free tier on 2026-08-19 — 720 h/month at 0.25 CU ≈ 180 CU-hrs against a

@@ -43,6 +43,7 @@ const en = {
   "login.submit": "Sign in",
   "login.signingIn": "Signing in…",
   "login.invalid": "Invalid email or password.",
+  "login.rateLimited": "Too many attempts. Please wait a moment and try again.",
   "login.activated": "Password set — you can now sign in.",
   "login.seededHint": "Seeded logins (password: password123)",
 

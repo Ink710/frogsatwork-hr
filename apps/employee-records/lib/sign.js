@@ -7,7 +7,14 @@ import crypto from "node:crypto";
 const TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 function hmac(payload) {
-  return crypto.createHmac("sha256", process.env.AUTH_SECRET ?? "").update(payload).digest("hex");
+  // ⚠️ THROW RATHER THAN FALL BACK TO "" (M14). The old `?? ""` meant that if AUTH_SECRET were ever
+  // unset, signing and verifying would both still "work" — against a key an attacker also knows —
+  // so every download link in the app would be forgeable, with nothing failing or logging. Auth.js
+  // requires AUTH_SECRET anyway, so this can only fire on a misconfiguration, which is exactly the
+  // case where a loud crash beats a quiet forgery.
+  const secret = process.env.AUTH_SECRET;
+  if (!secret) throw new Error("AUTH_SECRET is not set — refusing to sign a download link.");
+  return crypto.createHmac("sha256", secret).update(payload).digest("hex");
 }
 
 export function signDownload(docId, userId, now = Date.now()) {
