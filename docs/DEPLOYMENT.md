@@ -554,6 +554,7 @@ curl -s -o /dev/null -w '%{http_code}  /jobs/bogus (expect 404)\n'    https://<p
 | --- | --- |
 | all 200, `/portal` 307, `/jobs/bogus` 404 | Working. The 307 proves the inverted proxy matcher is live |
 | `/brand/*.png` 307s to `/sign-in` | The matcher is wrong — it must match ONLY `/portal/:path*` |
+| `/jobs/bogus` returns **200** instead of 404 | ⚠️ A **soft 404**, and it means a `loading.js` has been added at `app/` root or on a segment ABOVE a route that calls `notFound()`. A loading boundary makes the response STREAM, so the 200 headers flush before the page body runs — `notFound()` then renders the right UI but can no longer set the status. Users see the correct page; crawlers index dead job URLs as live. This happened once (M14) and the fix is the `app/(browse)/` route group: it keeps the list page's skeleton while leaving `/jobs/*` outside the boundary. **Dev mode soft-404s either way, so this can only be reproduced against a production build.** |
 | `/` 200 but `/api/health` 503 and DB pages 500, **sub-second** | ⚠️ Not a cold start. Sub-second means quota, auth, or a missing DB — check the Neon usage page for the RIGHT org and project (match the host against `DATABASE_URL`) |
 | `/api/health` slow then 200 | A Neon cold start. Expected and accepted — the keep-warm pinger is what exhausted the free tier on 2026-08-19 |
 | build fails at install with `ERR_INVALID_THIS` | `ENABLE_EXPERIMENTAL_COREPACK=1` |
