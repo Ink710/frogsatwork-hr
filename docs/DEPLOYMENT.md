@@ -632,32 +632,24 @@ exactly what exhausted the free tier on 2026-08-19 — 720 h/month at 0.25 CU �
 
 ## Decisions & open items
 
-- **Email: disabled.** No `SMTP_*`; the invite send is best-effort so nothing breaks, and seeded
-  logins are pre-activated. Demo the invite → set-password flow in the **Loom** via local Mailpit.
-- **Demo data mutation.** Reviewers log in as HR and *can* edit the seeded data. For now: **accept
-  drift**. If it gets messy, add a scheduled reseed (Vercel Cron hitting a protected reseed route, or
-  a nightly job running `db:seed`) — deferred, not built.
-- **Neon free-tier autosuspend** adds a cold-start delay on the first hit after idle — acceptable for
-  a demo; mention it in the Loom if noticeable. **Leave it alone.**
+These are now **decision records** in [`docs/decisions/`](decisions/), so they can be cited from code
+and module docs rather than only found by scrolling this runbook.
 
-  > ⚠️ **DO NOT run an uptime pinger to avoid that cold start — it took all three demos offline.**
-  > Neon free allows **100 CU-hrs/month**; compute runs at **0.25 CU**, so the budget is ~400 hours
-  > of *active* compute. A ping every ~5 minutes stops the database ever suspending: ~720 hours of
-  > activity a month, ~180 CU-hrs, quota exhausted well before month end. Every app on that database
-  > then gets connections **refused in under a second** — which reads like an outage, not a limit,
-  > because Vercel stays up and only DB-backed routes fail.
-  >
-  > Cold starts and quota are the same dial. Bursty demo traffic on the default 5-minute autosuspend
-  > uses a few compute-hours a month. **Prefer the cold start.**
-  >
-  > Diagnosing it again: `/login` (no DB) returns **200** while `/api/health` returns **503** and
-  > DB-backed pages **500** — and the failure is *sub-second*, which rules out both a cold wake
-  > (seconds, then succeeds) and a network timeout (much longer). Check the Neon **usage** figures,
-  > and make sure you're looking at the right Neon **org and project** — an unrelated project's tidy
-  > dashboard will happily tell you nothing is wrong.
-- **`next build` and the DB.** The app's routes are dynamic (cookies/auth), so the build shouldn't try
-  to prerender against the DB. If a build ever fails trying to reach Postgres, mark the offending
-  route `export const dynamic = "force-dynamic"`.
+| Decision | Short version |
+|----------|---------------|
+| [ADR-001](decisions/001-email-disabled-in-demos.md) | **Email: disabled.** No `SMTP_*`; seeded logins are pre-activated. Demo the invite → set-password flow in the Loom via local Mailpit. |
+| [ADR-002](decisions/002-demo-data-is-mutable.md) | **Demo data mutation.** Reviewers can edit seeded data — **accept drift**. A scheduled reseed is the fallback: deferred, not built. |
+| [ADR-003](decisions/003-neon-autosuspend-not-a-pinger.md) | **Neon autosuspend: leave it alone.** ⚠️ **DO NOT run an uptime pinger — it took all three demos offline.** The CU-hr arithmetic and the diagnostic signature are in the record. |
+| [ADR-004](decisions/004-dynamic-routes-no-db-at-build.md) | **`next build` must not reach the DB.** Routes are dynamic; if a build fails trying to reach Postgres, mark the route `export const dynamic = "force-dynamic"`. |
+
+> ⚠️ **The one to re-read before touching monitoring:** [ADR-003](decisions/003-neon-autosuspend-not-a-pinger.md).
+> Quota exhaustion reads like an outage, not a limit — `/login` returns 200 while `/api/health`
+> returns 503, and the failure is **sub-second**, which rules out both a cold wake and a network
+> timeout.
+
+Deployment-time decisions made since are recorded alongside them —
+[ADR-005](decisions/005-two-role-database-split.md) in particular, because `hris_app` must exist
+**before** `migrate deploy` on any new database.
 
 ---
 

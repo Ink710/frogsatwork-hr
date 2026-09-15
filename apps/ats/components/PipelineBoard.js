@@ -140,7 +140,15 @@ export async function PipelineBoard({ jobId, board }) {
               </Link>
             ),
             actions: canManage ? (
+              // ⚠️ THE KEY IS REQUIRED EVEN THOUGH THIS IS A PROP, NOT A MAPPED CHILD. These
+              // elements are built inside flatMap and handed to a client component inside an array
+              // of card objects; React reconciles them positionally and warns without a stable one
+              // ("Each child in a list should have a unique key ... passed a child from
+              // PipelineBoard"). `Card` is keyed by card.id already, so per-card state was never at
+              // risk — but the warning was real, and it printed ONCE per server start (React dedupes
+              // key warnings per component), which is why it read as unreproducible for weeks.
               <StageMoveActions
+                key={card.id}
                 jobId={jobId}
                 appId={card.id}
                 buttons={cardButtons(card, rounds, t)}
